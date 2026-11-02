@@ -152,6 +152,153 @@ async fn malformed_api_paths_are_classified_as_api() {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Rutas `/auth/*` fuera del fallback SPA
+// ---------------------------------------------------------------------------
+//
+// Con OIDC desactivado (`OIDC_ENABLED=false`) las rutas `/auth/*` no se montan.
+// El frontend espera un **404 JSON** para concluir «autenticación desactivada»;
+// si el fallback SPA devolviese `index.html` con 200 la app quedaría inservible.
+
+#[tokio::test]
+async fn auth_me_without_oidc_returns_json_404() {
+    let reply = get(common::test_state().await, "/auth/me").await;
+
+    assert_eq!(reply.status, StatusCode::NOT_FOUND);
+    assert!(
+        header_str(&reply.headers, header::CONTENT_TYPE).starts_with("application/json"),
+        "content-type inesperado: {:?}",
+        reply.headers.get(header::CONTENT_TYPE)
+    );
+    let text = body_lower(&reply);
+    assert!(
+        !text.contains("<html") && !text.contains("<!doctype"),
+        "el fallback SPA no debe capturar /auth/*: {text}"
+    );
+    let json: serde_json::Value = serde_json::from_slice(&reply.body).expect("parsear JSON");
+    assert_eq!(json["error"], "not_found");
+    assert!(
+        json["message"].as_str().is_some_and(|m| !m.is_empty()),
+        "el 404 de la API debe incluir `message`: {:?}",
+        json.get("message")
+    );
+}
+
+#[tokio::test]
+async fn auth_login_without_oidc_returns_json_404() {
+    let reply = get(common::test_state().await, "/auth/login").await;
+
+    assert_eq!(reply.status, StatusCode::NOT_FOUND);
+    assert!(
+        header_str(&reply.headers, header::CONTENT_TYPE).starts_with("application/json"),
+        "content-type inesperado: {:?}",
+        reply.headers.get(header::CONTENT_TYPE)
+    );
+    let text = body_lower(&reply);
+    assert!(
+        !text.contains("<html") && !text.contains("<!doctype"),
+        "el fallback SPA no debe capturar /auth/*: {text}"
+    );
+    let json: serde_json::Value = serde_json::from_slice(&reply.body).expect("parsear JSON");
+    assert_eq!(json["error"], "not_found");
+    assert!(
+        json["message"].as_str().is_some_and(|m| !m.is_empty()),
+        "el 404 de la API debe incluir `message`: {:?}",
+        json.get("message")
+    );
+}
+
+#[tokio::test]
+async fn auth_root_exact_without_oidc_returns_json_404() {
+    let reply = get(common::test_state().await, "/auth").await;
+
+    assert_eq!(reply.status, StatusCode::NOT_FOUND);
+    assert!(
+        header_str(&reply.headers, header::CONTENT_TYPE).starts_with("application/json"),
+        "content-type inesperado: {:?}",
+        reply.headers.get(header::CONTENT_TYPE)
+    );
+    let text = body_lower(&reply);
+    assert!(
+        !text.contains("<html") && !text.contains("<!doctype"),
+        "el fallback SPA no debe capturar /auth/*: {text}"
+    );
+    let json: serde_json::Value = serde_json::from_slice(&reply.body).expect("parsear JSON");
+    assert_eq!(json["error"], "not_found");
+    assert!(
+        json["message"].as_str().is_some_and(|m| !m.is_empty()),
+        "el 404 de la API debe incluir `message`: {:?}",
+        json.get("message")
+    );
+}
+
+#[tokio::test]
+async fn unknown_auth_route_with_oidc_returns_json_404() {
+    // Con OIDC activo las rutas reales de `/auth/*` deben seguir funcionando:
+    // `GET /auth/me` responde 200 con `authenticated: false` sin sesión.
+    let me = get(
+        common::test_state_oidc("https://issuer.example", &["oximeal-users"]).await,
+        "/auth/me",
+    )
+    .await;
+
+    assert_eq!(me.status, StatusCode::OK);
+    assert!(
+        header_str(&me.headers, header::CONTENT_TYPE).starts_with("application/json"),
+        "content-type inesperado: {:?}",
+        me.headers.get(header::CONTENT_TYPE)
+    );
+    let json: serde_json::Value = serde_json::from_slice(&me.body).expect("parsear JSON");
+    assert_eq!(json["authenticated"], false);
+
+    // Una ruta `/auth/*` desconocida no debe caer al fallback SPA.
+    let reply = get(
+        common::test_state_oidc("https://issuer.example", &["oximeal-users"]).await,
+        "/auth/desconocido",
+    )
+    .await;
+
+    assert_eq!(reply.status, StatusCode::NOT_FOUND);
+    assert!(
+        header_str(&reply.headers, header::CONTENT_TYPE).starts_with("application/json"),
+        "content-type inesperado: {:?}",
+        reply.headers.get(header::CONTENT_TYPE)
+    );
+    let text = body_lower(&reply);
+    assert!(
+        !text.contains("<html") && !text.contains("<!doctype"),
+        "el fallback SPA no debe capturar /auth/*: {text}"
+    );
+    let json: serde_json::Value = serde_json::from_slice(&reply.body).expect("parsear JSON");
+    assert_eq!(json["error"], "not_found");
+    assert!(
+        json["message"].as_str().is_some_and(|m| !m.is_empty()),
+        "el 404 de la API debe incluir `message`: {:?}",
+        json.get("message")
+    );
+}
+
+#[tokio::test]
+async fn malformed_auth_paths_are_classified_as_auth() {
+    // Claves que, normalizadas, quedan bajo `auth/`: nunca deben caer al
+    // fallback SPA. URI absoluta por la misma razón que en el caso de `/api/*`.
+    for uri in ["http://localhost//auth/me", "http://localhost/./auth/me"] {
+        let reply = get(common::test_state().await, uri).await;
+
+        assert_eq!(reply.status, StatusCode::NOT_FOUND, "uri {uri}");
+        assert!(
+            header_str(&reply.headers, header::CONTENT_TYPE).starts_with("application/json"),
+            "{uri}: content-type inesperado: {:?}",
+            reply.headers.get(header::CONTENT_TYPE)
+        );
+        let text = body_lower(&reply);
+        assert!(
+            !text.contains("<html") && !text.contains("<!doctype"),
+            "{uri}: no debe devolver index.html: {text}"
+        );
+    }
+}
+
 #[tokio::test]
 async fn traversal_with_percent_encoding_does_not_leak() {
     let reply = get(common::test_state().await, "/%2e%2e/%2e%2e/etc/passwd").await;
@@ -324,6 +471,26 @@ async fn dotted_client_route_serves_index_html() {
         reply.body, index.body,
         "una ruta de cliente con punto debe devolver index.html"
     );
+}
+
+#[cfg(feature = "embed-ui")]
+#[tokio::test]
+async fn client_routes_still_serve_index_with_oidc() {
+    // El OIDC activo no debe cambiar el fallback de rutas de cliente.
+    for uri in ["/shopping", "/recetas/pasta.v2"] {
+        let reply = get(
+            common::test_state_oidc("https://issuer.example", &["oximeal-users"]).await,
+            uri,
+        )
+        .await;
+
+        assert_eq!(reply.status, StatusCode::OK, "uri {uri}");
+        assert!(
+            header_str(&reply.headers, header::CONTENT_TYPE).starts_with("text/html"),
+            "{uri}: content-type inesperado: {:?}",
+            reply.headers.get(header::CONTENT_TYPE)
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------
