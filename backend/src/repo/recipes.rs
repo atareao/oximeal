@@ -12,9 +12,20 @@ const FTS_MIN_CHARS: usize = 3;
 
 /// Lista recetas aplicando búsqueda, filtro de categoría y paginación.
 ///
-/// Si `q` tiene 3 o más caracteres se usa `MATCH` sobre `recipes_fts`
-/// (nombre **o** instrucciones); con menos caracteres se cae a `LIKE` sobre el
-/// nombre. La validación de `category` corresponde a la capa de rutas.
+/// # Semántica de la búsqueda
+///
+/// El término `q` se envuelve entre comillas (frase) y se envía a
+/// `recipes_fts MATCH` sobre el nombre **o** las instrucciones cuando tiene 3 o
+/// más caracteres. Con el tokenizer `trigram`, una frase coincide con una
+/// **subcadena contigua** del texto indexado, insensible a mayúsculas y a
+/// diacríticos; **no** es una búsqueda por palabras (AND): `"lentejas
+/// zanahoria"` no encuentra "lentejas estofadas con zanahoria", pero
+/// `"estofadas con"` sí.
+///
+/// Con menos de 3 caracteres (mínimo que exige el tokenizer `trigram`) se cae a
+/// `LIKE '%q%'` sobre el nombre. Ver `docs/search.md`.
+///
+/// La validación de `category` corresponde a la capa de rutas.
 pub async fn list(
     pool: &SqlitePool,
     q: Option<&str>,
