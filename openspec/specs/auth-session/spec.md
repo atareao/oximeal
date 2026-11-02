@@ -19,7 +19,7 @@ El backend SHALL exponer `GET /auth/login`, que redirige al endpoint de autoriza
 - THEN la redirección no expone `client_secret` ni tokens al navegador
 
 ### Requirement: Callback y sesión server-side
-El backend SHALL exponer `GET /auth/callback`, que valida el `state` recibido contra el guardado en la sesión, intercambia el código de autorización **en servidor** contra el endpoint de token, y valida el ID token (firma, `iss`, `aud`, `exp` y `nonce`). El backend SHALL exigir que el usuario pertenezca a un grupo permitido y crear una sesión nueva con cookie `httpOnly` + `Secure` + `SameSite=Lax` + `Path=/`, rotando el identificador de sesión al autenticar. Ante cualquier error de validación SHALL responder 400 o 403 **sin** crear sesión.
+El backend SHALL exponer `GET /auth/callback`, que valida el `state` contra el guardado en la sesión, intercambia el código **en servidor** y valida el ID token (firma, `iss`, `aud`, `exp` y `nonce`). SHALL exigir grupo permitido y crear una sesión nueva con cookie `httpOnly` + `Secure` + `SameSite=Lax` + `Path=/`, rotando el identificador al autenticar. Ante error SHALL responder 400 o 403 **sin** crear sesión.
 
 #### Scenario: Login feliz
 - GIVEN un `state` válido, un código de autorización correcto y un ID token válido de un usuario en un grupo permitido
