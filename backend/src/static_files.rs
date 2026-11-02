@@ -8,8 +8,10 @@
 //!   `index.html` para rutas de cliente desconocidas.
 //! - Sin la feature responde 404 con una pista sobre cómo habilitar la UI.
 //!
-//! En ningún caso se sirve `index.html` bajo `/api/*`: esas rutas devuelven
-//! siempre el 404 JSON de la API.
+//! En ningún caso se sirve `index.html` bajo `/api/*` ni bajo `/auth/*`: esas
+//! rutas devuelven siempre el 404 JSON de la API cuando no existe una ruta
+//! registrada. Con OIDC desactivado, `/auth/*` no se monta y el frontend
+//! necesita ese 404 JSON para concluir que la autenticación está apagada.
 
 use axum::Router;
 use axum::response::{IntoResponse, Response};
@@ -40,14 +42,17 @@ pub fn router() -> Router<AppState> {
     Router::new().fallback(ui::serve)
 }
 
-/// `true` si la ruta pertenece a la API (`/api` o `/api/...`).
+/// `true` si la ruta pertenece a la API (`/api`, `/api/...`, `/auth` o
+/// `/auth/...`).
 ///
 /// Clasifica sobre la **clave normalizada**, no sobre el path crudo, para que
-/// variantes mal formadas como `//api/health` o `/./api/health` se detecten
-/// igualmente como API y nunca caigan al *fallback* SPA.
+/// variantes mal formadas como `//api/health`, `/./api/health`, `//auth/me` o
+/// `/./auth/login` se detecten igualmente como API y nunca caigan al *fallback*
+/// SPA. `/auth/*` se incluye porque, con OIDC desactivado, esas rutas no se
+/// montan y debe devolverse el 404 JSON de la API (no `index.html`).
 fn is_api_path(path: &str) -> bool {
     let key = normalize(path);
-    key == "api" || key.starts_with("api/")
+    key == "api" || key.starts_with("api/") || key == "auth" || key.starts_with("auth/")
 }
 
 /// Normaliza la ruta de la petición a una clave canónica del frontend.
@@ -94,4 +99,55 @@ fn ui_not_packaged() -> Response {
         })),
     )
         .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_api_path;
+
+    #[test]
+    fn api_paths_are_classified_as_api() {
+        for path in [
+            "api",
+            "/api",
+            "/api/health",
+            "//api/health",
+            "/./api/health",
+        ] {
+            assert!(is_api_path(path), "{path} debería clasificarse como API");
+        }
+    }
+
+    #[test]
+    fn auth_paths_are_classified_as_api() {
+        for path in [
+            "auth",
+            "/auth",
+            "/auth/me",
+            "/auth/login",
+            "//auth/me",
+            "/./auth/login",
+        ] {
+            assert!(is_api_path(path), "{path} debería clasificarse como API");
+        }
+    }
+
+    #[test]
+    fn client_paths_are_not_classified_as_api() {
+        for path in [
+            "/shopping",
+            "/recetas/pasta.v2",
+            "/assets/index-abc.js",
+            "/authentication",
+            "/authors",
+            "/authz",
+            "/",
+            "",
+        ] {
+            assert!(
+                !is_api_path(path),
+                "{path} NO debería clasificarse como API"
+            );
+        }
+    }
 }
