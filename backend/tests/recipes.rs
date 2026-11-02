@@ -359,6 +359,219 @@ async fn search_three_char_term_in_instructions_uses_fts() {
     );
 }
 
+/// `PUT /api/recipes/{id}` válido → 200 con datos nuevos y FTS sincronizado.
+#[tokio::test]
+async fn update_valid_recipe_returns_200_and_fts_reflects_change() {
+    let state = common::test_state().await;
+
+    let (status, created) = common::request(
+        state.clone(),
+        "POST",
+        "/api/recipes",
+        Some(recipe_payload("Gazpacho andaluz", "salad")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let id = created["id"].as_str().expect("id de receta").to_string();
+
+    let (status, updated) = common::request(
+        state.clone(),
+        "PUT",
+        &format!("/api/recipes/{id}"),
+        Some(json!({
+            "name": "Salmorejo cordobés",
+            "category": "main",
+            "diet_type": "mediterranean",
+            "prep_time_minutes": 15,
+            "servings": 4,
+            "ingredients": [{"name": "Pan", "amount": 200.0, "unit": "g"}],
+            "instructions": "Triturar todo.",
+            "source_url": null
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "body: {updated}");
+    assert_eq!(updated["id"], id);
+    assert_eq!(updated["name"], "Salmorejo cordobés");
+    assert_eq!(updated["category"], "main");
+    assert_eq!(updated["servings"], 4);
+    assert_eq!(updated["prep_time_minutes"], 15);
+    assert_eq!(updated["ingredients"][0]["name"], "Pan");
+    assert_eq!(updated["instructions"], "Triturar todo.");
+
+    // FTS sincronizado: el nombre NUEVO encuentra la receta...
+    let uri = format!("/api/recipes?q={}", encode_query("Salmorejo"));
+    let (status, body) = common::request(state.clone(), "GET", &uri, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["total"], 1, "el nombre nuevo debe ser encontrable");
+    assert_eq!(body["items"][0]["name"], "Salmorejo cordobés");
+
+    // ...y el nombre ANTIGUO ya no aparece.
+    let uri = format!("/api/recipes?q={}", encode_query("Gazpacho"));
+    let (status, body) = common::request(state, "GET", &uri, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["total"], 0, "el nombre antiguo no debe encontrarse");
+}
+
+/// `PUT /api/recipes/{id}` con id inexistente → 404 y no crea nada.
+#[tokio::test]
+async fn update_unknown_recipe_returns_404_and_creates_nothing() {
+    let state = common::test_state().await;
+
+    let (status, _) = common::request(
+        state.clone(),
+        "PUT",
+        "/api/recipes/no-existe",
+        Some(recipe_payload("Nueva receta", "main")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    let (status, list) = common::request(state, "GET", "/api/recipes", None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(list["total"], 0, "no debe crearse ninguna receta");
+}
+
+/// `PUT /api/recipes/{id}` con payload inválido → 400 y la receta original intacta.
+#[tokio::test]
+async fn update_with_invalid_payload_returns_400_and_keeps_original() {
+    let state = common::test_state().await;
+
+    let (status, created) = common::request(
+        state.clone(),
+        "POST",
+        "/api/recipes",
+        Some(recipe_payload("Original", "main")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let id = created["id"].as_str().expect("id de receta").to_string();
+
+    let invalid_payloads = [
+        // Categoría no permitida.
+        recipe_payload("Cambiada", "fruta"),
+        // Nombre vacío.
+        json!({
+            "name": "   ",
+            "category": "main",
+            "ingredients": [{"name": "Tomate", "amount": 1.0, "unit": "ud"}]
+        }),
+        // Sin ingredientes.
+        json!({
+            "name": "Sin ingredientes",
+            "category": "main",
+            "ingredients": []
+        }),
+    ];
+
+    for payload in invalid_payloads {
+        let (status, _) = common::request(
+            state.clone(),
+            "PUT",
+            &format!("/api/recipes/{id}"),
+            Some(payload),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+
+    let (status, detail) = common::request(state, "GET", &format!("/api/recipes/{id}"), None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(detail["name"], "Original", "la receta no debe cambiar");
+    assert_eq!(detail["category"], "main");
+}
+
+/// `DELETE /api/recipes/{id}` válido → 204, el detalle pasa a 404 y sale del listado.
+#[tokio::test]
+async fn delete_valid_recipe_returns_204_and_removes_from_list() {
+    let state = common::test_state().await;
+
+    let (status, created) = common::request(
+        state.clone(),
+        "POST",
+        "/api/recipes",
+        Some(recipe_payload("Para borrar", "main")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let id = created["id"].as_str().expect("id de receta").to_string();
+
+    let (status, _) =
+        common::request(state.clone(), "DELETE", &format!("/api/recipes/{id}"), None).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    let (status, _) =
+        common::request(state.clone(), "GET", &format!("/api/recipes/{id}"), None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "el detalle debe dar 404");
+
+    let (status, list) = common::request(state, "GET", "/api/recipes", None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(list["total"], 0, "no debe aparecer en el listado");
+}
+
+/// `DELETE /api/recipes/{id}` con id inexistente → 404.
+#[tokio::test]
+async fn delete_unknown_recipe_returns_404() {
+    let state = common::test_state().await;
+
+    let (status, _) = common::request(state, "DELETE", "/api/recipes/no-existe", None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+/// `DELETE` de una receta referenciada por el plan → 409 y nada cambia.
+#[tokio::test]
+async fn delete_recipe_referenced_by_plan_returns_409_and_changes_nothing() {
+    let state = common::test_state().await;
+
+    let (status, created) = common::request(
+        state.clone(),
+        "POST",
+        "/api/recipes",
+        Some(recipe_payload("En el plan", "main")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let id = created["id"].as_str().expect("id de receta").to_string();
+
+    let (status, entry) = common::request(
+        state.clone(),
+        "POST",
+        "/api/meal-plan",
+        Some(json!({
+            "date": "2024-01-15",
+            "meal_type": "lunch",
+            "recipe_id": id,
+            "role": "main"
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "body: {entry}");
+
+    let (status, body) =
+        common::request(state.clone(), "DELETE", &format!("/api/recipes/{id}"), None).await;
+    assert_eq!(status, StatusCode::CONFLICT, "body: {body}");
+
+    // La receta sigue existiendo.
+    let (status, _) =
+        common::request(state.clone(), "GET", &format!("/api/recipes/{id}"), None).await;
+    assert_eq!(status, StatusCode::OK, "la receta debe permanecer");
+
+    // Y la entrada del plan también.
+    let (status, plan) = common::request(
+        state,
+        "GET",
+        "/api/meal-plan?start_date=2024-01-15&end_date=2024-01-15",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        plan.as_array().map(Vec::len),
+        Some(1),
+        "la entrada del plan debe permanecer"
+    );
+}
+
 #[tokio::test]
 async fn short_query_searches_only_name_not_instructions() {
     let state = common::test_state().await;

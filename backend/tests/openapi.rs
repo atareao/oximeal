@@ -25,6 +25,15 @@ async fn openapi_json_is_served_with_expected_paths() {
         paths.contains_key("/api/recipes"),
         "falta /api/recipes en paths"
     );
+    let recipe_detail = paths["/api/recipes/{id}"]
+        .as_object()
+        .expect("/api/recipes/{id} debe ser un objeto");
+    for method in ["get", "put", "delete"] {
+        assert!(
+            recipe_detail.contains_key(method),
+            "/api/recipes/{{id}} debe exponer {method}"
+        );
+    }
     assert!(
         paths.contains_key("/api/meal-plan"),
         "falta /api/meal-plan en paths"

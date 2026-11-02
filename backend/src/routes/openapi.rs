@@ -34,6 +34,8 @@ const DOCS_PATH: &str = "/api/docs";
         recipes::list_recipes,
         recipes::create_recipe,
         recipes::get_recipe,
+        recipes::update_recipe,
+        recipes::delete_recipe,
         meal_plan::list_meal_plan,
         meal_plan::create_meal_plan,
         meal_plan::delete_meal_plan,

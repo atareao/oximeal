@@ -8,7 +8,7 @@
 //! | ruta | permiso |
 //! |---|---|
 //! | `GET /api/recipes`, `GET /api/recipes/{id}` | `read:recipes` |
-//! | `POST /api/recipes` | `write:recipes` |
+//! | `POST /api/recipes`, `PUT /api/recipes/{id}`, `DELETE /api/recipes/{id}` | `write:recipes` |
 //! | `GET /api/meal-plan` | `read:plan` |
 //! | `POST /api/meal-plan`, `DELETE /api/meal-plan/{id}` | `write:plan` |
 //! | `GET /api/shopping-list` | `read:shopping` |

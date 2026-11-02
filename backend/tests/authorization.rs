@@ -38,6 +38,16 @@ fn protected_requests() -> Vec<(&'static str, &'static str, Option<Value>)> {
             })),
         ),
         (
+            "PUT",
+            "/api/recipes/missing-id",
+            Some(json!({
+                "name": "Tortilla",
+                "category": "main",
+                "ingredients": [{"name": "Huevo", "amount": 3.0, "unit": "ud"}]
+            })),
+        ),
+        ("DELETE", "/api/recipes/missing-id", None),
+        (
             "GET",
             "/api/meal-plan?start_date=2024-01-01&end_date=2024-01-31",
             None,
@@ -126,6 +136,43 @@ async fn valid_token_without_required_permission_returns_403() {
 
     assert_eq!(status, StatusCode::FORBIDDEN, "body: {body}");
     assert_eq!(body["error"], "forbidden");
+}
+
+/// Un token solo-lectura no puede actualizar ni borrar recetas → 403.
+#[tokio::test]
+async fn token_without_write_recipes_cannot_update_or_delete() {
+    let idp = MockIdp::start().await;
+    let state = test_state_oidc(&idp.issuer, USER_GROUPS).await;
+
+    let token = token_for(&idp, READ_RECIPES);
+    let body = json!({
+        "name": "Tortilla",
+        "category": "main",
+        "ingredients": [{"name": "Huevo", "amount": 3.0, "unit": "ud"}]
+    });
+    let (status, _headers, response) = call(
+        &state,
+        "PUT",
+        "/api/recipes/whatever",
+        Some(&token),
+        None,
+        None,
+        Some(body),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "body: {response}");
+
+    let (status, _headers, response) = call(
+        &state,
+        "DELETE",
+        "/api/recipes/whatever",
+        Some(&token),
+        None,
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "body: {response}");
 }
 
 #[tokio::test]
