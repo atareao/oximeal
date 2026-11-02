@@ -18,6 +18,8 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Cambiado
 
+- **Frontend:** antd deja de descargarse en el arranque (carga diferida vía `React.lazy` + splitting por grupos); grafo estático inicial 761,3 kB → **293,7 kB** con presupuesto de 500 kB verificado en `just ci-ui` y CI (#13).
+
 ### Obsoleto
 
 ### Eliminado

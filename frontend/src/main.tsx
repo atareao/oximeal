@@ -1,15 +1,16 @@
-import { StrictMode } from 'react';
+import { StrictMode, Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { App as AntdApp, ConfigProvider } from 'antd';
-import { BrowserRouter } from 'react-router-dom';
-import { App } from './App';
 import { ApiError } from './api/client';
-import { ForbiddenNotifier } from './auth/ForbiddenNotifier';
 import { SessionProvider } from './auth/SessionProvider';
-import { ErrorBoundary } from './components/ErrorBoundary';
-import { theme } from './components/theme';
+import { BootErrorBoundary } from './components/BootErrorBoundary';
+import { BootFallback } from './components/BootFallback';
 import './index.css';
+
+// antd vive en `AppRoot`, que se carga de forma diferida para mantenerlo fuera
+// del grafo de módulos estático del entry: el primer pintado usa `BootFallback`.
+// eslint-disable-next-line react-refresh/only-export-components -- main.tsx es el entry de la SPA, no un módulo con Fast Refresh.
+const AppRoot = lazy(() => import('./AppRoot'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -34,19 +35,14 @@ if (!rootElement) {
 
 createRoot(rootElement).render(
   <StrictMode>
-    <ErrorBoundary>
+    <BootErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <SessionProvider>
-          <ConfigProvider theme={theme}>
-            <AntdApp>
-              <ForbiddenNotifier />
-              <BrowserRouter>
-                <App />
-              </BrowserRouter>
-            </AntdApp>
-          </ConfigProvider>
+          <Suspense fallback={<BootFallback />}>
+            <AppRoot />
+          </Suspense>
         </SessionProvider>
       </QueryClientProvider>
-    </ErrorBoundary>
+    </BootErrorBoundary>
   </StrictMode>,
 );

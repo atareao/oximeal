@@ -1,0 +1,40 @@
+.boot-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  min-height: 100dvh;
+  padding: 24px;
+  text-align: center;
+  color: #1a202c;
+}
+
+.boot-error__title {
+  margin: 0;
+  font-size: 24px;
+}
+
+.boot-error__text {
+  margin: 0;
+  max-width: 32ch;
+  color: #4a5568;
+}
+
+.boot-error__reload {
+  min-height: 48px;
+  padding: 0 24px;
+  border: 0;
+  border-radius: 10px;
+  background: #2f855a;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.boot-error__reload:focus-visible {
+  outline: 2px solid #2f855a;
+  outline-offset: 2px;
+}

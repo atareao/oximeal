@@ -19,21 +19,28 @@ export default defineConfig({
     },
   },
   build: {
+    manifest: true,
     rollupOptions: {
       output: {
-        manualChunks(id: string): string | undefined {
-          if (id.includes('node_modules')) {
-            if (id.includes('@tanstack')) {
-              return 'query';
-            }
-            if (id.includes('antd') || id.includes('@ant-design') || id.includes('rc-')) {
-              return 'antd';
-            }
-            if (id.includes('react')) {
-              return 'react';
-            }
-          }
-          return undefined;
+        codeSplitting: {
+          groups: [
+            {
+              name: 'react',
+              test: /node_modules[\\/](react|react-dom|scheduler|react-router)/,
+              priority: 30,
+            },
+            {
+              name: 'query',
+              test: /node_modules[\\/]@tanstack/,
+              priority: 20,
+            },
+            {
+              name: 'antd',
+              test: /node_modules[\\/](antd|@ant-design|@rc-component|rc-)/,
+              priority: 10,
+              includeDependenciesRecursively: false,
+            },
+          ],
         },
       },
     },

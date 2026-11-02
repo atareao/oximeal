@@ -458,6 +458,11 @@ Cerrar los tres hallazgos de la Fase 2 del frontend sin cambiar el comportamient
 
 **DoD:** antd fuera del grafo estático inicial; presupuesto < 500 kB; UI sin regresiones; change archivado; issue #13 cerrada.
 
+- [x] Antes: grafo estático del entry 761,3 kB (antd 694,20 kB / 224,66 kB gzip en el chunk estático).
+- [x] Después: grafo estático del entry **293,7 kB** (react 251,9 + query 34,0 + entry 7,1 + runtime 0,6); antd pasa a chunk diferido de 458,95 kB (150,86 kB gzip).
+- [x] `pnpm lint` 0 problemas, 114 tests; `pnpm check-bundle` (presupuesto 500 kB) y `just ci-ui` en verde.
+- [x] `openspec validate --all --strict` en verde (19/19 con @fission-ai/openspec@1.16.0); change `2026-11-02-antd-lazy-boot` archivado.
+
 ### 17.4 Issue #10 — `haptics-vibration-api`
 
 **Decisión:** documentar la Vibration API (`navigator.vibrate`) y no migrar a `web-haptics` (0.0.6, API inmadura, dependencia nueva y workaround frágil para iOS). En navegadores sin soporte (iOS Safari) el hook es un no-op.
