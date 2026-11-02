@@ -9,7 +9,7 @@
 OxiMeal es un gestor self-hosted de menús semanales, recetas y listas de la compra, mobile-first, offline-capable y desplegable como **binario único** (Axum + `rust-embed`), con un orquestador LLM interno (OpenRouter) conectado a un **servidor MCP** que ejecuta acciones reales sobre SQLite.
 
 **En esta ronda:** construir y dejar en verde el núcleo backend (Fase 1).
-**Fuera de alcance ahora:** UI React (F2), MCP+Chat (F3), PWA/Offline (F4).
+**Fuera de alcance ahora:** UI React (F2), MCP+Chat (F3), PWA/Offline (F5).
 
 ## 2. Decisiones de arquitectura (ADR resumen)
 
@@ -25,6 +25,7 @@ OxiMeal es un gestor self-hosted de menús semanales, recetas y listas de la com
 | ADR-8 | `rust-embed` diferido a Fase 2 | Fase 1 expone API pura; el empaquetado monolítico necesita el frontend. |
 | ADR-9 | **Agent API** en `/api/agent` (5 endpoints) como contrato para Valet | Superficie estable y tipada para el orquestador; MCP sería un adapter opcional futuro sobre la misma API. |
 | ADR-10 | Frontend **React 19 + Antd v6** con Vite/TS y datos vía TanStack Query; empaquetado en el binario con `rust-embed` (feature `embed-ui`) | Mobile-first y binario único; sin SSR (no se necesita). |
+| ADR-11 | Autenticación **OIDC con Pocket ID** mediante **BFF**: cliente confidencial, sesión server-side y cookie `httpOnly`; autorización por **permisos del modelo *APIs and permissions***; Valet por **M2M `client_credentials`** | Instancia self-hosted hoy abierta; el SPA se sirve del mismo origen, así que el BFF no añade coste; cero tokens en el navegador. |
 
 ## 3. Estructura del repositorio
 
@@ -117,7 +118,8 @@ oximeal/
 - **Fase 1.5 — Agent API** (cerrada junto con la Fase 1 en esta ronda).
 - **Fase 2 — Frontend (COMPLETADA):** React 19 + Antd v6 (Vite/TS) en `frontend/`; shell responsive (Sider en desktop / bottom-nav en móvil); menú semanal lunes–domingo; modo compra mobile-first por pasillos (objetivos ≥48px, strike-through + reordenado + haptics); servido con `rust-embed` (feature `embed-ui`) y fallback SPA; la pestaña Asistente enlaza/embebe Valet. La deuda diferida (ETag/304, `charset=utf-8`, Range/nosniff/CSP, `eslint-plugin-jsx-a11y`, Prettier, CI remoto) quedó registrada como issues.
 - **Fase 3 — Integración con Valet (en el repo Valet, NO en OxiMeal):** cliente `src/services/oximeal.rs` + tools `src/tools/oximeal.rs` (con permisos) que consumen la Agent API. **No** se construye orquestador/MCP/chat en OxiMeal (Valet descartó MCP; usa integración nativa por servicio). La pestaña 🤖 del PWA enlaza/embebe el chat de Valet.
-- **Fase 4 — PWA/Offline:** `manifest.json` + iconos adaptativos; Service Worker (Stale-While-Revalidate para activos, Network-First con fallback IndexedDB para la lista); pruebas táctiles y de rendimiento.
+- **Fase 4 — Autenticación OIDC (Pocket ID):** BFF con cliente confidencial, sesión server-side y cookie `httpOnly` (el navegador nunca ve tokens); autorización por **permisos** del modelo *APIs and permissions* (user-delegated para el SPA y **M2M `client_credentials`** para Valet); roles desde los **grupos** de Pocket ID (`admin`/`member`) con *Allowed user groups* como puerta de entrada; CSRF y guard de rutas en el frontend; `compose` con un IdP de desarrollo. Cierra el issue #5 (API key estático). Dependencia registrada: la Fase 5 deberá tolerar sesión caducada (access token 60 min, refresh 30 días) sirviendo datos cacheados.
+- **Fase 5 — PWA/Offline:** `manifest.json` + iconos adaptativos; Service Worker (Stale-While-Revalidate para activos, Network-First con fallback IndexedDB para la lista); pruebas táctiles y de rendimiento. Debe tolerar la sesión OIDC caducada sirviendo datos cacheados mientras no haya autenticación.
 
 ## 7. Estrategia de testing
 
@@ -157,6 +159,17 @@ oximeal/
 - [x] `just ci` y `just ci-ui` en verde.
 - [x] Auditoría `react-reviewer` + `rust-reviewer` aplicada (0 bloqueantes).
 
+### Fase 4
+
+- [ ] `openspec validate oidc-auth --strict` en verde.
+- [ ] 401 (sin credenciales), 403 (sin permiso) y 200 (con permiso) correctos por cada permiso (`read:recipes`, `write:recipes`, `read:plan`, `write:plan`, `read:shopping`, `write:shopping`).
+- [ ] Cookie de sesión `httpOnly` + `Secure` + `SameSite=Lax` verificada; el navegador nunca recibe tokens.
+- [ ] CSRF activo (`X-CSRF-Token`) en las mutaciones autenticadas por cookie.
+- [ ] M2M de la Agent API funcionando y contrato de peticiones/respuestas sin cambios.
+- [ ] `OIDC_ENABLED=false` mantiene `cargo test` en verde.
+- [ ] Frontend con guard de rutas y `401`→re-login.
+- [ ] IdP de desarrollo documentado en `compose`.
+
 ## 10. Riesgos y mitigaciones
 
 | Riesgo | Mitigación |
@@ -166,6 +179,10 @@ oximeal/
 | Edición 2024 requiere toolchain reciente | `rust-toolchain.toml` fija stable ≥1.97 (presente en el entorno). |
 | Ambigüedad Schema.org en import | Fase 1 acepta solo JSON validado; el parser Schema.org se completa en F2/F3. |
 | Consumo de RAM <20 MB (objetivo global) | Fase 1 no añade runtime LLM; la medición real se hará sobre el binario monolítico (feature `embed-ui`), **pendiente** de ejecutar; no se fijan cifras aún. |
+| Offline vs access token de 60 min | La Fase 5 debe tolerar la sesión caducada sirviendo datos cacheados; el refresh dura 30 días de inactividad. |
+| Pocket ID exige HTTPS en los redirect URIs fuera de localhost | Reverse proxy HTTPS documentado para los despliegues; localhost queda exento para desarrollo. |
+| Fuga de tokens por logs | Prohibir loguear las cabeceras `Cookie` y `Authorization` en tracing/middleware. |
+| Bloqueo si el IdP cae | El servidor no depende del IdP al arrancar: arranca igualmente y reintenta descubrimiento/JWKS; las rutas protegidas responden de forma coherente. |
 
 ## 11. Trazabilidad con la especificación
 
@@ -174,3 +191,4 @@ oximeal/
 - §5 UI mobile-first → Fase 2.
 - §6 Endpoints REST → T8–T11.
 - §7 Roadmap → secciones 5 y 6 de este plan.
+- Autenticación OIDC (issue #5) → **Fase 4** (`openspec/changes/oidc-auth/`): BFF, permisos, M2M y roles.
