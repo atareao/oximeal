@@ -5,6 +5,7 @@ import { ApiError } from './api/client';
 import { SessionProvider } from './auth/SessionProvider';
 import { BootErrorBoundary } from './components/BootErrorBoundary';
 import { BootFallback } from './components/BootFallback';
+import { registerServiceWorker } from './offline/register-sw';
 import './index.css';
 
 // antd vive en `AppRoot`, que se carga de forma diferida para mantenerlo fuera
@@ -46,3 +47,5 @@ createRoot(rootElement).render(
     </BootErrorBoundary>
   </StrictMode>,
 );
+
+registerServiceWorker();
