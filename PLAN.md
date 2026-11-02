@@ -609,3 +609,91 @@ Cada PR: `just ci` + `just ci-ui` + `openspec validate --all --strict` en verde,
 > offline se encola, sobrevive a la recarga y se sincroniza sola al recuperar la
 > conexión con **un único POST** y sin duplicados; reenviar el mismo `client_id`
 > responde 200 sin duplicar.
+
+## 19. Fase 6 — Recetario completo y verificación en dispositivo real
+
+> Ejecutable ahora. Origen: issues #45, #46 y #47. Tres changes independientes,
+> una rama/PR por issue desde `development`. Metodología SDD + TDD estricto
+> (RED → GREEN → REFACTOR), con auditoría por bloque.
+
+### 19.1 Objetivo
+
+Completar el **recetario** (hoy la API de recetas es solo listar/buscar/ver y
+crear, y el frontend **no tiene página de recetas**: solo `MenuPage` y
+`ShoppingPage`), permitir **importar una receta desde una URL**, y cerrar la
+**verificación de rendimiento y consumo de RAM** en dispositivo real pendiente
+de la Fase 5 (pruebas táctiles y de rendimiento) y del objetivo global `<20 MB`
+registrado en §10.
+
+### 19.2 Decisiones de diseño (ADR-28…31)
+
+| # | Decisión | Justificación |
+|---|----------|---------------|
+| ADR-28 | Actualización de receta por **reemplazo total** (`PUT /api/recipes/{id}`) en una transacción `BEGIN IMMEDIATE`, reescribiendo ingredientes y confiando en los triggers `ai/ad/au` para refrescar el índice FTS | Atomicidad y coherencia con la consolidación; sin parches incrementales frágiles sobre ingredientes |
+| ADR-29 | Borrado **duro** de receta (`DELETE /api/recipes/{id}`) con borrado en cascada de ingredientes (FKs `ON DELETE`) y limpieza del índice FTS por trigger | Sin estado «borrado lógico» que complicaría la búsqueda; el borrado físico es lo esperado en self-hosted |
+| ADR-30 | Importación **server-side** con `reqwest` (ya presente para OIDC) y guardas **SSRF**: solo `http`/`https`, bloqueo de rangos privados/loopback/link-local tras resolución DNS, límite de redirecciones, *timeout* y tope de tamaño; parseo de JSON-LD `Recipe` de Schema.org; deduplicación por `source_url` | El navegador no puede leer el HTML de terceros (CORS) y centralizar la descarga permite validar y proteger |
+| ADR-31 | Verificación de rendimiento como **medición reproducible on-demand** (receta `just`), no como *gate* de CI; presupuestos web documentados | Las métricas de rendimiento en CI son ruidosas y frágiles; se miden y documentan bajo demanda |
+
+### 19.3 Change A — `recipes-management` (issue #45)
+
+- **Backend:** `PUT /api/recipes/{id}` y `DELETE /api/recipes/{id}` (permiso
+  `write:recipes`), con validación reutilizada y `404` cuando no existe;
+  transacción `BEGIN IMMEDIATE` para el reemplazo total; OpenAPI actualizado.
+- **Frontend:** nueva `RecipesPage` (`/recipes`) + detalle (`/recipes/:id`) con
+  lista, búsqueda (hooks `useRecipes`/`useRecipe` ya existentes), alta, edición y
+  borrado con confirmación; entrada de navegación en `AppLayout` (Sider) y
+  `BottomNav` (🍳 Recetas); objetivos táctiles ≥48px.
+- **Specs:** delta en `recipes` (ADDED *Actualización* y *Borrado*), capacidad
+  nueva `recipe-catalog` (UI) y delta en `ui-shell` (ADDED *Pestaña Recetas*).
+
+### 19.4 Change B — `recipe-import-schema-org` (issue #46)
+
+- **Backend:** `POST /api/recipes/import` con cuerpo `{ "url": "..." }` (permiso
+  `write:recipes`): descarga con guardas SSRF (ADR-30), extracción del bloque
+  JSON-LD `application/ld+json` con `@type: Recipe`, mapeo a `RecipeInput`
+  (nombre, ingredientes, `recipeYield`→`servings`, `totalTime`/`prepTime`→minutos,
+  `recipeInstructions`, `source_url`), alta **idempotente** por `source_url`.
+  Errores tipados: `400` (URL inválida/prohibida), `422` (sin receta reconocible),
+  `502` (fallo de origen), `409` (ya importada) o `200` con la existente.
+- **Frontend:** diálogo «Importar desde URL» en `RecipesPage` con previsualización
+  antes de guardar y manejo de errores.
+- **Specs:** delta en `recipes` (ADDED *Importación de receta desde URL*), con
+  escenarios de SSRF, contenido sin receta y fallo de red.
+
+### 19.5 Change C — `perf-device-verification` (issue #47)
+
+- **Medición de RAM:** receta `just` que arranca `cargo build --release -p
+  oximeal-backend --features embed-ui`, lanza el binario con una base temporal y
+  mide RSS **pico y estable** (varias muestras), dejando el número documentado.
+- **Rendimiento web:** auditoría Lighthouse sobre el binario con UI embebida
+  (FCP/LCP, peso de transferencia, TTI) y presupuestos explícitos; comprobación
+  táctil de objetivos ≥48px y de gestos, con y sin conexión.
+- **Entregable:** `docs/performance.md` con metodología, presupuestos y
+  resultados, y la receta `just` reproducible.
+- **Specs:** capacidad nueva `performance` (ADDED *Presupuesto de memoria*,
+  *Presupuesto de rendimiento web*, *Objetivos táctiles verificados*).
+
+### 19.6 Orden de ejecución y ramas
+
+1. `feature/recipes-management` (issue #45) desde `development`.
+2. `feature/recipe-import-schema-org` (issue #46), sobre el anterior ya mergeado.
+3. `feature/perf-device-verification` (issue #47), el último (mide con la UI ya
+   completa).
+
+### 19.7 Riesgos y mitigaciones
+
+| Riesgo | Mitigación |
+|--------|------------|
+| Import vulnerable a SSRF | Guardas en ADR-30 + tests con `wiremock` y URLs a `127.0.0.1`/`localhost`/rangos privados |
+| `PUT` desincroniza el índice FTS | Triggers `ai/ad/au` existentes + test de búsqueda tras editar |
+| Medición de RAM ruidosa | Medir varias muestras, reportar pico y estable, documentar el método |
+| Web scraping de terceros frágil | Se documenta que el import depende de JSON-LD estándar; fallo → `422` claro |
+
+### 19.8 Criterios de aceptación (DoD de la Fase 6)
+
+- [ ] API: `PUT` y `DELETE /api/recipes/{id}` con autorización y tests (200/404/400, `401/403`).
+- [ ] UI: página de recetas (lista, búsqueda, detalle, alta, edición, borrado) accesible desde la navegación, con tests de componente.
+- [ ] Import: `POST /api/recipes/import` con guardas SSRF y parseo Schema.org, con tests (URL interna, HTML sin JSON-LD, fallo de red, idempotencia).
+- [ ] Rendimiento: RSS del binario `--release --features embed-ui` medido y documentado; presupuestos web y táctiles verificados en `docs/performance.md`.
+- [ ] `just ci`, `just ci-ui` y `openspec validate --all --strict` en verde.
+- [ ] Sin regresiones en el smoke E2E (37/37 + casos nuevos del recetario).
