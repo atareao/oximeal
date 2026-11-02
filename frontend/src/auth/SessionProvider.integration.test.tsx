@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { message } from 'antd';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { apiRequest } from '../api/client';
 import { AuthGuard } from './AuthGuard';
@@ -76,15 +77,18 @@ function Probe() {
 }
 
 function renderSession() {
+  const queryClient = new QueryClient();
   return render(
-    <MemoryRouter initialEntries={['/shopping']}>
-      <SessionProvider>
-        <Probe />
-        <AuthGuard>
-          <div data-testid="protected">datos</div>
-        </AuthGuard>
-      </SessionProvider>
-    </MemoryRouter>,
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={['/shopping']}>
+        <SessionProvider>
+          <Probe />
+          <AuthGuard>
+            <div data-testid="protected">datos</div>
+          </AuthGuard>
+        </SessionProvider>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 

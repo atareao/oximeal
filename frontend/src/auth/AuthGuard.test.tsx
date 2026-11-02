@@ -78,4 +78,13 @@ describe('AuthGuard', () => {
 
     expect(screen.getByTestId('protected')).toBeInTheDocument();
   });
+
+  it('renderiza los datos en modo degradado y no redirige al login', () => {
+    const assign = mockLocationAssign();
+    mockedUseSession.mockReturnValue(session({ status: 'degraded' }));
+    renderGuard('/shopping');
+
+    expect(screen.getByTestId('protected')).toBeInTheDocument();
+    expect(assign).not.toHaveBeenCalled();
+  });
 });

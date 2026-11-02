@@ -16,6 +16,7 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 
 - **Frontend:** linting estático de accesibilidad con `eslint-plugin-jsx-a11y` y formato verificado con Prettier, integrados en `just ci-ui` y en CI (#11).
 - **Frontend:** shell PWA instalable con manifiesto, iconos adaptativos y Service Worker propio que precachea el shell y los assets con hash; recarga sin conexión y actualización de caché versionada por build (#29).
+- **Frontend:** caché de datos en IndexedDB con hidratación al arrancar y modo degradado: sin conexión o con la sesión caducada se muestran los datos guardados con un aviso, en lugar de vaciar la vista o redirigir al login; el cierre de sesión limpia la caché (#30).
 
 ### Cambiado
 

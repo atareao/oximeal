@@ -4,6 +4,7 @@ import { useSession } from '../auth/session';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { VALET_URL, hasValet } from '../lib/config';
 import { BottomNav } from './BottomNav';
+import { OfflineBanner } from './OfflineBanner';
 import './AppLayout.css';
 
 const { Sider, Content } = Layout;
@@ -75,6 +76,7 @@ export function AppLayout() {
           <SessionControl />
         </header>
         <main className="app-mobile__content">
+          <OfflineBanner />
           <Outlet />
         </main>
         <BottomNav />
@@ -112,6 +114,7 @@ export function AppLayout() {
       </Sider>
       <Layout>
         <Content className="app-content">
+          <OfflineBanner />
           <Outlet />
         </Content>
       </Layout>
