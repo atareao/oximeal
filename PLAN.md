@@ -434,6 +434,11 @@ Cerrar los tres hallazgos de la Fase 2 del frontend sin cambiar el comportamient
 
 **DoD:** reglas de a11y activas; Prettier integrado en `just ci-ui` y CI; change archivado; issue #11 cerrada.
 
+- [x] `pnpm lint` 0 problemas y `pnpm format:check` limpio (110 tests).
+- [x] `just ci-ui` exit 0; `openspec validate --all --strict` en verde (20/20).
+- [x] Versiones: `eslint-plugin-jsx-a11y@6.10.2`, `prettier@3.9.10`, `eslint-config-prettier@10.1.8`; peer de ESLint 10 resuelto en `pnpm-workspace.yaml`.
+- [x] Change `2026-11-02-a11y-lint-prettier` archivado; capability `frontend-tooling` creada.
+
 ### 17.3 Issue #13 — `antd-lazy-boot`
 
 **Decisión:** mantener los componentes antd actuales y cargar todo el árbol que los usa de forma diferida. No se reescribe el shell ni las páginas.

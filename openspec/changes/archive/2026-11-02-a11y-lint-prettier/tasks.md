@@ -22,4 +22,4 @@
 - [x] 4.2 Añadir el paso de Prettier al workflow de CI
 - [x] 4.3 `just ci-ui` exit 0
 - [x] 4.4 `openspec validate a11y-lint-prettier --strict` y `openspec validate --all --strict`
-- [ ] 4.5 Actualizar `PLAN.md` y `CHANGELOG.md`; archivar el change
+- [x] 4.5 Actualizar `PLAN.md` y `CHANGELOG.md`; archivar el change

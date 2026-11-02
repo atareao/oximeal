@@ -14,6 +14,8 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Añadido
 
+- **Frontend:** linting estático de accesibilidad con `eslint-plugin-jsx-a11y` y formato verificado con Prettier, integrados en `just ci-ui` y en CI (#11).
+
 ### Cambiado
 
 ### Obsoleto
