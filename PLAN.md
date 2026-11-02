@@ -407,3 +407,69 @@ Documentar y fijar con tests de caracterización la semántica real del buscador
 - [x] `clippy -D warnings` y `fmt --check` limpios.
 - [x] `openspec validate --all --strict` en verde.
 - [x] Issue #6 cerrada (PR #24); change `trigram-search-semantics` archivado.
+
+## 17. Frontend hardening: a11y/Prettier, lazy antd y haptics (issues #11, #13, #10)
+
+Estado: planificado. Tres changes independientes, una rama/PR por issue desde `development`.
+
+### 17.1 Objetivo
+
+Cerrar los tres hallazgos de la Fase 2 del frontend sin cambiar el comportamiento de producto:
+- #11: linting estático de accesibilidad y formato verificable en CI.
+- #13: sacar antd del critical path de arranque mediante carga diferida.
+- #10: alinear spec y código de haptics documentando la Vibration API.
+
+### 17.2 Issue #11 — `a11y-lint-prettier`
+
+**Decisión:** añadir `eslint-plugin-jsx-a11y@^6.10.2`, `prettier@^3.9.10` y `eslint-config-prettier@^10.1.8`. El peer de `eslint-plugin-jsx-a11y` declara ESLint ≤9; se resuelve con `pnpm.peerDependencyRules.allowedVersions` para ESLint 10 y se valida que las reglas funcionan.
+
+**Cambios:**
+- `frontend/eslint.config.js`: `jsxA11y.flatConfigs.recommended` + `eslint-config-prettier` al final.
+- `frontend/.prettierrc.json` (`singleQuote`, `trailingComma: all`, `printWidth: 100`, `semi`) y `.prettierignore` (`dist`, `node_modules`, `coverage`, `pnpm-lock.yaml`, `*.md`, `tsconfig.tsbuildinfo`).
+- `frontend/package.json`: scripts `format` y `format:check`; bloque `pnpm.peerDependencyRules`.
+- `justfile` (`ci-ui`) y `.github/workflows/ci.yml`: paso `pnpm format:check`.
+- Formatear `frontend/src` y corregir los avisos de a11y que aparezcan.
+
+**Tests/verificación:** `pnpm lint` 0 problemas, `pnpm format:check` limpio, `pnpm typecheck`, `pnpm test`, `pnpm build` y `just ci-ui` en verde.
+
+**DoD:** reglas de a11y activas; Prettier integrado en `just ci-ui` y CI; change archivado; issue #11 cerrada.
+
+### 17.3 Issue #13 — `antd-lazy-boot`
+
+**Decisión:** mantener los componentes antd actuales y cargar todo el árbol que los usa de forma diferida. No se reescribe el shell ni las páginas.
+
+**Cambios:**
+- `frontend/src/AppRoot.tsx` (nuevo, default export): `ErrorBoundary`, `ConfigProvider`, `AntdApp`, `ForbiddenNotifier`, `BrowserRouter` y `App`.
+- `frontend/src/components/BootFallback.tsx` y `BootErrorBoundary.tsx` (nuevos, sin antd): fallback de primer pintado y boundary de arranque.
+- `frontend/src/main.tsx`: `lazy(() => import('./AppRoot'))` + `Suspense` + `BootErrorBoundary`; se mantienen `QueryClientProvider` y `SessionProvider` en el entry.
+- `frontend/src/api/client.ts`: eliminar `import { message } from 'antd'`; el fallback de 403 usa `void import('antd').then(({ message }) => message.warning(...))`.
+- `frontend/vite.config.ts`: `build.manifest = true`.
+- `frontend/scripts/check-bundle.mjs` (nuevo): recorre el manifest y suma el grafo estático del entry; falla si supera 500 kB en bruto.
+- `justfile`: `ci-ui` ejecuta `node scripts/check-bundle.mjs` tras el build.
+
+**Medición:** línea base `antd` 694,20 kB (224,66 kB gzip), entry 11,23 kB. Objetivo: el grafo estático inicial (entry + react + query + session/client) < 500 kB en bruto; antd pasa a chunk asíncrono. Se anotan los tamaños antes/después en este apartado y en `CHANGELOG.md`.
+
+**Tests/verificación:** `pnpm build` + `check-bundle` en verde; `pnpm typecheck`, `pnpm test`, `pnpm lint`; prueba manual de shell, login, menú y compra.
+
+**DoD:** antd fuera del grafo estático inicial; presupuesto < 500 kB; UI sin regresiones; change archivado; issue #13 cerrada.
+
+### 17.4 Issue #10 — `haptics-vibration-api`
+
+**Decisión:** documentar la Vibration API (`navigator.vibrate`) y no migrar a `web-haptics` (0.0.6, API inmadura, dependencia nueva y workaround frágil para iOS). En navegadores sin soporte (iOS Safari) el hook es un no-op.
+
+**Cambios:**
+- `openspec/specs/shopping-mode/spec.md`: requisito "Marcar como comprado" pasa de "Web Haptics" a "Vibration API (`navigator.vibrate`)" con no-op si no hay soporte.
+- `frontend/src/hooks/useHaptics.ts`: docstring con la decisión y el comportamiento en iOS Safari.
+- `frontend/src/hooks/useHaptics.test.ts`: tests del patrón por defecto (10 ms) y de patrón en array.
+
+**Tests/verificación:** `pnpm test`, `pnpm typecheck`, `pnpm lint`; `openspec validate --all --strict`.
+
+**DoD:** spec y docstring coherentes; tests en verde; change archivado; issue #10 cerrada.
+
+### 17.5 Orden de ejecución y ramas
+
+1. `feature/a11y-lint-prettier` → PR a `development`.
+2. `feature/antd-lazy-boot` → PR a `development`.
+3. `feature/haptics-vibration-api` → PR a `development`.
+
+Cada PR: `just ci-ui` + `openspec validate --all --strict` en verde, `CHANGELOG.md` actualizado y change archivado tras el merge.
