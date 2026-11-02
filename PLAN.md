@@ -357,3 +357,53 @@ Capability `frontend-serving` (requisitos añadidos). Estado: implementado, en P
 - [x] `clippy -D warnings` y `fmt --check` limpios.
 - [x] `openspec validate --all --strict` en verde.
 - [x] Issues #8 y #9 cerradas; change `static-serving-hardening` archivado.
+
+## 15. Consolidación escalada por raciones (issue #3) — change `consolidation-servings-scaling`
+
+Capability `ingredient-consolidation` (requisito añadido). Estado: implementado, PR #23 fusionado.
+
+### 15.1 Objetivo
+
+Al consolidar la lista de la compra, escalar la cantidad de cada ingrediente por el cociente entre las raciones planificadas en la entrada del plan y las raciones de la receta, de modo que una receta de 2 raciones planificada a 4 duplique las cantidades.
+
+### 15.2 Decisión de diseño
+
+- El escalado se hace **en `collect_drafts`** (`backend/src/repo/shopping_list.rs`), **antes** de `domain::consolidate`: la consulta lee `COALESCE(e.servings, 2)` y `COALESCE(r.servings, 2)` y multiplica cada `IngredientInput.amount` por `factor = entry / recipe`. El motor de consolidación no cambia.
+- Dos rutas afectadas: `POST /api/shopping-list/consolidate` y `POST /api/agent/weekly-plan` (ambas comparten `collect_drafts` y `BEGIN IMMEDIATE`).
+- Helper puro `servings_factor(entry, recipe)` con denominador acotado (`recipe.max(1)`) por defensa; `round2` redondea una sola vez al final por subgrupo.
+
+### 15.3 Tests
+
+- `backend/tests/shopping_list.rs`: 5 de integración (2→4 duplica; 4→2 mitad; sin raciones factor 1; `NULL`/`NULL` factor 1; misma receta con raciones distintas se suma) + unitario de `servings_factor`.
+
+### 15.4 Criterios de aceptación (DoD)
+
+- [x] `just ci` exit 0 (481 tests) y `just ci-ui` exit 0.
+- [x] `clippy -D warnings` y `fmt --check` limpios.
+- [x] `openspec validate --all --strict` en verde.
+- [x] Issue #3 cerrada (PR #23); change `consolidation-servings-scaling` archivado.
+
+## 16. Semántica de búsqueda trigram (issue #6) — change `trigram-search-semantics`
+
+Capability `recipe-search` (requisito documental añadido). Estado: implementado, PR #24 fusionado.
+
+### 16.1 Objetivo
+
+Documentar y fijar con tests de caracterización la semántica real del buscador de recetas: `q` se envía entre comillas (frase) a `recipes_fts MATCH` y, con el tokenizer `trigram`, equivale a una **subcadena contigua** del nombre o de las instrucciones, no a un AND de palabras.
+
+### 16.2 Hallazgo / decisión
+
+- Con `q` de **≥3 caracteres**: coincidencia por subcadena contigua, insensible a mayúsculas y diacríticos; `"estofadas con"` coincide, `"lentejas zanahoria"` no; `"cafe"` encuentra `"Café"`.
+- Con `q` de **<3 caracteres**: fallback `LIKE '%q%'` **solo sobre el nombre** (no pliega diacríticos; case-insensitive solo ASCII).
+- Sin cambio de comportamiento de producción: solo docstring de `repo::recipes::list`, `docs/search.md` (nuevo) y tests.
+
+### 16.3 Tests
+
+- `backend/tests/recipes.rs`: 5 de caracterización (subcadena contigua multi-palabra; palabras no contiguas → `total=0`; término de 3 chars solo en instrucciones → FTS; `<3` chars no busca en instrucciones).
+
+### 16.4 Criterios de aceptación (DoD)
+
+- [x] `just ci` exit 0 (489 tests) y `just ci-ui` exit 0.
+- [x] `clippy -D warnings` y `fmt --check` limpios.
+- [x] `openspec validate --all --strict` en verde.
+- [x] Issue #6 cerrada (PR #24); change `trigram-search-semantics` archivado.

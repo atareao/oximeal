@@ -14,4 +14,4 @@
 ## 3. Cierre
 - [x] 3.1 `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`, `cargo test -p oximeal-backend` (con y sin `embed-ui`)
 - [x] 3.2 `openspec validate trigram-search-semantics --strict` y `openspec validate --all --strict`
-- [ ] 3.3 Actualizar `PLAN.md` y cerrar la issue #6 (tras merge)
+- [x] 3.3 Actualizar `PLAN.md` y cerrar la issue #6 (tras merge)
