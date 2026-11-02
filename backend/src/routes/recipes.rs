@@ -5,7 +5,7 @@ use axum::Router;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::routing::get;
+use axum::routing::{get, post};
 use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
@@ -14,11 +14,16 @@ use crate::repo;
 use crate::routes::validation;
 use crate::state::AppState;
 
-/// Router de recetas.
-pub fn router() -> Router<AppState> {
+/// Router de recetas de lectura (permiso `read:recipes`).
+pub fn read_router() -> Router<AppState> {
     Router::new()
-        .route("/api/recipes", get(list_recipes).post(create_recipe))
+        .route("/api/recipes", get(list_recipes))
         .route("/api/recipes/{id}", get(get_recipe))
+}
+
+/// Router de recetas de escritura (permiso `write:recipes`).
+pub fn write_router() -> Router<AppState> {
+    Router::new().route("/api/recipes", post(create_recipe))
 }
 
 /// `GET /api/recipes` — listado con búsqueda (FTS5/LIKE), filtro y paginación.

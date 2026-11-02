@@ -26,6 +26,51 @@ async fn migrations_create_expected_tables() {
     }
 }
 
+/// La migración `0004_sessions.sql` crea la tabla server-side de sesiones con
+/// sus columnas e índice de caducidad.
+#[tokio::test]
+async fn migrations_create_sessions_table() {
+    let state = common::test_state().await;
+
+    let table: Option<String> =
+        sqlx::query_scalar("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+            .bind("sessions")
+            .fetch_optional(&state.pool)
+            .await
+            .expect("consultar sqlite_master");
+    assert_eq!(
+        table.as_deref(),
+        Some("sessions"),
+        "falta la tabla sessions"
+    );
+
+    let columns: Vec<String> = sqlx::query("SELECT name FROM pragma_table_info('sessions')")
+        .fetch_all(&state.pool)
+        .await
+        .expect("leer columnas de sessions")
+        .iter()
+        .map(|row| row.get::<String, _>("name"))
+        .collect();
+    for expected in ["id", "data", "expiry"] {
+        assert!(
+            columns.iter().any(|column| column == expected),
+            "falta la columna {expected} en sessions"
+        );
+    }
+
+    let index: Option<String> =
+        sqlx::query_scalar("SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?")
+            .bind("idx_sessions_expiry")
+            .fetch_optional(&state.pool)
+            .await
+            .expect("consultar índice");
+    assert_eq!(
+        index.as_deref(),
+        Some("idx_sessions_expiry"),
+        "falta el índice idx_sessions_expiry"
+    );
+}
+
 /// Verifica en runtime que FTS5 con tokenizer `trigram` está disponible y que
 /// encuentra coincidencias por substring de >= 3 caracteres.
 #[tokio::test]

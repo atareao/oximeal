@@ -14,10 +14,15 @@ use crate::repo;
 use crate::routes::validation;
 use crate::state::AppState;
 
-/// Router de la planificación.
-pub fn router() -> Router<AppState> {
+/// Router de la planificación de lectura (permiso `read:plan`).
+pub fn read_router() -> Router<AppState> {
+    Router::new().route("/api/meal-plan", get(list_meal_plan))
+}
+
+/// Router de la planificación de escritura (permiso `write:plan`).
+pub fn write_router() -> Router<AppState> {
     Router::new()
-        .route("/api/meal-plan", get(list_meal_plan).post(create_meal_plan))
+        .route("/api/meal-plan", axum::routing::post(create_meal_plan))
         .route(
             "/api/meal-plan/{id}",
             axum::routing::delete(delete_meal_plan),
