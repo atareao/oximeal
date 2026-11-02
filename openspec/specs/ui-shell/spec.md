@@ -1,7 +1,7 @@
 # ui-shell Specification
 
 ## Purpose
-Define el shell responsive mobile-first de la PWA de OxiMeal: en desktop muestra un panel lateral (`Layout.Sider`) y en móvil una navegación inferior con las pestañas Menú, Compra y Asistente, con objetivos táctiles de al menos 48px, tema de Ant Design vía `ConfigProvider` y respeto de los safe-area insets. La pestaña Asistente abre o embebe Valet mediante `VITE_VALET_URL`, sin chat nativo.
+Define el shell responsive mobile-first de la PWA de OxiMeal: en desktop muestra un panel lateral (`Layout.Sider`) y en móvil una navegación inferior con las pestañas Menú, Recetas, Compra y Asistente, con objetivos táctiles de al menos 48px, tema de Ant Design vía `ConfigProvider` y respeto de los safe-area insets. La pestaña Asistente abre o embebe Valet mediante `VITE_VALET_URL`, sin chat nativo.
 
 ## Requirements
 
@@ -64,3 +64,30 @@ El shell inicial SHALL renderizarse sin cargar antd de forma estática. Los prov
 - GIVEN una respuesta 403 sin handler registrado
 - WHEN el cliente procesa la respuesta
 - THEN el aviso se muestra cargando antd de forma dinámica
+
+### Requirement: Pestaña Recetas
+
+El shell de navegación SHALL incluir una entrada Recetas en `AppLayout` (Sider)
+y en `BottomNav` (🍳 Recetas) que navega a `/recipes` y refleja el estado activo
+cuando la ruta está seleccionada.
+
+#### Scenario: Entrada en el Sider
+
+- GIVEN un viewport desktop
+- WHEN se carga la aplicación
+- THEN el panel lateral muestra la sección Recetas
+- AND al pulsarla se navega a `/recipes`
+
+#### Scenario: Pestaña en la navegación inferior
+
+- GIVEN un viewport móvil
+- WHEN se carga la aplicación
+- THEN la navegación inferior incluye la pestaña 🍳 Recetas
+- AND al pulsarla se navega a `/recipes`
+
+#### Scenario: Estado activo
+
+- GIVEN la ruta `/recipes` activa
+- WHEN se renderiza la navegación
+- THEN la entrada Recetas aparece marcada como activa
+- AND el resto de entradas no lo está

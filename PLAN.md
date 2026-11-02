@@ -645,6 +645,7 @@ registrado en §10.
   `BottomNav` (🍳 Recetas); objetivos táctiles ≥48px.
 - **Specs:** delta en `recipes` (ADDED *Actualización* y *Borrado*), capacidad
   nueva `recipe-catalog` (UI) y delta en `ui-shell` (ADDED *Pestaña Recetas*).
+- **Estado:** ✅ completado e integrado en el PR #49 (smoke E2E 23/23, `just ci`/`just ci-ui` y `openspec validate --all --strict` en verde).
 
 ### 19.4 Change B — `recipe-import-schema-org` (issue #46)
 
@@ -691,8 +692,8 @@ registrado en §10.
 
 ### 19.8 Criterios de aceptación (DoD de la Fase 6)
 
-- [ ] API: `PUT` y `DELETE /api/recipes/{id}` con autorización y tests (200/404/400, `401/403`).
-- [ ] UI: página de recetas (lista, búsqueda, detalle, alta, edición, borrado) accesible desde la navegación, con tests de componente.
+- [x] API: `PUT` y `DELETE /api/recipes/{id}` con autorización y tests (200/404/400, `401/403`).
+- [x] UI: página de recetas (lista, búsqueda, detalle, alta, edición, borrado) accesible desde la navegación, con tests de componente.
 - [ ] Import: `POST /api/recipes/import` con guardas SSRF y parseo Schema.org, con tests (URL interna, HTML sin JSON-LD, fallo de red, idempotencia).
 - [ ] Rendimiento: RSS del binario `--release --features embed-ui` medido y documentado; presupuestos web y táctiles verificados en `docs/performance.md`.
 - [ ] `just ci`, `just ci-ui` y `openspec validate --all --strict` en verde.
