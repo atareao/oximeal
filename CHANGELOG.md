@@ -14,6 +14,26 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Añadido
 
+### Cambiado
+
+### Obsoleto
+
+### Eliminado
+
+### Corregido
+
+### Seguridad
+
+## [0.4.0] - 2026-11-02
+
+Fase 5: **PWA/Offline** (issues #29, #30, #31; arreglos #35 y #36). Convierte
+OxiMeal en una PWA instalable y *offline-first*: shell precacheado con Service
+Worker propio, lectura sin conexión desde IndexedDB con modo degradado, y cola
+de escrituras con alta idempotente que se sincroniza sola al recuperar la
+conexión.
+
+### Añadido
+
 - **Frontend:** linting estático de accesibilidad con `eslint-plugin-jsx-a11y` y formato verificado con Prettier, integrados en `just ci-ui` y en CI (#11).
 - **Frontend:** shell PWA instalable con manifiesto, iconos adaptativos y Service Worker propio que precachea el shell y los assets con hash; recarga sin conexión y actualización de caché versionada por build (#29).
 - **Frontend:** caché de datos en IndexedDB con hidratación al arrancar y modo degradado: sin conexión o con la sesión caducada se muestran los datos guardados con un aviso, en lugar de vaciar la vista o redirigir al login; el cierre de sesión limpia la caché (#30).
