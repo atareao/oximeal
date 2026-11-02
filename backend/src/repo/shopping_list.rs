@@ -137,8 +137,11 @@ pub(crate) async fn collect_drafts(
     start_date: &str,
     end_date: &str,
 ) -> AppResult<Vec<ShoppingListItemDraft>> {
-    let ingredient_blobs: Vec<String> = sqlx::query_scalar(
-        "SELECT CAST(r.ingredients AS TEXT) FROM meal_plan_entries e \
+    // Se leen las raciones planificadas y las de la receta para escalar las
+    // cantidades por el factor `entry / recipe` (ambas con valor por defecto 2).
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT CAST(r.ingredients AS TEXT), COALESCE(e.servings, 2), COALESCE(r.servings, 2) \
+         FROM meal_plan_entries e \
          JOIN recipes r ON r.id = e.recipe_id \
          WHERE e.date >= ? AND e.date <= ?",
     )
@@ -148,13 +151,27 @@ pub(crate) async fn collect_drafts(
     .await?;
 
     let mut inputs: Vec<IngredientInput> = Vec::new();
-    for blob in ingredient_blobs {
+    for (blob, entry_servings, recipe_servings) in rows {
+        let factor = servings_factor(entry_servings, recipe_servings);
         let parsed: Vec<IngredientInput> = serde_json::from_str(&blob)
             .map_err(|error| AppError::Internal(anyhow!("ingredientes JSON inválidos: {error}")))?;
-        inputs.extend(parsed);
+        inputs.extend(parsed.into_iter().map(|mut ingredient| {
+            ingredient.amount *= factor;
+            ingredient
+        }));
     }
 
     Ok(crate::domain::consolidate::consolidate(&inputs))
+}
+
+/// Factor de escalado de una entrada del plan: raciones planificadas / raciones de la receta.
+///
+/// El esquema garantiza `servings >= 1` (o `NULL`→2); el `max(1)` acota además
+/// el denominador por defensa ante datos heredados que pudieran traer `0`.
+fn servings_factor(entry_servings: i64, recipe_servings: i64) -> f64 {
+    // El esquema garantiza `servings >= 1`, pero se acota por defensa ante datos
+    // heredados: un denominador 0 produciría un `amount` infinito.
+    entry_servings as f64 / recipe_servings.max(1) as f64
 }
 
 /// Reemplaza los ítems derivados del plan (`source_plan_id` no nulo) por los
@@ -227,4 +244,21 @@ fn group_items(items: Vec<ShoppingItem>) -> Vec<ShoppingListGroup> {
     }
 
     groups
+}
+
+#[cfg(test)]
+mod tests {
+    use super::servings_factor;
+
+    #[test]
+    fn servings_factor_es_ratio_de_raciones() {
+        assert_eq!(servings_factor(4, 2), 2.0);
+        assert_eq!(servings_factor(2, 4), 0.5);
+        assert_eq!(servings_factor(2, 2), 1.0);
+    }
+
+    #[test]
+    fn servings_factor_defiende_denominador_cero() {
+        assert_eq!(servings_factor(4, 0), 4.0);
+    }
 }
