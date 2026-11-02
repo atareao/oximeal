@@ -363,3 +363,263 @@ async fn spa_route_without_embed_ui_returns_404_json() {
         reply.headers.get(header::CONTENT_TYPE)
     );
 }
+
+// ---------------------------------------------------------------------------
+// Hardening del servido estático (ETag / charset / cabeceras de seguridad)
+// ---------------------------------------------------------------------------
+
+/// Ejecuta una petición con cabeceras extra contra el router completo.
+#[cfg(feature = "embed-ui")]
+async fn request_with_headers(
+    state: AppState,
+    method: &str,
+    uri: &str,
+    extra: &[(&str, &str)],
+) -> Reply {
+    let mut builder = Request::builder().method(method).uri(uri);
+    for (name, value) in extra {
+        builder = builder.header(*name, *value);
+    }
+    let request = builder.body(Body::empty()).expect("construir request");
+    let response = app(state).oneshot(request).await.expect("ejecutar request");
+
+    let status = response.status();
+    let headers = response.headers().clone();
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("leer body")
+        .to_bytes()
+        .to_vec();
+
+    Reply {
+        status,
+        headers,
+        body,
+    }
+}
+
+#[cfg(feature = "embed-ui")]
+#[tokio::test]
+async fn index_includes_etag_charset_and_security_headers() {
+    let reply = get(common::test_state().await, "/").await;
+
+    assert_eq!(reply.status, StatusCode::OK);
+    let etag = header_str(&reply.headers, header::ETAG);
+    assert!(!etag.is_empty(), "index.html debe incluir ETag");
+    assert!(
+        etag.starts_with('"') && etag.ends_with('"'),
+        "ETag entre comillas: {etag}"
+    );
+    assert_eq!(
+        header_str(&reply.headers, header::CONTENT_TYPE),
+        "text/html; charset=utf-8"
+    );
+    assert_eq!(
+        header_str(&reply.headers, header::X_CONTENT_TYPE_OPTIONS),
+        "nosniff"
+    );
+    assert!(
+        header_str(&reply.headers, header::CONTENT_SECURITY_POLICY).contains("script-src 'self'"),
+        "CSP inesperada: {:?}",
+        reply.headers.get(header::CONTENT_SECURITY_POLICY)
+    );
+}
+
+#[cfg(feature = "embed-ui")]
+#[tokio::test]
+async fn index_revalidation_with_matching_etag_returns_304() {
+    let first = get(common::test_state().await, "/").await;
+    let etag = first
+        .headers
+        .get(header::ETAG)
+        .expect("ETag")
+        .to_str()
+        .expect("ascii")
+        .to_string();
+
+    let reply = request_with_headers(
+        common::test_state().await,
+        "GET",
+        "/",
+        &[("if-none-match", &etag)],
+    )
+    .await;
+
+    assert_eq!(reply.status, StatusCode::NOT_MODIFIED);
+    assert!(reply.body.is_empty(), "304 no debe llevar cuerpo");
+}
+
+#[cfg(feature = "embed-ui")]
+#[tokio::test]
+async fn index_revalidation_with_stale_etag_returns_200() {
+    let reply = request_with_headers(
+        common::test_state().await,
+        "GET",
+        "/",
+        &[("if-none-match", "\"no-coincide\"")],
+    )
+    .await;
+
+    assert_eq!(reply.status, StatusCode::OK);
+    assert!(!reply.body.is_empty(), "200 debe llevar cuerpo");
+}
+
+#[cfg(feature = "embed-ui")]
+#[tokio::test]
+async fn index_revalidation_with_star_returns_304() {
+    let reply = request_with_headers(
+        common::test_state().await,
+        "GET",
+        "/",
+        &[("if-none-match", "*")],
+    )
+    .await;
+
+    assert_eq!(reply.status, StatusCode::NOT_MODIFIED);
+}
+
+#[cfg(feature = "embed-ui")]
+#[tokio::test]
+async fn range_request_is_served_full_without_accept_ranges() {
+    let reply = request_with_headers(
+        common::test_state().await,
+        "GET",
+        "/",
+        &[("range", "bytes=0-3")],
+    )
+    .await;
+
+    assert_eq!(
+        reply.status,
+        StatusCode::OK,
+        "Range no soportado: 200 completo"
+    );
+    assert!(
+        reply.headers.get(header::ACCEPT_RANGES).is_none(),
+        "no debe anunciarse Accept-Ranges"
+    );
+    assert!(!reply.body.is_empty());
+}
+
+#[cfg(feature = "embed-ui")]
+#[tokio::test]
+async fn hashed_asset_has_etag_nosniff_no_csp_and_revalidates() {
+    let assets_dir = std::path::Path::new(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../frontend/dist/assets"
+    ));
+    let asset = std::fs::read_dir(assets_dir).ok().and_then(|entries| {
+        entries
+            .filter_map(Result::ok)
+            .find(|entry| entry.path().is_file())
+    });
+
+    let Some(entry) = asset else {
+        // Sin assets reales (placeholder), se valida sobre /assets/ index.html.
+        let reply = get(common::test_state().await, "/").await;
+        assert!(!header_str(&reply.headers, header::ETAG).is_empty());
+        return;
+    };
+
+    let name = entry.file_name();
+    let name = name.to_string_lossy();
+    let uri = format!("/assets/{name}");
+    let first = get(common::test_state().await, &uri).await;
+
+    assert_eq!(first.status, StatusCode::OK, "asset {name} no servido");
+    assert!(
+        !header_str(&first.headers, header::ETAG).is_empty(),
+        "asset debe traer ETag"
+    );
+    assert_eq!(
+        header_str(&first.headers, header::X_CONTENT_TYPE_OPTIONS),
+        "nosniff"
+    );
+    assert!(
+        first.headers.get(header::CONTENT_SECURITY_POLICY).is_none(),
+        "un asset no-HTML no debe llevar CSP"
+    );
+
+    let etag = first
+        .headers
+        .get(header::ETAG)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    let reply = request_with_headers(
+        common::test_state().await,
+        "GET",
+        &uri,
+        &[("if-none-match", &etag)],
+    )
+    .await;
+    assert_eq!(
+        reply.status,
+        StatusCode::NOT_MODIFIED,
+        "asset debe revalidar a 304"
+    );
+}
+
+#[cfg(feature = "embed-ui")]
+#[tokio::test]
+async fn index_revalidation_with_etag_list_returns_304() {
+    let first = get(common::test_state().await, "/").await;
+    let etag = first
+        .headers
+        .get(header::ETAG)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    let list = format!("\"otro\", {etag}");
+
+    let reply = request_with_headers(
+        common::test_state().await,
+        "GET",
+        "/",
+        &[("if-none-match", &list)],
+    )
+    .await;
+    assert_eq!(
+        reply.status,
+        StatusCode::NOT_MODIFIED,
+        "lista de ETags debe revalidar"
+    );
+}
+
+#[cfg(feature = "embed-ui")]
+#[tokio::test]
+async fn head_index_with_matching_etag_returns_304_without_body() {
+    let first = get(common::test_state().await, "/").await;
+    let etag = first
+        .headers
+        .get(header::ETAG)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+
+    let reply = request_with_headers(
+        common::test_state().await,
+        "HEAD",
+        "/",
+        &[("if-none-match", &etag)],
+    )
+    .await;
+    assert_eq!(reply.status, StatusCode::NOT_MODIFIED);
+    assert!(reply.body.is_empty(), "HEAD 304 no debe llevar cuerpo");
+}
+
+#[cfg(feature = "embed-ui")]
+#[tokio::test]
+async fn missing_asset_error_has_nosniff() {
+    let reply = get(common::test_state().await, "/assets/no-existe-abc.js").await;
+    assert_eq!(reply.status, StatusCode::NOT_FOUND);
+    assert_eq!(
+        header_str(&reply.headers, header::X_CONTENT_TYPE_OPTIONS),
+        "nosniff"
+    );
+}

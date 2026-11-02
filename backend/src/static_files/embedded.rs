@@ -3,7 +3,7 @@
 use std::borrow::Cow;
 
 use axum::body::Body;
-use axum::http::{HeaderValue, Method, StatusCode, Uri, header};
+use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri, header};
 use axum::response::{IntoResponse, Response};
 use rust_embed::RustEmbed;
 
@@ -48,32 +48,122 @@ fn is_orphan_asset(key: &str) -> bool {
     !key.contains('/')
 }
 
-/// Construye la respuesta para un asset existente.
+/// Constante CSP compatible con Ant Design (CSS-in-JS inyecta `style=""`).
+const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self'; \
+style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; \
+connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; \
+form-action 'self'; manifest-src 'self'; worker-src 'self' blob:";
+
+/// `ETag` fuerte `"<hex sha256>"` a partir del hash embebido por `rust-embed`.
+fn etag_value(sha256: &[u8; 32]) -> HeaderValue {
+    use std::fmt::Write;
+    let mut hex = String::with_capacity(66);
+    hex.push('"');
+    for byte in sha256 {
+        let _ = write!(hex, "{byte:02x}");
+    }
+    hex.push('"');
+    HeaderValue::from_str(&hex).expect("hex es ASCII válido")
+}
+
+/// `Content-Type` del activo, con `; charset=utf-8` para tipos textuales.
+fn content_type_for(key: &str) -> HeaderValue {
+    let mime = mime_guess::from_path(key).first_or_octet_stream();
+    let value = if mime.type_() == mime_guess::mime::TEXT {
+        format!("{mime}; charset=utf-8")
+    } else {
+        mime.to_string()
+    };
+    HeaderValue::from_str(&value)
+        .unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream"))
+}
+
+/// `Cache-Control`: `immutable` para assets con hash; `no-cache` para el resto.
+fn cache_control_for(key: &str) -> &'static str {
+    if key.starts_with("assets/") {
+        "public, max-age=31536000, immutable"
+    } else {
+        "no-cache"
+    }
+}
+
+/// Cabeceras de seguridad: `nosniff` siempre; CSP solo en documentos HTML.
+fn apply_security_headers(headers: &mut HeaderMap, is_html: bool) {
+    headers.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    if is_html {
+        headers.insert(
+            header::CONTENT_SECURITY_POLICY,
+            HeaderValue::from_static(CONTENT_SECURITY_POLICY),
+        );
+    }
+}
+
+/// Añade las cabeceras de seguridad no-HTML (solo `nosniff`) a una respuesta.
+fn with_security_headers(mut response: Response) -> Response {
+    apply_security_headers(response.headers_mut(), false);
+    response
+}
+
+/// `true` si `If-None-Match` incluye el `ETag` dado o el comodín `*`.
+fn if_none_match_matches(request_headers: &HeaderMap, etag: &HeaderValue) -> bool {
+    let Some(value) = request_headers.get(header::IF_NONE_MATCH) else {
+        return false;
+    };
+    let Ok(value) = value.to_str() else {
+        return false;
+    };
+    let etag = etag.to_str().unwrap_or_default();
+    value.split(',').any(|token| {
+        let token = token.trim();
+        token == "*" || token == etag || token.strip_prefix("W/").is_some_and(|t| t == etag)
+    })
+}
+
+/// Construye la respuesta 200 para un asset existente.
 ///
 /// Recibe el `Cow<'static, [u8]>` de `rust-embed` directamente: `Body` tiene
 /// `From<Cow<'static, [u8]>>`, así que no se copia el contenido (zero-copy).
 ///
 /// Los assets bajo `assets/` llevan hash en el nombre y se cachean para
 /// siempre; el resto (`index.html`, favicon…) debe revalidarse.
-fn asset_response(key: &str, data: Cow<'static, [u8]>) -> Response {
-    let content_type = mime_guess::from_path(key).first_or_octet_stream();
-    let cache_control = if key.starts_with("assets/") {
-        "public, max-age=31536000, immutable"
-    } else {
-        "no-cache"
-    };
-
-    let content_type = HeaderValue::from_str(content_type.as_ref())
-        .unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream"));
+fn asset_response(key: &str, data: Cow<'static, [u8]>, etag: &HeaderValue) -> Response {
+    let content_type = content_type_for(key);
+    let is_html = content_type.to_str().is_ok_and(|value| {
+        value.starts_with("text/html") || value.starts_with("application/xhtml+xml")
+    });
 
     let mut response = (StatusCode::OK, Body::from(data)).into_response();
     let headers = response.headers_mut();
     headers.insert(header::CONTENT_TYPE, content_type);
     headers.insert(
         header::CACHE_CONTROL,
-        HeaderValue::from_static(cache_control),
+        HeaderValue::from_static(cache_control_for(key)),
     );
+    headers.insert(header::ETAG, etag.clone());
+    apply_security_headers(headers, is_html);
     response
+}
+
+/// Responde un asset atendiendo a la revalidación `If-None-Match`.
+fn respond(
+    method: &Method,
+    request_headers: &HeaderMap,
+    key: &str,
+    file: rust_embed::EmbeddedFile,
+) -> Response {
+    let sha256 = file.metadata.sha256_hash();
+    let etag = etag_value(&sha256);
+
+    if if_none_match_matches(request_headers, &etag) {
+        let mut response = StatusCode::NOT_MODIFIED.into_response();
+        response.headers_mut().insert(header::ETAG, etag);
+        return response;
+    }
+
+    strip_body_for_head(method, asset_response(key, file.data, &etag))
 }
 
 /// Vacía el cuerpo de la respuesta para peticiones `HEAD`.
@@ -99,8 +189,11 @@ fn index_not_packaged() -> Response {
 
 /// Sirve el frontend incrustado con *fallback* SPA.
 ///
-/// Solo atiende `GET` y `HEAD`; cualquier otro método responde `405`.
-pub async fn serve(method: Method, uri: Uri) -> Response {
+/// Solo atiende `GET` y `HEAD`; cualquier otro método responde `405`. Acepta el
+/// `HeaderMap` de la petición para atender la revalidación `If-None-Match`
+/// (ETag). La decisión de no soportar `Range` (enviar siempre el recurso
+/// completo y no anunciar `Accept-Ranges`) está documentada en `design.md`.
+pub async fn serve(method: Method, headers: HeaderMap, uri: Uri) -> Response {
     let raw_path = uri.path();
 
     // La API nunca cae al fallback SPA. Clasificamos sobre la clave normalizada
@@ -110,27 +203,29 @@ pub async fn serve(method: Method, uri: Uri) -> Response {
     }
 
     if !matches!(method, Method::GET | Method::HEAD) {
-        return AppError::MethodNotAllowed(format!(
-            "método {method} no permitido en rutas del frontend"
-        ))
-        .into_response();
+        return with_security_headers(
+            AppError::MethodNotAllowed(format!(
+                "método {method} no permitido en rutas del frontend"
+            ))
+            .into_response(),
+        );
     }
 
     let key = normalize(raw_path);
 
     if let Some(content) = Assets::get(&key) {
-        return strip_body_for_head(&method, asset_response(&key, content.data));
+        return respond(&method, &headers, &key, content);
     }
 
     // Ruta con pinta de fichero que no existe: asset huérfano, no ruta de cliente.
     if is_orphan_asset(&key) {
-        return StatusCode::NOT_FOUND.into_response();
+        return with_security_headers(StatusCode::NOT_FOUND.into_response());
     }
 
     // Fallback SPA: `index.html` para que lo resuelva el router del cliente.
     match Assets::get("index.html") {
-        Some(content) => strip_body_for_head(&method, asset_response("index.html", content.data)),
-        None => strip_body_for_head(&method, index_not_packaged()),
+        Some(content) => respond(&method, &headers, "index.html", content),
+        None => strip_body_for_head(&method, with_security_headers(index_not_packaged())),
     }
 }
 
@@ -223,7 +318,11 @@ mod tests {
 
     #[test]
     fn hashed_js_asset_is_immutable_with_javascript_mime() {
-        let response = asset_response("assets/index-abc.js", Cow::Borrowed(b"// js"));
+        let response = asset_response(
+            "assets/index-abc.js",
+            Cow::Borrowed(b"// js"),
+            &HeaderValue::from_static("\"x\""),
+        );
 
         assert_eq!(
             header_str(&response, header::CACHE_CONTROL),
@@ -231,23 +330,105 @@ mod tests {
         );
         assert_eq!(
             header_str(&response, header::CONTENT_TYPE),
-            "text/javascript"
+            "text/javascript; charset=utf-8"
         );
     }
 
     #[test]
     fn index_html_is_no_cache_with_html_mime() {
-        let response = asset_response("index.html", Cow::Borrowed(b"<html></html>"));
+        let response = asset_response(
+            "index.html",
+            Cow::Borrowed(b"<html></html>"),
+            &HeaderValue::from_static("\"x\""),
+        );
 
         assert_eq!(header_str(&response, header::CACHE_CONTROL), "no-cache");
-        assert_eq!(header_str(&response, header::CONTENT_TYPE), "text/html");
+        assert_eq!(
+            header_str(&response, header::CONTENT_TYPE),
+            "text/html; charset=utf-8"
+        );
     }
 
     #[test]
     fn css_asset_gets_css_mime() {
-        let response = asset_response("assets/x.css", Cow::Borrowed(b"a{}"));
+        let response = asset_response(
+            "assets/x.css",
+            Cow::Borrowed(b"a{}"),
+            &HeaderValue::from_static("\"x\""),
+        );
 
-        assert_eq!(header_str(&response, header::CONTENT_TYPE), "text/css");
+        assert_eq!(
+            header_str(&response, header::CONTENT_TYPE),
+            "text/css; charset=utf-8"
+        );
+    }
+
+    // --- ETag / cabeceras de seguridad ------------------------------------
+
+    #[test]
+    fn etag_value_is_quoted_lowercase_hex() {
+        let mut sha = [0u8; 32];
+        sha[0] = 0xAB;
+        sha[31] = 0x0f;
+        let value = etag_value(&sha).to_str().unwrap().to_string();
+        assert!(value.starts_with('"') && value.ends_with('"'));
+        assert_eq!(value.len(), 66, "32 bytes -> 64 hex + 2 comillas");
+        assert!(
+            value[1..value.len() - 1]
+                .chars()
+                .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+        );
+        assert!(value.contains("ab") && value.contains("0f"));
+    }
+
+    #[test]
+    fn content_type_has_no_charset_for_binary() {
+        let value = content_type_for("assets/logo.png")
+            .to_str()
+            .unwrap()
+            .to_string();
+        assert!(!value.contains("charset"), "binario sin charset: {value}");
+    }
+
+    #[test]
+    fn security_headers_nosniff_always_csp_only_html() {
+        let mut binary = HeaderMap::new();
+        apply_security_headers(&mut binary, false);
+        assert_eq!(
+            binary.get(header::X_CONTENT_TYPE_OPTIONS).unwrap(),
+            "nosniff"
+        );
+        assert!(binary.get(header::CONTENT_SECURITY_POLICY).is_none());
+
+        let mut html = HeaderMap::new();
+        apply_security_headers(&mut html, true);
+        assert!(
+            html.get(header::CONTENT_SECURITY_POLICY)
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .contains("script-src 'self'")
+        );
+    }
+
+    #[test]
+    fn if_none_match_matches_variants() {
+        let etag = HeaderValue::from_static("\"abc\"");
+
+        for value in ["\"abc\"", "*", "\"x\", \"abc\"", "W/\"abc\""] {
+            let mut headers = HeaderMap::new();
+            headers.insert(header::IF_NONE_MATCH, HeaderValue::from_str(value).unwrap());
+            assert!(
+                if_none_match_matches(&headers, &etag),
+                "debería coincidir: {value}"
+            );
+        }
+
+        let mut stale = HeaderMap::new();
+        stale.insert(header::IF_NONE_MATCH, HeaderValue::from_static("\"nope\""));
+        assert!(!if_none_match_matches(&stale, &etag));
+
+        assert!(!if_none_match_matches(&HeaderMap::new(), &etag));
     }
 
     // --- is_api_path (clave normalizada) -----------------------------------
