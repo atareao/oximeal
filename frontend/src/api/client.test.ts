@@ -8,6 +8,7 @@ import {
   createShoppingItem,
   deleteRecipe,
   fetchAuthMe,
+  importRecipe,
   logoutAuth,
   patchShoppingItem,
   setCsrfToken,
@@ -333,6 +334,53 @@ describe('mutaciones de recetas', () => {
         headers: expect.objectContaining({ 'X-CSRF-Token': 'token-123' }),
       }),
     );
+  });
+
+  it('importRecipe hace POST /api/recipes/import con el cuerpo y CSRF', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ id: 'r1', name: 'Tortilla', source_url: 'https://example.com/r' }, 201),
+    );
+    setCsrfToken('token-123');
+
+    const result = await importRecipe({ url: 'https://example.com/r' });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/recipes/import',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ url: 'https://example.com/r' }),
+        headers: expect.objectContaining({ 'X-CSRF-Token': 'token-123' }),
+      }),
+    );
+    expect(result.recipe).toMatchObject({ id: 'r1', source_url: 'https://example.com/r' });
+    expect(result.created).toBe(true);
+  });
+
+  it('importRecipe marca created=false cuando el origen responde 200 (idempotente)', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'r1', name: 'Tortilla' }, 200));
+
+    const result = await importRecipe({ url: 'https://example.com/r' });
+
+    expect(result.created).toBe(false);
+    expect(result.recipe.id).toBe('r1');
+  });
+
+  it('importRecipe propaga el ApiError del backend (422 sin receta)', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        { error: 'unprocessable_entity', message: 'la página no contiene una receta' },
+        422,
+      ),
+    );
+
+    await expect(importRecipe({ url: 'https://example.com/r' })).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 422,
+      message: 'la página no contiene una receta',
+    });
   });
 
   it('deleteRecipe hace DELETE /api/recipes/{id} y resuelve undefined en 204', async () => {

@@ -3,6 +3,8 @@ import type {
   AuthMeResponse,
   MealPlanEntryView,
   Recipe,
+  RecipeImportInput,
+  RecipeImportResult,
   RecipeInput,
   RecipeListResponse,
   RecipeQueryParams,
@@ -99,7 +101,8 @@ function isAbortError(error: unknown): boolean {
 }
 
 /**
- * Realiza una petición HTTP y devuelve el JSON tipado.
+ * Realiza una petición HTTP y devuelve el JSON tipado junto con el código de
+ * estado de la respuesta.
  *
  * - Adjunta `credentials: 'same-origin'` (cookies de sesión same-origin).
  * - Añade `X-CSRF-Token` en POST/PATCH/DELETE cuando hay token.
@@ -109,10 +112,10 @@ function isAbortError(error: unknown): boolean {
  * - Los fallos de red se normalizan a `ApiError(0, 'network_error', …)`; las
  *   cancelaciones (`AbortError`) se propagan sin envolver.
  */
-async function performRequest<T>(
+async function performRequestWithStatus<T>(
   url: string,
   options: RequestOptions = {},
-): Promise<T | undefined> {
+): Promise<{ data: T | undefined; status: number }> {
   const { method = 'GET', body, signal } = options;
 
   const headers: Record<string, string> = { Accept: 'application/json' };
@@ -175,10 +178,18 @@ async function performRequest<T>(
   }
 
   if (response.status === 204) {
-    return undefined;
+    return { data: undefined, status: response.status };
   }
 
-  return (await response.json()) as T;
+  return { data: (await response.json()) as T, status: response.status };
+}
+
+async function performRequest<T>(
+  url: string,
+  options: RequestOptions = {},
+): Promise<T | undefined> {
+  const { data } = await performRequestWithStatus<T>(url, options);
+  return data;
 }
 
 export function apiRequest(
@@ -234,6 +245,23 @@ export function fetchRecipe(id: string, signal?: AbortSignal): Promise<Recipe> {
 /** `POST /api/recipes` — alta de receta. */
 export function createRecipe(input: RecipeInput): Promise<Recipe> {
   return apiRequest<Recipe>('/recipes', { method: 'POST', body: input });
+}
+
+/**
+ * `POST /api/recipes/import` — importa una receta desde una URL (Schema.org).
+ *
+ * Devuelve la receta creada y si fue un alta (`201`) o una importación
+ * idempotente de una `source_url` ya existente (`200`).
+ */
+export async function importRecipe(input: RecipeImportInput): Promise<RecipeImportResult> {
+  const { data, status } = await performRequestWithStatus<Recipe>('/api/recipes/import', {
+    method: 'POST',
+    body: input,
+  });
+  if (!data) {
+    throw new ApiError(status, 'invalid_response', 'Respuesta vacía al importar la receta');
+  }
+  return { recipe: data, created: status === 201 };
 }
 
 /** `PUT /api/recipes/{id}` — reemplazo completo de una receta. */

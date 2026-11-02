@@ -38,6 +38,20 @@ export interface RecipeInput {
   source_url?: string | null;
 }
 
+/** Cuerpo de `POST /api/recipes/import` (espejo de `ImportRecipeRequest`). */
+export interface RecipeImportInput {
+  url: string;
+}
+
+/**
+ * Resultado de `POST /api/recipes/import`: la receta importada y si fue creada
+ * (`201`) o ya existía por `source_url` (`200`, idempotente).
+ */
+export interface RecipeImportResult {
+  recipe: Recipe;
+  created: boolean;
+}
+
 export type MealType = 'lunch' | 'dinner' | 'breakfast' | 'snack';
 export type MealRole = 'main' | 'salad' | 'side';
 

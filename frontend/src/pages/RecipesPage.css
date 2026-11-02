@@ -14,8 +14,44 @@
   margin: 0 !important;
 }
 
+.recipes-page__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .recipes-page__new {
   min-height: 48px;
+  flex: 1 1 auto;
+}
+
+.recipes-page__import {
+  min-height: 48px;
+  flex: 1 1 auto;
+}
+
+.recipes-page__import-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 14px;
+}
+
+.recipes-page__import-error {
+  margin: 8px 0 0;
+  color: #d4380d;
+  font-size: 14px;
+}
+
+.recipes-page__import-confirm {
+  min-height: 48px;
+}
+
+.recipes-page__import-cancel {
+  min-height: 48px;
+}
+
+.recipes-page__import-offline {
+  margin-bottom: 12px;
 }
 
 .recipes-page__search {

@@ -11,7 +11,8 @@ import type {
   RecipeQueryParams,
   RecipeSummary,
 } from '../api/types';
-import { createRecipe, fetchRecipes } from '../api/client';
+import { createRecipe, fetchRecipes, importRecipe } from '../api/client';
+import { ApiError } from '../api/client';
 import { useOnline } from '../offline/connectivity';
 import { RecipesPage } from './RecipesPage';
 
@@ -26,6 +27,7 @@ vi.mock('../api/client', async (importOriginal) => {
     createRecipe: vi.fn(),
     updateRecipe: vi.fn(),
     deleteRecipe: vi.fn(),
+    importRecipe: vi.fn(),
   };
 });
 
@@ -36,6 +38,7 @@ vi.mock('../offline/connectivity', () => ({
 
 const mockedFetchRecipes = vi.mocked(fetchRecipes);
 const mockedCreateRecipe = vi.mocked(createRecipe);
+const mockedImportRecipe = vi.mocked(importRecipe);
 const mockedUseOnline = vi.mocked(useOnline);
 
 function installMatchMedia(matches = true) {
@@ -81,22 +84,26 @@ function page(params?: RecipeQueryParams): RecipeListResponse {
   };
 }
 
-function renderRecipes() {
+function recipesTree() {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false, gcTime: 0 },
       mutations: { retry: false },
     },
   });
-  return render(
+  return (
     <QueryClientProvider client={queryClient}>
       <AntdApp>
         <MemoryRouter>
           <RecipesPage />
         </MemoryRouter>
       </AntdApp>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+}
+
+function renderRecipes() {
+  return render(recipesTree());
 }
 
 describe('RecipesPage', () => {
@@ -117,6 +124,21 @@ describe('RecipesPage', () => {
       ingredients: [],
       instructions: null,
       source_url: null,
+    });
+    mockedImportRecipe.mockResolvedValue({
+      recipe: {
+        id: 'imported',
+        name: 'Importada',
+        category: 'main',
+        diet_type: 'mediterranean',
+        prep_time_minutes: 30,
+        servings: 2,
+        created_at: '2026-11-01T10:00:00Z',
+        ingredients: [],
+        instructions: null,
+        source_url: 'https://example.com/r',
+      },
+      created: true,
     });
   });
 
@@ -216,14 +238,189 @@ describe('RecipesPage', () => {
     );
   });
 
+  it('abre el diálogo de importación desde su botón', async () => {
+    recipes = [summary({ id: 'r1', name: 'Tortilla' })];
+    const user = userEvent.setup();
+    renderRecipes();
+
+    await screen.findByText('Tortilla');
+    await user.click(screen.getByRole('button', { name: /importar desde url/i }));
+
+    expect(await screen.findByLabelText(/url de la receta/i)).toBeInTheDocument();
+  });
+
+  it('importa una URL válida, refresca la lista y cierra el diálogo', async () => {
+    recipes = [summary({ id: 'r1', name: 'Tortilla' })];
+    const user = userEvent.setup();
+    renderRecipes();
+
+    await screen.findByText('Tortilla');
+    const callsBefore = mockedFetchRecipes.mock.calls.length;
+
+    await user.click(screen.getByRole('button', { name: /importar desde url/i }));
+    await user.type(await screen.findByLabelText(/url de la receta/i), 'https://example.com/r');
+    await user.click(screen.getByRole('button', { name: /^importar$/i }));
+
+    await waitFor(() =>
+      expect(mockedImportRecipe).toHaveBeenCalledWith({ url: 'https://example.com/r' }),
+    );
+    await waitFor(() => expect(mockedFetchRecipes.mock.calls.length).toBeGreaterThan(callsBefore));
+    expect(await screen.findByText('Receta importada')).toBeInTheDocument();
+  });
+
+  it('avisa cuando la receta ya existía (200 idempotente)', async () => {
+    mockedImportRecipe.mockResolvedValue({
+      recipe: {
+        id: 'r1',
+        name: 'Tortilla',
+        category: 'main',
+        diet_type: 'mediterranean',
+        prep_time_minutes: 20,
+        servings: 2,
+        created_at: '2026-11-01T10:00:00Z',
+        ingredients: [],
+        instructions: null,
+        source_url: 'https://example.com/r',
+      },
+      created: false,
+    });
+    recipes = [summary({ id: 'r1', name: 'Tortilla' })];
+    const user = userEvent.setup();
+    renderRecipes();
+
+    await screen.findByText('Tortilla');
+    await user.click(screen.getByRole('button', { name: /importar desde url/i }));
+    await user.type(await screen.findByLabelText(/url de la receta/i), 'https://example.com/r');
+    await user.click(screen.getByRole('button', { name: /^importar$/i }));
+
+    expect(await screen.findByText('La receta ya existía')).toBeInTheDocument();
+  });
+
+  it('rechaza en cliente una URL que no es http(s) sin llamar al backend', async () => {
+    recipes = [];
+    const user = userEvent.setup();
+    renderRecipes();
+
+    await user.click(screen.getByRole('button', { name: /importar desde url/i }));
+    await user.type(await screen.findByLabelText(/url de la receta/i), 'ftp://example.com/r');
+    await user.click(screen.getByRole('button', { name: /^importar$/i }));
+
+    expect(await screen.findByText(/introduce una url http/i)).toBeInTheDocument();
+    expect(mockedImportRecipe).not.toHaveBeenCalled();
+  });
+
+  it('muestra un 400 (URL rechazada) dentro del diálogo sin cerrarlo', async () => {
+    mockedImportRecipe.mockRejectedValue(new ApiError(400, 'bad_request', 'URL privada prohibida'));
+    recipes = [];
+    const user = userEvent.setup();
+    renderRecipes();
+
+    await user.click(screen.getByRole('button', { name: /importar desde url/i }));
+    await user.type(await screen.findByLabelText(/url de la receta/i), 'https://example.com/r');
+    await user.click(screen.getByRole('button', { name: /^importar$/i }));
+
+    // Mensaje propio (no el detalle técnico del backend) y diálogo abierto.
+    expect(await screen.findByText(/revisa la url/i)).toBeInTheDocument();
+    expect(screen.queryByText(/URL privada prohibida/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/url de la receta/i)).toBeInTheDocument();
+  });
+
+  it('muestra un 422 con el aviso de página sin receta estructurada', async () => {
+    mockedImportRecipe.mockRejectedValue(
+      new ApiError(422, 'unprocessable_entity', 'json-ld missing'),
+    );
+    recipes = [];
+    const user = userEvent.setup();
+    renderRecipes();
+
+    await user.click(screen.getByRole('button', { name: /importar desde url/i }));
+    await user.type(await screen.findByLabelText(/url de la receta/i), 'https://example.com/r');
+    await user.click(screen.getByRole('button', { name: /^importar$/i }));
+
+    expect(
+      await screen.findByText('La página no contiene una receta estructurada.'),
+    ).toBeInTheDocument();
+  });
+
+  it('muestra un 502 con affordance de reintento', async () => {
+    mockedImportRecipe.mockRejectedValueOnce(new ApiError(502, 'bad_gateway', 'origin timeout'));
+    recipes = [];
+    const user = userEvent.setup();
+    renderRecipes();
+
+    await user.click(screen.getByRole('button', { name: /importar desde url/i }));
+    await user.type(await screen.findByLabelText(/url de la receta/i), 'https://example.com/r');
+    await user.click(screen.getByRole('button', { name: /^importar$/i }));
+
+    expect(
+      await screen.findByText('No se pudo contactar con el origen. Inténtalo de nuevo.'),
+    ).toBeInTheDocument();
+
+    // El usuario puede reintentar volviendo a pulsar Importar.
+    mockedImportRecipe.mockResolvedValueOnce({
+      recipe: {
+        id: 'r1',
+        name: 'Tortilla',
+        category: 'main',
+        diet_type: 'mediterranean',
+        prep_time_minutes: 20,
+        servings: 2,
+        created_at: '2026-11-01T10:00:00Z',
+        ingredients: [],
+        instructions: null,
+        source_url: 'https://example.com/r',
+      },
+      created: true,
+    });
+    await user.click(screen.getByRole('button', { name: /^importar$/i }));
+    expect(await screen.findByText('Receta importada')).toBeInTheDocument();
+  });
+
+  it('importa al pulsar Enter en el campo de URL', async () => {
+    recipes = [];
+    const user = userEvent.setup();
+    renderRecipes();
+
+    await user.click(screen.getByRole('button', { name: /importar desde url/i }));
+    await user.type(
+      await screen.findByLabelText(/url de la receta/i),
+      'https://example.com/r{enter}',
+    );
+
+    await waitFor(() =>
+      expect(mockedImportRecipe).toHaveBeenCalledWith({ url: 'https://example.com/r' }),
+    );
+  });
+
+  it('deshabilita el OK del diálogo si la conexión cae con el modal abierto', async () => {
+    recipes = [];
+    const user = userEvent.setup();
+    const view = renderRecipes();
+
+    await user.click(screen.getByRole('button', { name: /importar desde url/i }));
+    expect(await screen.findByLabelText(/url de la receta/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^importar$/i })).toBeEnabled();
+
+    mockedUseOnline.mockReturnValue(false);
+    view.rerender(recipesTree());
+
+    expect(screen.getByRole('button', { name: /^importar$/i })).toBeDisabled();
+    expect(screen.getByTestId('recipes-import-offline')).toBeInTheDocument();
+  });
+
   it('expone etiquetas y objetivos táctiles accesibles', async () => {
     recipes = [summary({ id: 'r1', name: 'Tortilla' })];
     renderRecipes();
 
     expect(await screen.findByLabelText(/buscar recetas/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /nueva receta/i })).toHaveClass('recipes-page__new');
+    expect(screen.getByRole('button', { name: /importar desde url/i })).toHaveClass(
+      'recipes-page__import',
+    );
 
     expect(recipesCss).toMatch(/\.recipes-page__new\s*\{[^}]*min-height:\s*48px/);
+    expect(recipesCss).toMatch(/\.recipes-page__import\s*\{[^}]*min-height:\s*48px/);
+    expect(recipesCss).toMatch(/\.recipes-page__import-confirm\s*\{[^}]*min-height:\s*48px/);
   });
 
   it('en modo offline deshabilita el alta y avisa', async () => {
@@ -233,5 +430,6 @@ describe('RecipesPage', () => {
 
     expect(await screen.findByTestId('recipes-offline')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /nueva receta/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /importar desde url/i })).toBeDisabled();
   });
 });

@@ -1,6 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, App as AntdApp, Button, Empty, Input, Result, Skeleton, Typography } from 'antd';
-import { useCreateRecipe, useRecipes } from '../api/hooks';
+import {
+  Alert,
+  App as AntdApp,
+  Button,
+  Empty,
+  Input,
+  Modal,
+  Result,
+  Skeleton,
+  Typography,
+} from 'antd';
+import { useCreateRecipe, useImportRecipe, useRecipes } from '../api/hooks';
+import { ApiError } from '../api/client';
 import type { RecipeInput, RecipeQueryParams } from '../api/types';
 import { RecipeCard } from '../components/RecipeCard';
 import { RecipeForm } from '../components/RecipeForm';
@@ -15,6 +26,33 @@ const PAGE_SIZE = 20;
 /** Retardo del debounce de búsqueda: evita un refetch por cada tecla. */
 const SEARCH_DEBOUNCE_MS = 300;
 
+/** Comprueba que la cadena es una URL absoluta `http(s)` válida. */
+function isHttpUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Mensaje amigable para los fallos de importación del backend, según el código
+ * de estado, sin filtrar el detalle técnico. Los `400` se muestran dentro del
+ * diálogo (ver {@link RecipesPage}); el resto como aviso global.
+ */
+function describeImportError(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 422) {
+      return 'La página no contiene una receta estructurada.';
+    }
+    if (error.status === 502) {
+      return 'No se pudo contactar con el origen. Inténtalo de nuevo.';
+    }
+  }
+  return error instanceof Error && error.message ? error.message : 'No se pudo importar la receta.';
+}
+
 /** Catálogo de recetas: listado con búsqueda, paginación y alta. */
 export function RecipesPage() {
   const { message } = AntdApp.useApp();
@@ -23,6 +61,9 @@ export function RecipesPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
   const [formOpen, setFormOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importUrl, setImportUrl] = useState('');
+  const [importError, setImportError] = useState<string | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), SEARCH_DEBOUNCE_MS);
@@ -36,6 +77,7 @@ export function RecipesPage() {
 
   const { data, isLoading, isError, error, refetch } = useRecipes(params);
   const createRecipe = useCreateRecipe();
+  const importRecipe = useImportRecipe();
 
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
@@ -63,20 +105,61 @@ export function RecipesPage() {
     });
   };
 
+  const openImport = () => {
+    setImportUrl('');
+    setImportError(null);
+    setImportOpen(true);
+  };
+
+  const handleImport = () => {
+    if (!online) {
+      return;
+    }
+    const url = importUrl.trim();
+    if (!isHttpUrl(url)) {
+      setImportError('Introduce una URL http(s) válida');
+      return;
+    }
+    setImportError(null);
+    importRecipe.mutate(
+      { url },
+      {
+        onSuccess: (result) => {
+          message.success(result.created ? 'Receta importada' : 'La receta ya existía');
+          setImportOpen(false);
+        },
+        onError: (mutationError: unknown) => {
+          // El 400 (URL/SSRF rechazada) se muestra dentro del diálogo para que
+          // el usuario corrija la URL sin perder el contexto; el resto, global.
+          if (mutationError instanceof ApiError && mutationError.status === 400) {
+            setImportError('Revisa la URL: introduce una página pública http(s).');
+            return;
+          }
+          message.error(describeImportError(mutationError));
+        },
+      },
+    );
+  };
+
   return (
     <section aria-labelledby="recipes-title" className="recipes-page">
       <header className="recipes-page__header">
         <Title id="recipes-title" level={2} className="recipes-page__title">
           Recetas
         </Title>
-        <Button
-          type="primary"
-          className="recipes-page__new"
-          disabled={!online}
-          onClick={() => setFormOpen(true)}
-        >
-          Nueva receta
-        </Button>
+        <div className="recipes-page__actions">
+          <Button className="recipes-page__import" disabled={!online} onClick={openImport}>
+            Importar desde URL
+          </Button>
+          <Button
+            type="primary"
+            className="recipes-page__new"
+            disabled={!online}
+            onClick={() => setFormOpen(true)}
+          >
+            Nueva receta
+          </Button>
+        </div>
       </header>
 
       {!online && (
@@ -158,6 +241,59 @@ export function RecipesPage() {
         onClose={() => setFormOpen(false)}
         onSubmit={handleCreate}
       />
+
+      <Modal
+        open={importOpen}
+        title="Importar desde URL"
+        okText="Importar"
+        cancelText="Cancelar"
+        confirmLoading={importRecipe.isPending}
+        okButtonProps={{
+          disabled: !online,
+          className: 'recipes-page__import-confirm',
+        }}
+        cancelButtonProps={{ className: 'recipes-page__import-cancel' }}
+        onOk={handleImport}
+        onCancel={() => setImportOpen(false)}
+      >
+        {!online && (
+          <Alert
+            type="warning"
+            showIcon
+            data-testid="recipes-import-offline"
+            className="recipes-page__import-offline"
+            message="Sin conexión: no puedes importar recetas."
+          />
+        )}
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            handleImport();
+          }}
+        >
+          <label htmlFor="recipe-import-url" className="recipes-page__import-label">
+            URL de la receta
+          </label>
+          <Input
+            id="recipe-import-url"
+            type="url"
+            placeholder="https://…"
+            value={importUrl}
+            status={importError ? 'error' : undefined}
+            onChange={(event) => {
+              setImportUrl(event.target.value);
+              if (importError) {
+                setImportError(null);
+              }
+            }}
+          />
+          {importError && (
+            <p role="alert" className="recipes-page__import-error">
+              {importError}
+            </p>
+          )}
+        </form>
+      </Modal>
     </section>
   );
 }

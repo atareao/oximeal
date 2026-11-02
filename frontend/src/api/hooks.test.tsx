@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query';
 import {
   createRecipe,
   createShoppingItem,
   deleteRecipe,
+  importRecipe,
   patchShoppingItem,
   updateRecipe,
 } from './client';
@@ -14,6 +15,7 @@ import {
   useAddShoppingItem,
   useCreateRecipe,
   useDeleteRecipe,
+  useImportRecipe,
   useToggleShoppingItem,
   useUpdateRecipe,
 } from './hooks';
@@ -35,6 +37,7 @@ vi.mock('./client', async (importOriginal) => {
     createRecipe: vi.fn(),
     updateRecipe: vi.fn(),
     deleteRecipe: vi.fn(),
+    importRecipe: vi.fn(),
   };
 });
 
@@ -260,5 +263,65 @@ describe('mutaciones de recetas', () => {
     await waitFor(() =>
       expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.recipes.all }),
     );
+  });
+});
+
+describe('importación de recetas', () => {
+  const mockedImportRecipe = vi.mocked(importRecipe);
+
+  const recipe: Recipe = {
+    id: 'r1',
+    name: 'Tortilla',
+    category: 'main',
+    diet_type: 'mediterranean',
+    prep_time_minutes: 25,
+    servings: 4,
+    created_at: '2026-11-01T10:00:00Z',
+    ingredients: [{ name: 'Patata', amount: 500, unit: 'g' }],
+    instructions: null,
+    source_url: 'https://example.com/r',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    onlineManager.setOnline(true);
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+  });
+
+  afterEach(() => {
+    onlineManager.setOnline(true);
+  });
+
+  it('useImportRecipe importa e invalida el catálogo', async () => {
+    mockedImportRecipe.mockResolvedValue({ recipe, created: true });
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useImportRecipe(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({ url: 'https://example.com/r' });
+    });
+
+    expect(mockedImportRecipe).toHaveBeenCalledWith({ url: 'https://example.com/r' });
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.recipes.all }),
+    );
+  });
+
+  it('sin conexión la importación queda pausada y no llama al endpoint', async () => {
+    // Importar requiere que el servidor alcance el origen: sin conexión la
+    // mutación se pausa (networkMode 'online' por defecto) en lugar de
+    // aparentar éxito. La UI ya deshabilita el botón en ese estado.
+    onlineManager.setOnline(false);
+    const { result } = renderHook(() => useImportRecipe(), { wrapper });
+
+    act(() => {
+      result.current.mutate({ url: 'https://example.com/r' });
+    });
+
+    await waitFor(() => expect(result.current.isPaused).toBe(true));
+    expect(mockedImportRecipe).not.toHaveBeenCalled();
+    expect(result.current.data).toBeUndefined();
   });
 });

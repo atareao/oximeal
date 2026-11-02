@@ -10,10 +10,13 @@ import {
   fetchRecipe,
   fetchRecipes,
   fetchShoppingList,
+  importRecipe,
   patchShoppingItem,
   updateRecipe,
 } from './client';
 import type {
+  RecipeImportInput,
+  RecipeImportResult,
   RecipeInput,
   RecipeQueryParams,
   ShoppingItem,
@@ -71,6 +74,25 @@ export function useCreateRecipe() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: RecipeInput) => createRecipe(input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.recipes.all });
+    },
+  });
+}
+
+/**
+ * Importación de receta desde una URL (Schema.org). Invalida el catálogo
+ * completo para que el listado refleje la receta importada.
+ *
+ * Usa el `networkMode` por defecto (`'online'`): importar exige que el
+ * servidor alcance el origen remoto, de modo que sin conexión la mutación
+ * queda **pausada** en lugar de aparentar un éxito. La UI deshabilita el
+ * botón offline (como el alta), así que en la práctica no se dispara.
+ */
+export function useImportRecipe() {
+  const queryClient = useQueryClient();
+  return useMutation<RecipeImportResult, Error, RecipeImportInput>({
+    mutationFn: (input: RecipeImportInput) => importRecipe(input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.recipes.all });
     },
