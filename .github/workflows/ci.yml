@@ -62,6 +62,8 @@ jobs:
         run: pnpm lint
       - name: Build
         run: pnpm build
+      - name: Presupuesto de bundle
+        run: pnpm check-bundle
 
   openspec:
     name: OpenSpec (specs)

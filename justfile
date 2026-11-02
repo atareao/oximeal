@@ -58,7 +58,7 @@ build-full: ui-build
 
 # Puerta de calidad del frontend: tipos + formato + tests + lint + build.
 ci-ui:
-    cd frontend && pnpm typecheck && pnpm format:check && pnpm test && pnpm lint && pnpm build
+    cd frontend && pnpm typecheck && pnpm format:check && pnpm test && pnpm lint && pnpm build && pnpm check-bundle
 
 # Aplica las migraciones con la CLI de `sqlx` si está disponible.
 migrate:
