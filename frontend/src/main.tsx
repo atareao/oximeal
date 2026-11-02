@@ -5,6 +5,8 @@ import { App as AntdApp, ConfigProvider } from 'antd';
 import { BrowserRouter } from 'react-router-dom';
 import { App } from './App';
 import { ApiError } from './api/client';
+import { ForbiddenNotifier } from './auth/ForbiddenNotifier';
+import { SessionProvider } from './auth/SessionProvider';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { theme } from './components/theme';
 import './index.css';
@@ -34,13 +36,16 @@ createRoot(rootElement).render(
   <StrictMode>
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <ConfigProvider theme={theme}>
-          <AntdApp>
-            <BrowserRouter>
-              <App />
-            </BrowserRouter>
-          </AntdApp>
-        </ConfigProvider>
+        <SessionProvider>
+          <ConfigProvider theme={theme}>
+            <AntdApp>
+              <ForbiddenNotifier />
+              <BrowserRouter>
+                <App />
+              </BrowserRouter>
+            </AntdApp>
+          </ConfigProvider>
+        </SessionProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   </StrictMode>,

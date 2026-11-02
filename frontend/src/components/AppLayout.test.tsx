@@ -1,12 +1,29 @@
-import { describe, expect, it, vi, afterEach } from 'vitest';
+import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { AppLayout } from './AppLayout';
+import { useSession, type SessionContextValue } from '../auth/session';
 
 vi.mock('../lib/config', () => ({
   VALET_URL: 'http://valet.test',
   hasValet: true,
 }));
+
+vi.mock('../auth/session', () => ({
+  useSession: vi.fn(),
+}));
+
+const mockedUseSession = vi.mocked(useSession);
+
+function session(overrides: Partial<SessionContextValue>): SessionContextValue {
+  return {
+    status: 'disabled',
+    permissions: [],
+    logout: vi.fn(),
+    ...overrides,
+  };
+}
 
 function installMatchMedia(matches: boolean) {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
@@ -19,6 +36,16 @@ function installMatchMedia(matches: boolean) {
     removeListener: vi.fn(),
     dispatchEvent: vi.fn(),
   }));
+}
+
+function mockLocationAssign() {
+  const assign = vi.fn();
+  Object.defineProperty(window, 'location', {
+    configurable: true,
+    writable: true,
+    value: { assign },
+  });
+  return assign;
 }
 
 function renderLayout() {
@@ -34,6 +61,11 @@ function renderLayout() {
 }
 
 describe('AppLayout', () => {
+  beforeEach(() => {
+    mockedUseSession.mockReset();
+    mockedUseSession.mockReturnValue(session({}));
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -54,5 +86,45 @@ describe('AppLayout', () => {
     expect(screen.getByTestId('app-sider')).toBeInTheDocument();
     expect(screen.queryByTestId('bottom-nav')).not.toBeInTheDocument();
     expect(screen.getByText('Asistente Valet')).toBeInTheDocument();
+  });
+
+  it('en modo abierto (disabled) no muestra identidad ni cierre de sesión', () => {
+    installMatchMedia(true);
+    renderLayout();
+
+    expect(screen.queryByTestId('session-identity')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('logout-button')).not.toBeInTheDocument();
+  });
+
+  it('muestra el nombre del usuario cuando hay sesión (desktop)', () => {
+    installMatchMedia(true);
+    mockedUseSession.mockReturnValue(session({ status: 'authenticated', name: 'Ana' }));
+    renderLayout();
+
+    expect(screen.getByTestId('session-identity')).toHaveTextContent('Ana');
+  });
+
+  it('muestra el nombre del usuario cuando hay sesión (móvil)', () => {
+    installMatchMedia(false);
+    mockedUseSession.mockReturnValue(session({ status: 'authenticated', name: 'Ana' }));
+    renderLayout();
+
+    expect(screen.getByTestId('session-identity')).toHaveTextContent('Ana');
+  });
+
+  it('al pulsar cerrar sesión invoca logout y delega la redirección en AuthGuard', async () => {
+    installMatchMedia(true);
+    const assign = mockLocationAssign();
+    const logout = vi.fn().mockResolvedValue(undefined);
+    mockedUseSession.mockReturnValue(session({ status: 'authenticated', name: 'Ana', logout }));
+    const user = userEvent.setup();
+    renderLayout();
+
+    await user.click(screen.getByTestId('logout-button'));
+
+    expect(logout).toHaveBeenCalledTimes(1);
+    // Sin doble navegación: la redirección a /auth/login la hace AuthGuard
+    // cuando la sesión pasa a anónima, no AppLayout.
+    expect(assign).not.toHaveBeenCalled();
   });
 });
