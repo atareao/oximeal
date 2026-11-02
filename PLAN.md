@@ -487,3 +487,103 @@ Cerrar los tres hallazgos de la Fase 2 del frontend sin cambiar el comportamient
 3. `feature/haptics-vibration-api` → PR a `development`.
 
 Cada PR: `just ci-ui` + `openspec validate --all --strict` en verde, `CHANGELOG.md` actualizado y change archivado tras el merge.
+## 18. Fase 5 — PWA/Offline (shell instalable, caché de datos y cola de escrituras)
+
+Se ejecuta en **tres changes encadenados**, cada uno en su rama y su PR a `development`. El Service Worker es propio (vanilla), sin Workbox ni `vite-plugin-pwa`; los iconos se generan con IA y se derivan los tamaños con `magick`.
+
+### 18.1 Objetivo
+
+Convertir OxiMeal en una PWA instalable y offline-first: (a) shell instalable (manifiesto + iconos + Service Worker de activos), (b) lectura sin conexión con tolerancia a la sesión OIDC caducada, y (c) escritura sin conexión con cola de sincronización. Cierra la Fase 5 del roadmap (§6) y la dependencia registrada en §12/§4 (la Fase 5 debe tolerar sesión caducada sirviendo datos cacheados).
+
+### 18.2 Decisiones de diseño (ADR-18…27)
+
+- **ADR-18 — Service Worker propio.** `frontend/public/sw.js`, sin dependencias de build. Coherente con la CSP existente (`worker-src 'self' blob:`) y con el ethos de binario único. Alternativa descartada: `vite-plugin-pwa`/Workbox (añade dependencias de build).
+- **ADR-19 — El SW NO intercepta `/api/*` ni `/auth/*`.** La caché de datos vive en IndexedDB (capa de datos), no en el HTTP cache del SW. Evita cachear respuestas autenticadas, fugas de datos entre sesiones y respuestas 401 cacheadas.
+- **ADR-20 — Estrategias del SW.** `install`: precache del shell y de los assets con hash (inyectados en build). `activate`: limpieza de cachés `oximeal-*` obsoletas y `clients.claim()`. `fetch`: *cache-first* para `assets/*` (nombres con hash, inmutables), *network-first* para navegaciones con fallback al `index.html` cacheado, *stale-while-revalidate* acotado a manifiesto, favicon e iconos. Sin `skipWaiting()`: el SW nuevo espera a que se cierren las pestañas para no romper chunks de un build anterior.
+- **ADR-21 — Precache y versión inyectados en build.** `frontend/scripts/build-sw.mjs` lee `.vite/manifest.json`, compone la lista de assets (entry, chunks diferidos y CSS) y la inyecta en `dist/sw.js` junto con una `CACHE_VERSION` derivada del hash de esa lista. El script falla si no encuentra los marcadores, si el precache queda vacío o si falta algún asset en `dist`.
+- **ADR-22 — Registro solo en producción.** El SW se registra desde `frontend/src/offline/register-sw.ts` únicamente si `import.meta.env.PROD`; en `pnpm dev` no se registra (evita interferencias con HMR).
+- **ADR-23 — Manifiesto e iconos en `public/`.** `frontend/public/` no existía; se crea. Al vivir en `public/`, el manifiesto y el SW se copian verbatim a `dist/` y **no** entran en el grafo del bundle (el presupuesto de 500 kB de §17.3 sigue intacto).
+- **ADR-24 — Caché de datos con IndexedDB propio.** Wrapper tipado sobre la API nativa (`frontend/src/offline/idb.ts`), DB `oximeal` con stores `queryCache` y `mutations`. Cero dependencias nuevas.
+- **ADR-25 — Persistencia de react-query sin librería extra.** Hidratación al arranque (antes del primer render de datos) y persistencia tras cada carga correcta usando `dehydrate`/`hydrate` de `@tanstack/react-query` y una suscripción a `queryClient.getQueryCache()`, con lista blanca de claves (`shopping-list`, `meal-plan`, `recipes`). Se descarta `@tanstack/react-query-persist-client` para no añadir dependencias.
+- **ADR-26 — Modo degradado por sesión caducada.** Si hay caché y no hay red (o la sesión ha caducado estando offline), la aplicación muestra los datos cacheados con un aviso persistente y **no** redirige al login ni vacía la vista. Si hay red y 401, se mantiene el comportamiento actual (volver al login).
+- **ADR-27 — Cola de escrituras FIFO con idempotencia por `client_id`.** Las mutaciones offline se encolan en IndexedDB y se drenan al recuperar la conexión, en orden. Para que un alta reenviada tras un fallo de red no duplique ítems, el backend acepta un `client_id` opcional y único en `POST /api/shopping-list` (devuelve el ítem existente si ya existe). Reconciliación last-write-wins por `updated_at`; un 4xx no recuperable descarta la operación y notifica; un 401 o un fallo de red detiene el drenado.
+
+### 18.3 Change A — `pwa-installable-shell` (issue #29)
+
+**Cambios:**
+- `frontend/public/manifest.webmanifest`: `id`, `name`, `short_name`, `description`, `start_url: "/"`, `scope: "/"`, `display: "standalone"`, `orientation: "any"`, `theme_color: "#2f855a"`, `background_color: "#ffffff"`, `lang: "es"`, `icons` (192, 512, 512 maskable).
+- `frontend/public/icons/`: `icon-192.png`, `icon-512.png`, `icon-512-maskable.png`, `apple-touch-icon-180.png` (derivados del icono maestro con `magick`), más `favicon.svg`.
+- `frontend/public/sw.js`: Service Worker de activos según ADR-20.
+- `frontend/scripts/build-sw.mjs`: inyección de precache y versión (ADR-21); `package.json` lo ejecuta tras `vite build`.
+- `frontend/src/offline/register-sw.ts`: registro en producción; invocado desde `frontend/src/main.tsx`.
+- `frontend/index.html`: `<link rel="manifest">`, `<link rel="icon">`, `<link rel="apple-touch-icon">`.
+- `backend/src/static_files/embedded.rs`: mapeo explícito `.webmanifest` → `application/manifest+json` (independiente de `mime_guess`), `.webmanifest` tratado como fichero en `is_orphan_asset`, y `Cache-Control: no-cache` para `sw.js`.
+
+**Tests/verificación:** 137 tests en frontend (arnés real del SW con `caches`/`self`/`fetch` simulados y ciclo de vida fiel al evento); 271 tests en backend con `embed-ui` (tests puros de `content_type_for`/`cache_control_for`/`is_orphan_asset` + e2e con guard, verdes también sin `frontend/dist`).
+
+**DoD:** manifiesto e iconos servidos con MIME correcto; SW registrado solo en producción; recarga offline del shell garantizada por el precache; CSP sin cambios; change archivado; issue #29 cerrada.
+
+- [x] Manifiesto `manifest.webmanifest` (`id`, `scope`, `display: standalone`, `orientation: any`) e iconos 192/512/maskable/apple-touch-180 derivados del icono maestro con `magick`.
+- [x] `frontend/public/sw.js`: precache del shell + assets con hash inyectados en build (16 assets, versión = hash del listado); `cache-first` para `assets/*`, `network-first` para navegaciones con fallback al `index.html`, `stale-while-revalidate` acotado a manifiesto/favicon/iconos; sin `skipWaiting`; limpieza acotada al prefijo `oximeal-`; no intercepta `/api` ni `/auth`.
+- [x] Registro del Service Worker solo en producción (`register-sw.ts`), con `readyState` y `console.warn` en el rechazo.
+- [x] Backend: `.webmanifest` → `application/manifest+json` con mapeo explícito independiente de `mime_guess`; `sw.js` con `Cache-Control: no-cache`; `.webmanifest` tratado como fichero (404, no fallback SPA).
+- [x] `just ci`, `just ci-ui` (294,0 kB / 500 kB) y `openspec validate --all --strict` (21/21) en verde.
+
+### 18.4 Change B — `offline-data-cache` (issue #30)
+
+**Cambios:**
+- `frontend/src/offline/idb.ts`: wrapper tipado de IndexedDB (DB `oximeal`; stores `queryCache` y `mutations`).
+- `frontend/src/offline/queryPersist.ts`: hidratación y persistencia del `QueryClient` (ADR-25).
+- `frontend/src/offline/connectivity.ts`: hook de estado de red (`useOnline`) sobre eventos `online`/`offline`.
+- `frontend/src/auth/SessionProvider.tsx` y `frontend/src/auth/AuthGuard.tsx`: modo degradado (ADR-26); limpieza de la caché de IndexedDB al cerrar sesión.
+- `frontend/src/components/OfflineBanner.tsx`: aviso de modo degradado.
+- `frontend/src/main.tsx`: hidratar la caché antes del primer render de datos.
+
+**Tests/verificación:** arranque offline con caché previa muestra la lista guardada; la persistencia se escribe tras una carga correcta; 401 sin red no redirige; 401 con red redirige; el logout limpia IndexedDB.
+
+**DoD:** datos disponibles sin conexión; modo degradado visible; logout limpia la caché; change archivado; issue #30 cerrada.
+
+### 18.5 Change C — `offline-write-queue` (issue #31)
+
+**Cambios backend:**
+- Migración `0005_shopping_item_client_id.sql`: columna `client_id TEXT` con índice único parcial.
+- `backend/src/models` y `backend/src/repo/shopping_list.rs`: soporte de `client_id`.
+- `backend/src/routes/shopping_list.rs`: `POST /api/shopping-list` idempotente por `client_id`.
+
+**Cambios frontend:**
+- `frontend/src/offline/mutationQueue.ts`: cola FIFO en IndexedDB, drenado al volver `online`, reconciliación de `client_id` provisional → real, LWW por `updated_at`.
+- `frontend/src/api/hooks.ts`: mutaciones offline-aware (encolar en vez de fallar).
+- `frontend/src/pages/ShoppingPage.tsx`: indicador de cambios pendientes de sincronizar.
+
+**Tests/verificación:** alta offline aparece localmente y se sincroniza al volver la conexión; reenvío con el mismo `client_id` no duplica (backend); toggle de un ítem no sincronizado se aplica a la operación encolada; 4xx no recuperable descarta y notifica.
+
+**DoD:** escritura offline funcional; alta idempotente; sin duplicados tras reconexión; change archivado; issue #31 cerrada.
+
+### 18.6 Orden de ejecución y ramas
+
+1. `feature/pwa-installable-shell` → PR a `development` (issue #29).
+2. `feature/offline-data-cache` → PR a `development` (issue #30).
+3. `feature/offline-write-queue` → PR a `development` (issue #31).
+
+Cada PR: `just ci` + `just ci-ui` + `openspec validate --all --strict` en verde, `CHANGELOG.md` actualizado y change archivado tras el merge.
+
+### 18.7 Riesgos
+
+| Riesgo | Mitigación |
+|---|---|
+| Doble caché (SW y datos) con estados divergentes | El SW no toca `/api/*` ni `/auth/*` (ADR-19): activos y datos tienen dueños distintos. |
+| Fuga de datos entre usuarios en IndexedDB | Limpieza de la caché de datos al cerrar sesión (Change B). |
+| Complejidad de la cola de escrituras | Acotada a 4 operaciones, FIFO, idempotencia por `client_id` y LWW; 4xx no recuperable se descarta. |
+| Cambio de contrato del alta de ítems | `client_id` es **opcional** y retrocompatible; la ruta sigue creando sin él. |
+| SW sirviendo un shell obsoleto o rompiendo pestañas abiertas | `no-cache` en `sw.js`, versión derivada del build, sin `skipWaiting` y limpieza acotada por prefijo. |
+| Precache silenciosamente vacío | `build-sw.mjs` falla si no inyecta, si el precache queda vacío o si falta un asset en `dist`. |
+| Presupuesto de bundle | Manifiesto e iconos viven en `public/`, fuera del grafo del entry. |
+
+### 18.8 Criterios de aceptación (DoD de la Fase 5)
+
+- [ ] Aplicación instalable en Android (Chrome) e iOS (Safari) con iconos correctos.
+- [ ] Shell arranca sin conexión tras una visita previa.
+- [ ] Lista de la compra visible sin conexión y con sesión caducada, con aviso de modo degradado.
+- [ ] Mutaciones offline encoladas y sincronizadas sin duplicados al recuperar la conexión.
+- [ ] `just ci`, `just ci-ui` y `openspec validate --all --strict` en verde en las tres ramas.
+- [ ] Los tres changes archivados y la Fase 5 marcada como cerrada en este plan.
