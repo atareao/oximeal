@@ -22,6 +22,12 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Corregido
 
+- **Modo abierto inservible**: con `OIDC_ENABLED=false`, `GET /auth/me` caía al
+  fallback SPA y devolvía `index.html` con 200 en lugar del 404 JSON que el
+  frontend espera, lo que dejaba la aplicación embebida bloqueada en
+  `/auth/login`. Las rutas `/auth/*` se clasifican ahora como rutas de API en el
+  fallback ([#36](https://github.com/atareao/oximeal/issues/36)).
+
 ### Seguridad
 
 ## [0.3.0] - 2026-11-02
