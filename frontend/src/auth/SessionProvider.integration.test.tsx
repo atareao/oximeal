@@ -59,10 +59,7 @@ function Probe() {
   return (
     <div>
       <span data-testid="status">{status}</span>
-      <button
-        type="button"
-        onClick={() => void apiRequest('/recipes').catch(() => undefined)}
-      >
+      <button type="button" onClick={() => void apiRequest('/recipes').catch(() => undefined)}>
         403
       </button>
       <button
@@ -128,9 +125,7 @@ describe('SessionProvider + AuthGuard (integración 401/403)', () => {
     await user.click(screen.getByRole('button', { name: '401' }));
 
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('anonymous'));
-    await waitFor(() =>
-      expect(assign).toHaveBeenCalledWith('/auth/login?return_to=%2Fshopping'),
-    );
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/auth/login?return_to=%2Fshopping'));
     expect(screen.queryByTestId('protected')).not.toBeInTheDocument();
   });
 
@@ -144,9 +139,7 @@ describe('SessionProvider + AuthGuard (integración 401/403)', () => {
     await user.click(screen.getByRole('button', { name: 'salir' }));
 
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('anonymous'));
-    await waitFor(() =>
-      expect(assign).toHaveBeenCalledWith('/auth/login?return_to=%2Fshopping'),
-    );
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/auth/login?return_to=%2Fshopping'));
     expect(assign).toHaveBeenCalledTimes(1);
   });
 });

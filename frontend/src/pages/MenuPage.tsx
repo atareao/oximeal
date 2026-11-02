@@ -38,9 +38,7 @@ export function MenuPage() {
   const { data, isLoading, isError, error, refetch } = useMealPlan(weekStart, weekEnd);
 
   const errorMessage =
-    error instanceof Error
-      ? error.message
-      : 'Ha ocurrido un error al contactar con el servidor.';
+    error instanceof Error ? error.message : 'Ha ocurrido un error al contactar con el servidor.';
 
   const goToWeek = (start: string) => {
     setSearchParams({ week: start });
@@ -115,12 +113,7 @@ export function MenuPage() {
               La planificación de comidas se hace desde el asistente Valet.
             </Paragraph>
             {hasValet && (
-              <Button
-                type="primary"
-                href={VALET_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
+              <Button type="primary" href={VALET_URL} target="_blank" rel="noopener noreferrer">
                 Añadir comidas con Valet
               </Button>
             )}

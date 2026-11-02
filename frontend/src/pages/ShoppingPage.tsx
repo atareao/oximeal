@@ -40,9 +40,7 @@ export function ShoppingPage() {
   );
 
   const errorMessage =
-    error instanceof Error
-      ? error.message
-      : 'Ha ocurrido un error al contactar con el servidor.';
+    error instanceof Error ? error.message : 'Ha ocurrido un error al contactar con el servidor.';
 
   const handleToggle = (item: ShoppingItem) => {
     haptics(10);
@@ -72,9 +70,7 @@ export function ShoppingPage() {
       },
       onError: (mutationError: unknown) => {
         message.error(
-          mutationError instanceof Error
-            ? mutationError.message
-            : 'No se pudo consolidar la lista',
+          mutationError instanceof Error ? mutationError.message : 'No se pudo consolidar la lista',
         );
       },
     });
@@ -154,9 +150,7 @@ export function ShoppingPage() {
         </Empty>
       )}
 
-      {!isLoading && groups.length > 0 && (
-        <ShoppingList groups={groups} onToggle={handleToggle} />
-      )}
+      {!isLoading && groups.length > 0 && <ShoppingList groups={groups} onToggle={handleToggle} />}
     </section>
   );
 }

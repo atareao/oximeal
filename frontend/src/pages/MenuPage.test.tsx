@@ -24,7 +24,9 @@ vi.mock('../lib/config', () => ({
 
 const mockedUseMealPlan = vi.mocked(useMealPlan);
 
-function entry(overrides: Partial<MealPlanEntryView> & Pick<MealPlanEntryView, 'id'>): MealPlanEntryView {
+function entry(
+  overrides: Partial<MealPlanEntryView> & Pick<MealPlanEntryView, 'id'>,
+): MealPlanEntryView {
   return {
     date: '2026-11-02',
     meal_type: 'lunch',
@@ -81,8 +83,18 @@ describe('MenuPage', () => {
   it('muestra los nombres de receta en COMIDA y CENA', () => {
     mockQuery({
       data: [
-        entry({ id: '1', date: '2026-11-02', meal_type: 'lunch', recipe: { ...entry({ id: '1' }).recipe, name: 'Lentejas' } }),
-        entry({ id: '2', date: '2026-11-02', meal_type: 'dinner', recipe: { ...entry({ id: '2' }).recipe, name: 'Tortilla' } }),
+        entry({
+          id: '1',
+          date: '2026-11-02',
+          meal_type: 'lunch',
+          recipe: { ...entry({ id: '1' }).recipe, name: 'Lentejas' },
+        }),
+        entry({
+          id: '2',
+          date: '2026-11-02',
+          meal_type: 'dinner',
+          recipe: { ...entry({ id: '2' }).recipe, name: 'Tortilla' },
+        }),
       ],
     });
     renderMenu();

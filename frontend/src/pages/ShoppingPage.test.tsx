@@ -89,7 +89,10 @@ describe('ShoppingPage', () => {
   it('agrupa los ítems por pasillo con su emoji', async () => {
     listState = [
       { category: 'Verdulería', items: [item({ id: '1', name: 'Tomate' })] },
-      { category: 'Pescadería', items: [item({ id: '2', name: 'Salmón', category: 'Pescadería' })] },
+      {
+        category: 'Pescadería',
+        items: [item({ id: '2', name: 'Salmón', category: 'Pescadería' })],
+      },
     ];
     renderShopping();
 
