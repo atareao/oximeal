@@ -15,6 +15,11 @@ async fn openapi_json_is_served_with_expected_paths() {
         body.get("openapi").is_some(),
         "el documento debe declarar la versión OpenAPI"
     );
+    assert_eq!(
+        body["info"]["version"],
+        env!("CARGO_PKG_VERSION"),
+        "la versión del documento debe derivarse de la versión del paquete"
+    );
     let paths = body["paths"].as_object().expect("objeto paths");
     assert!(
         paths.contains_key("/api/recipes"),

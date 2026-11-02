@@ -26,7 +26,7 @@ const DOCS_PATH: &str = "/api/docs";
 #[openapi(
     info(
         title = "OxiMeal API",
-        version = "0.1.0",
+        version = env!("CARGO_PKG_VERSION"),
         description = "API del gestor self-hosted de menús, recetas y listas de la compra."
     ),
     paths(
