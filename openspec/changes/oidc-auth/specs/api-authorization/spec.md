@@ -68,7 +68,7 @@ El backend SHALL sustituir el CORS permisivo por una lista de orígenes permitid
 Una misma petición SHALL poder autorizarse con la cookie de sesión (SPA) o con `Authorization: Bearer <access-token>` (Valet u otros clientes), aplicando la misma tabla de permisos.
 
 #### Scenario: Autorización por cookie de sesión
-- GIVEN una sesión válida cuyo rol concede el permiso exigido
+- GIVEN una sesión válida cuyos permisos incluyen el permiso exigido
 - WHEN se solicita el endpoint con la cookie de sesión
 - THEN se atiende la petición con 200
 
