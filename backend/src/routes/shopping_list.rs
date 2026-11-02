@@ -16,13 +16,15 @@ use crate::repo;
 use crate::routes::validation;
 use crate::state::AppState;
 
-/// Router de la lista de la compra.
-pub fn router() -> Router<AppState> {
+/// Router de la lista de la compra de lectura (permiso `read:shopping`).
+pub fn read_router() -> Router<AppState> {
+    Router::new().route("/api/shopping-list", get(list_shopping_list))
+}
+
+/// Router de la lista de la compra de escritura (permiso `write:shopping`).
+pub fn write_router() -> Router<AppState> {
     Router::new()
-        .route(
-            "/api/shopping-list",
-            get(list_shopping_list).post(create_item),
-        )
+        .route("/api/shopping-list", post(create_item))
         .route(
             "/api/shopping-list/completed",
             axum::routing::delete(delete_completed),

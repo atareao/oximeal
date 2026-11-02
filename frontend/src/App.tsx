@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { Link, Route, Routes } from 'react-router-dom';
 import { Result, Skeleton } from 'antd';
 import { AppLayout } from './components/AppLayout';
+import { AuthGuard } from './auth/AuthGuard';
 
 const MenuPage = lazy(() =>
   import('./pages/MenuPage').then((module) => ({ default: module.MenuPage })),
@@ -23,8 +24,10 @@ export function App() {
     <Suspense fallback={<PageFallback />}>
       <Routes>
         <Route element={<AppLayout />}>
-          <Route index element={<MenuPage />} />
-          <Route path="shopping" element={<ShoppingPage />} />
+          <Route element={<AuthGuard />}>
+            <Route index element={<MenuPage />} />
+            <Route path="shopping" element={<ShoppingPage />} />
+          </Route>
           <Route
             path="*"
             element={

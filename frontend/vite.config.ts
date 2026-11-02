@@ -10,6 +10,12 @@ export default defineConfig({
         target: 'http://localhost:8080',
         changeOrigin: true,
       },
+      // El flujo OIDC (`/auth/login`, `/auth/me`, `/auth/logout`) vive fuera de
+      // `/api`; sin este proxy el SPA de Vite respondería `index.html`.
+      '/auth': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
     },
   },
   build: {

@@ -1,5 +1,6 @@
-import { Layout, Menu } from 'antd';
+import { Layout, Menu, Button } from 'antd';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useSession } from '../auth/session';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { VALET_URL, hasValet } from '../lib/config';
 import { BottomNav } from './BottomNav';
@@ -13,6 +14,46 @@ const NAV_ITEMS = [
   { key: '/', label: '📅 Menú' },
   { key: '/shopping', label: '🛒 Compra' },
 ];
+
+/**
+ * Identidad de la sesión con control de cierre de sesión.
+ * Solo se muestra con sesión autenticada; sin roles ni administración.
+ */
+function SessionControl() {
+  const { status, name, logout } = useSession();
+
+  if (status !== 'authenticated') {
+    return null;
+  }
+
+  // La redirección al login la asume exclusivamente `AuthGuard` en cuanto la
+  // sesión pasa a `anonymous`; redirigir aquí también provocaría una doble
+  // navegación. Si el logout falla, el estado ya queda anónimo (`finally` en
+  // SessionProvider) y `AuthGuard` redirige igualmente.
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch {
+      // Silenciado: la sesión ya quedó anónima y AuthGuard redirige.
+    }
+  };
+
+  return (
+    <div className="session-control" data-testid="session-identity">
+      <span className="session-control__name" title={name}>
+        {name ?? 'Sesión'}
+      </span>
+      <Button
+        size="small"
+        data-testid="logout-button"
+        onClick={() => void handleLogout()}
+        aria-label="Cerrar sesión"
+      >
+        Salir
+      </Button>
+    </div>
+  );
+}
 
 /**
  * Shell responsive: Sider lateral en desktop, contenido a pantalla completa
@@ -29,6 +70,10 @@ export function AppLayout() {
   if (!isDesktop) {
     return (
       <div className="app-mobile">
+        <header className="app-mobile__topbar">
+          <span className="app-mobile__brand">🍽️ OxiMeal</span>
+          <SessionControl />
+        </header>
         <main className="app-mobile__content">
           <Outlet />
         </main>
@@ -63,6 +108,7 @@ export function AppLayout() {
             </a>
           </div>
         )}
+        <SessionControl />
       </Sider>
       <Layout>
         <Content className="app-content">

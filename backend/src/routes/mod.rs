@@ -1,4 +1,25 @@
 //! Definición de las rutas HTTP de la API.
+//!
+//! La tabla de permisos por endpoint (bloques 3 y 4) se aplica aquí agrupando cada
+//! router de dominio por permiso y envolviéndolo con
+//! [`crate::auth::middleware::require_permission`]. Con `OIDC_ENABLED=false`
+//! (`state.auth.is_none()`) no se aplica ninguna capa: la API queda abierta.
+//!
+//! | ruta | permiso |
+//! |---|---|
+//! | `GET /api/recipes`, `GET /api/recipes/{id}` | `read:recipes` |
+//! | `POST /api/recipes` | `write:recipes` |
+//! | `GET /api/meal-plan` | `read:plan` |
+//! | `POST /api/meal-plan`, `DELETE /api/meal-plan/{id}` | `write:plan` |
+//! | `GET /api/shopping-list` | `read:shopping` |
+//! | `POST/PATCH/DELETE /api/shopping-list*` | `write:shopping` |
+//! | `GET /api/agent/recent-recipes`, `GET /api/agent/search-recipes` | `agent:read` |
+//! | `POST /api/agent/weekly-plan` | `agent:plan` |
+//! | `POST /api/agent/shopping-items`, `DELETE /api/agent/shopping/completed` | `agent:shopping` |
+//! | `GET /api/health`, `/api/openapi.json`, `/api/docs*` | público |
+//!
+//! Los `agent:*` son permisos M2M (Valet); ningún cliente user-delegated los
+//! recibe, de modo que un token de usuario sin ellos recibe 403 (bloque 4).
 
 pub mod agent;
 pub mod health;
@@ -10,15 +31,80 @@ pub mod validation;
 
 use axum::Router;
 
+use crate::auth::middleware::require_permission;
 use crate::state::AppState;
 
 /// Construye el router de la API, aún sin el estado inyectado.
-pub fn router() -> Router<AppState> {
-    Router::new()
+///
+/// Necesita el [`AppState`] para construir las capas de autorización ligadas al
+/// servicio de autenticación.
+pub fn router(state: &AppState) -> Router<AppState> {
+    let public = Router::new()
         .merge(health::router())
-        .merge(recipes::router())
-        .merge(meal_plan::router())
-        .merge(shopping_list::router())
-        .merge(agent::router())
-        .merge(openapi::router())
+        .merge(openapi::router());
+
+    // Modo abierto: sin autenticación no se envuelve nada (passthrough real y
+    // sin exigir la capa de sesión, que no existe con OIDC desactivado).
+    if state.auth.is_none() {
+        return public
+            .merge(recipes::read_router())
+            .merge(recipes::write_router())
+            .merge(meal_plan::read_router())
+            .merge(meal_plan::write_router())
+            .merge(shopping_list::read_router())
+            .merge(shopping_list::write_router())
+            .merge(agent::read_router())
+            .merge(agent::plan_router())
+            .merge(agent::shopping_router());
+    }
+
+    let protected = Router::new()
+        .merge(require_permission(
+            recipes::read_router(),
+            state,
+            "read:recipes",
+        ))
+        .merge(require_permission(
+            recipes::write_router(),
+            state,
+            "write:recipes",
+        ))
+        .merge(require_permission(
+            meal_plan::read_router(),
+            state,
+            "read:plan",
+        ))
+        .merge(require_permission(
+            meal_plan::write_router(),
+            state,
+            "write:plan",
+        ))
+        .merge(require_permission(
+            shopping_list::read_router(),
+            state,
+            "read:shopping",
+        ))
+        .merge(require_permission(
+            shopping_list::write_router(),
+            state,
+            "write:shopping",
+        ))
+        // Agent API: permisos M2M dedicados (bloque 4).
+        .merge(require_permission(
+            agent::read_router(),
+            state,
+            "agent:read",
+        ))
+        .merge(require_permission(
+            agent::plan_router(),
+            state,
+            "agent:plan",
+        ))
+        .merge(require_permission(
+            agent::shopping_router(),
+            state,
+            "agent:shopping",
+        ));
+
+    public.merge(protected)
 }

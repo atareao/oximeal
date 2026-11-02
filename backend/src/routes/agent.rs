@@ -24,12 +24,21 @@ const DEFAULT_RECENT_DAYS: u32 = 7;
 /// Ventana máxima admitida de `recent-recipes`, en días.
 const MAX_RECENT_DAYS: u32 = 365;
 
-/// Router de la Agent API.
-pub fn router() -> Router<AppState> {
+/// Router de la Agent API de lectura (permiso `agent:read`).
+pub fn read_router() -> Router<AppState> {
     Router::new()
         .route("/api/agent/recent-recipes", get(recent_recipes))
         .route("/api/agent/search-recipes", get(search_recipes))
-        .route("/api/agent/weekly-plan", post(weekly_plan))
+}
+
+/// Router de la Agent API de planificación (permiso `agent:plan`).
+pub fn plan_router() -> Router<AppState> {
+    Router::new().route("/api/agent/weekly-plan", post(weekly_plan))
+}
+
+/// Router de la Agent API de lista de la compra (permiso `agent:shopping`).
+pub fn shopping_router() -> Router<AppState> {
+    Router::new()
         .route("/api/agent/shopping-items", post(add_shopping_items))
         .route("/api/agent/shopping/completed", delete(delete_completed))
 }
