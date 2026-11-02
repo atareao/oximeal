@@ -177,7 +177,7 @@ oximeal/
 | FTS5/trigram no disponible en el build de `libsqlite3-sys` | Task T3 verifica en runtime; fallback a `LIKE` para `q.len()<3`. |
 | Query trigram insensible a acentos limitada | `normalize.rs` aplica folding de acentos antes de indexar/buscar. |
 | Edición 2024 requiere toolchain reciente | `rust-toolchain.toml` fija stable ≥1.97 (presente en el entorno). |
-| Ambigüedad Schema.org en import | Fase 1 acepta solo JSON validado; el parser Schema.org se completa en F2/F3. |
+| Ambigüedad Schema.org en import | Resuelto en la Fase 6 (change B): parser JSON-LD `Recipe` propio, con guardas SSRF, mapeo documentado e idempotencia por `source_url`. |
 | Consumo de RAM <20 MB (objetivo global) | Fase 1 no añade runtime LLM; la medición real se hará sobre el binario monolítico (feature `embed-ui`), **pendiente** de ejecutar; no se fijan cifras aún. |
 | Offline vs access token de 60 min | La Fase 5 debe tolerar la sesión caducada sirviendo datos cacheados; el refresh dura 30 días de inactividad. |
 | Pocket ID exige HTTPS en los redirect URIs fuera de localhost | Reverse proxy HTTPS documentado para los despliegues; localhost queda exento para desarrollo. |
@@ -660,6 +660,7 @@ registrado en §10.
   antes de guardar y manejo de errores.
 - **Specs:** delta en `recipes` (ADDED *Importación de receta desde URL*), con
   escenarios de SSRF, contenido sin receta y fallo de red.
+- **Estado:** ✅ completado e integrado en el PR #50 (smoke E2E 18/18, `just ci`/`just ci-ui` y `openspec validate --all --strict` en verde).
 
 ### 19.5 Change C — `perf-device-verification` (issue #47)
 
@@ -694,7 +695,7 @@ registrado en §10.
 
 - [x] API: `PUT` y `DELETE /api/recipes/{id}` con autorización y tests (200/404/400, `401/403`).
 - [x] UI: página de recetas (lista, búsqueda, detalle, alta, edición, borrado) accesible desde la navegación, con tests de componente.
-- [ ] Import: `POST /api/recipes/import` con guardas SSRF y parseo Schema.org, con tests (URL interna, HTML sin JSON-LD, fallo de red, idempotencia).
+- [x] Import: `POST /api/recipes/import` con guardas SSRF y parseo Schema.org, con tests (URL interna, HTML sin JSON-LD, fallo de red, idempotencia).
 - [ ] Rendimiento: RSS del binario `--release --features embed-ui` medido y documentado; presupuestos web y táctiles verificados en `docs/performance.md`.
 - [ ] `just ci`, `just ci-ui` y `openspec validate --all --strict` en verde.
 - [ ] Sin regresiones en el smoke E2E (37/37 + casos nuevos del recetario).

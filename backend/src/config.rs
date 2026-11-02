@@ -46,6 +46,13 @@ pub struct Config {
     pub bind_addr: String,
     /// Orígenes CORS permitidos (`ALLOWED_ORIGINS`, CSV). Vacío ⇒ ninguno.
     pub allowed_origins: Vec<String>,
+    /// Hosts exentos del veto de rango privado en la importación de recetas
+    /// (`IMPORT_ALLOWED_HOSTS`, CSV). Vacío ⇒ estricto (ningún host exceptuado).
+    ///
+    /// Un host de esta lista omite **únicamente** la guarda de rango
+    /// privado/loopback/link-local; el esquema, las redirecciones, el timeout y
+    /// el tope de tamaño se siguen aplicando siempre.
+    pub import_allowed_hosts: Vec<String>,
     /// Configuración de sesión server-side.
     pub session: SessionConfig,
     /// Configuración OIDC; `None` ⇔ `OIDC_ENABLED=false`.
@@ -116,6 +123,7 @@ impl Config {
 
         let session = load_session_config();
         let allowed_origins = parse_csv(&env_or_default("ALLOWED_ORIGINS", ""));
+        let import_allowed_hosts = parse_csv(&env_or_default("IMPORT_ALLOWED_HOSTS", ""));
 
         let oidc = if parse_bool(&env_or_default("OIDC_ENABLED", "false")) {
             Some(load_oidc_config(&session)?)
@@ -140,6 +148,7 @@ impl Config {
             database_url: env_or(DEFAULT_DATABASE_URL, "DATABASE_URL"),
             bind_addr: env_or(DEFAULT_BIND_ADDR, "BIND_ADDR"),
             allowed_origins,
+            import_allowed_hosts,
             session,
             oidc,
         })
@@ -153,6 +162,9 @@ impl Config {
             database_url: database_url.into(),
             bind_addr: bind_addr.into(),
             allowed_origins: Vec::new(),
+            // Loopback exento para que los tests de import puedan apuntar a
+            // un servidor `wiremock` local.
+            import_allowed_hosts: vec!["127.0.0.1".to_string(), "localhost".to_string()],
             session: SessionConfig::default(),
             oidc: None,
         }
@@ -280,6 +292,7 @@ mod tests {
         "OIDC_POST_LOGOUT_REDIRECT_URI",
         "OIDC_ALLOWED_GROUPS",
         "ALLOWED_ORIGINS",
+        "IMPORT_ALLOWED_HOSTS",
         "SESSION_SECRET",
         "SESSION_TTL_SECS",
         "SESSION_REFRESH_MARGIN_SECS",
@@ -536,6 +549,21 @@ mod tests {
     }
 
     #[test]
+    fn import_allowed_hosts_parses_csv_with_default_empty() {
+        let _scope = EnvScope::new(&[("OIDC_ENABLED", "false")]);
+        let config = Config::from_env().expect("config válida");
+        assert!(
+            config.import_allowed_hosts.is_empty(),
+            "vacío por defecto ⇒ estricto"
+        );
+
+        // SAFETY: acceso serializado por `ENV_LOCK`.
+        unsafe { env::set_var("IMPORT_ALLOWED_HOSTS", "example.com, 10.0.0.1") };
+        let config = Config::from_env().expect("config válida");
+        assert_eq!(config.import_allowed_hosts, vec!["example.com", "10.0.0.1"]);
+    }
+
+    #[test]
     fn for_tests_builds_open_config() {
         let config = Config::for_tests("sqlite::memory:", "127.0.0.1:0");
 
@@ -543,5 +571,7 @@ mod tests {
         assert_eq!(config.bind_addr, "127.0.0.1:0");
         assert!(config.oidc.is_none());
         assert!(config.allowed_origins.is_empty());
+        // `for_tests` exime loopback para los servidores `wiremock`.
+        assert_eq!(config.import_allowed_hosts, vec!["127.0.0.1", "localhost"]);
     }
 }

@@ -16,6 +16,8 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 
 - **Recetario:** gestión completa de recetas con `PUT /api/recipes/{id}` (reemplazo total en una transacción `BEGIN IMMEDIATE`; devuelve `409` si la receta está referenciada por una entrada del plan) y `DELETE /api/recipes/{id}` (borrado duro), bajo el permiso `write:recipes`; nueva página de recetas en el frontend (`/recipes` y `/recipes/:id`) con listado, búsqueda con debounce, paginación, alta, edición y borrado con confirmación, accesible desde el Sider y la barra inferior, con degradado offline y objetivos táctiles ≥48px (#45).
 
+- **Recetario:** importación de recetas desde una URL con `POST /api/recipes/import` (permiso `write:recipes`): descarga server-side con guardas SSRF (solo `http`/`https`, pin de IP frente a DNS rebinding, veto de loopback/RFC1918/link-local, redirecciones acotadas, timeout y tope de tamaño) y parseo del JSON-LD Schema.org `@type: Recipe` (incl. `@graph`), idempotente por `source_url`; diálogo «Importar desde URL» en la página de recetas y allowlist opcional `IMPORT_ALLOWED_HOSTS` para orígenes en LAN (#46).
+
 ### Cambiado
 
 ### Obsoleto
