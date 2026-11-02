@@ -71,7 +71,9 @@ describe('apiRequest', () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
 
-    await expect(apiRequest('/shopping-list/completed', { method: 'DELETE' })).resolves.toBeUndefined();
+    await expect(
+      apiRequest('/shopping-list/completed', { method: 'DELETE' }),
+    ).resolves.toBeUndefined();
   });
 
   it('resuelve undefined con la sobrecarga apiRequest<void> en un DELETE 204', async () => {

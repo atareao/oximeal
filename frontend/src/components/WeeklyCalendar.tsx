@@ -16,11 +16,7 @@ export function WeeklyCalendar({ days, entries, isDesktop }: WeeklyCalendarProps
       data-testid="weekly-calendar"
     >
       {days.map((day) => (
-        <DayCard
-          key={day}
-          date={day}
-          entries={entries.filter((entry) => entry.date === day)}
-        />
+        <DayCard key={day} date={day} entries={entries.filter((entry) => entry.date === day)} />
       ))}
     </div>
   );

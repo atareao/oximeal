@@ -11,7 +11,9 @@
   font-size: 16px;
   color: #1a202c;
   cursor: pointer;
-  transition: background-color 0.15s ease, opacity 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    opacity 0.15s ease;
 }
 
 .shopping-row:hover {

@@ -56,9 +56,9 @@ ui-build:
 build-full: ui-build
     cargo build --release -p oximeal-backend --features embed-ui
 
-# Puerta de calidad del frontend: tipos + tests + lint + build.
+# Puerta de calidad del frontend: tipos + formato + tests + lint + build.
 ci-ui:
-    cd frontend && pnpm typecheck && pnpm test && pnpm lint && pnpm build
+    cd frontend && pnpm typecheck && pnpm format:check && pnpm test && pnpm lint && pnpm build
 
 # Aplica las migraciones con la CLI de `sqlx` si está disponible.
 migrate:

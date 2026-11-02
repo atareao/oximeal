@@ -42,9 +42,7 @@ export function AddItemForm() {
           setUnit((current) => (current === submittedUnit ? 'ud' : current));
         },
         onError: (error: unknown) => {
-          message.error(
-            error instanceof Error ? error.message : 'No se pudo añadir el ítem',
-          );
+          message.error(error instanceof Error ? error.message : 'No se pudo añadir el ítem');
         },
       },
     );

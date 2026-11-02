@@ -25,8 +25,7 @@ export const queryKeys = {
   },
   mealPlan: {
     all: ['meal-plan'] as const,
-    range: (startDate: string, endDate: string) =>
-      ['meal-plan', startDate, endDate] as const,
+    range: (startDate: string, endDate: string) => ['meal-plan', startDate, endDate] as const,
   },
   shoppingList: {
     all: ['shopping-list'] as const,
@@ -102,9 +101,7 @@ export function useToggleShoppingItem() {
       patchShoppingItem(id, patch),
     onMutate: async ({ id, patch }) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.shoppingList.all });
-      const previous = queryClient.getQueryData<ShoppingListGroup[]>(
-        queryKeys.shoppingList.all,
-      );
+      const previous = queryClient.getQueryData<ShoppingListGroup[]>(queryKeys.shoppingList.all);
       queryClient.setQueryData<ShoppingListGroup[]>(queryKeys.shoppingList.all, (old) =>
         applyItemPatch(old, id, patch),
       );

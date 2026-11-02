@@ -3,3 +3,6 @@ minimumReleaseAgeExclude:
   - '@tanstack/react-query@5.105.1'
   - '@vitejs/plugin-react@6.2.0'
   - globals@17.14.0
+peerDependencyRules:
+  allowedVersions:
+    'eslint-plugin-jsx-a11y>eslint': '10'

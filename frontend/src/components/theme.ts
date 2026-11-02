@@ -17,8 +17,7 @@ export const theme: ThemeConfig = {
     borderRadius: 10,
     controlHeight: 48,
     fontSize: 16,
-    fontFamily:
-      "system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+    fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
   },
   components: {
     Layout: {
