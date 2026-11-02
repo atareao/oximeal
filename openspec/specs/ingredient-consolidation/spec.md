@@ -1,0 +1,53 @@
+# ingredient-consolidation Specification
+
+## Purpose
+Esta capacidad implementa el motor determinista de consolidación de ingredientes. Canonicaliza y normaliza unidades, suma cantidades compatibles y categoriza los ingredientes para producir listas de compra reproducibles.
+
+## Requirements
+
+### Requirement: Canonicalización de unidades
+El sistema SHALL convertir cantidades a unidades canónicas por familia física (masa→gramos, volumen→mililitros) y SHALL distinguir familias no aditivas (pizca, al gusto, unidades).
+
+#### Scenario: Conversión de masa
+- GIVEN un ingrediente con cantidad 1.5 y unidad "kg"
+- WHEN se canonicaliza
+- THEN el resultado es 1500 gramos de la familia Masa
+
+#### Scenario: Unidad desconocida
+- GIVEN un ingrediente con unidad "puñado"
+- WHEN se canonicaliza
+- THEN se clasifica como familia Count/Pinch sin conversión numérica
+
+### Requirement: Normalización de nombres
+El sistema SHALL normalizar nombres (minúsculas, sin diacríticos, sin artículos, singular básico) para agrupar ingredientes equivalentes.
+
+#### Scenario: Acentos y artículo
+- GIVEN los nombres "Cebollas" y "la cebolla"
+- WHEN se normalizan
+- THEN ambos producen la misma clave normalizada
+
+### Requirement: Suma de cantidades
+El sistema SHALL sumar cantidades de ingredientes con la misma clave normalizada y la misma familia de unidad, y SHALL mantener líneas separadas si las familias difieren o son no aditivas.
+
+#### Scenario: Suma dentro de la misma familia
+- GIVEN "tomate" 2 unidades y "tomates" 3 unidades
+- WHEN se consolida
+- THEN resulta una línea con 5 unidades de tomate
+
+#### Scenario: Familias incompatibles
+- GIVEN "leche" 500 ml y "leche" 1 unidad
+- WHEN se consolida
+- THEN resultan dos líneas separadas
+
+#### Scenario: No aditivo
+- GIVEN "sal" al gusto y "sal" 1 pizca
+- WHEN se consolida
+- THEN la sal no se suma numéricamente y se muestra como "al gusto"/"1 pizca"
+
+### Requirement: Categorización por pasillo
+El sistema SHALL asignar una categoría de pasillo (Verdulería, Pescadería, Carnicería, Despensa, Refrigerados, Panadería, Bebidas, Otros), respetando la categoría explícita del ingrediente si existe.
+
+#### Scenario: Heurística por palabra clave
+- GIVEN el ingrediente "merluza" sin categoría explícita
+- WHEN se categoriza
+- THEN se asigna "Pescadería"
