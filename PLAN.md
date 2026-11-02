@@ -161,14 +161,14 @@ oximeal/
 
 ### Fase 4
 
-- [ ] `openspec validate oidc-auth --strict` en verde.
-- [ ] 401 (sin credenciales), 403 (sin permiso) y 200 (con permiso) correctos por cada permiso (`read:recipes`, `write:recipes`, `read:plan`, `write:plan`, `read:shopping`, `write:shopping`).
-- [ ] Cookie de sesión `httpOnly` + `Secure` + `SameSite=Lax` verificada; el navegador nunca recibe tokens.
-- [ ] CSRF activo (`X-CSRF-Token`) en las mutaciones autenticadas por cookie.
-- [ ] M2M de la Agent API funcionando y contrato de peticiones/respuestas sin cambios.
-- [ ] `OIDC_ENABLED=false` mantiene `cargo test` en verde.
-- [ ] Frontend con guard de rutas y `401`→re-login.
-- [ ] IdP de desarrollo documentado en `compose`.
+- [x] `openspec validate oidc-auth --strict` en verde.
+- [x] 401 (sin credenciales), 403 (sin permiso) y 200 (con permiso) correctos por cada permiso (`read:recipes`, `write:recipes`, `read:plan`, `write:plan`, `read:shopping`, `write:shopping`).
+- [x] Cookie de sesión `httpOnly` + `Secure` + `SameSite=Lax` verificada; el navegador nunca recibe tokens.
+- [x] CSRF activo (`X-CSRF-Token`) en las mutaciones autenticadas por cookie.
+- [x] M2M de la Agent API funcionando y contrato de peticiones/respuestas sin cambios.
+- [x] `OIDC_ENABLED=false` mantiene `cargo test` en verde.
+- [x] Frontend con guard de rutas y `401`→re-login.
+- [x] IdP de desarrollo documentado en `compose`.
 
 ## 10. Riesgos y mitigaciones
 
@@ -192,3 +192,107 @@ oximeal/
 - §6 Endpoints REST → T8–T11.
 - §7 Roadmap → secciones 5 y 6 de este plan.
 - Autenticación OIDC (issue #5) → **Fase 4** (`openspec/changes/oidc-auth/`): BFF, permisos y M2M.
+
+## 12. Fase 4 — Autenticación OIDC (Pocket ID): plan de ejecución por bloques
+
+> Ejecutable ahora. Origen: `openspec/changes/oidc-auth/` (5 specs / 24 requirements / 44 escenarios).
+> Metodología: SDD + TDD estricto (RED → GREEN → REFACTOR) bloque a bloque, con auditoría por bloque.
+
+### 12.1 Objetivo
+
+Cerrar la instancia self-hosted (hoy abierta: CORS `Any`, sin auth) con OIDC contra Pocket ID v2.19.1, usando el backend como **cliente confidencial BFF**: *authorization code + PKCE + state/nonce*, intercambio de código en servidor, **sesión server-side** y cookie `httpOnly`+`Secure`+`SameSite=Lax`. El navegador nunca ve tokens. Autorización **exclusivamente por permisos** (`read:recipes`, `write:recipes`, `read:plan`, `write:plan`, `read:shopping`, `write:shopping`; `agent:*` para M2M). Doble vía: cookie de sesión (SPA) o `Authorization: Bearer` (Valet). Sin roles ni administración de instancia.
+
+### 12.2 Decisiones de diseño (ADR-12…17)
+
+| # | Decisión | Justificación |
+|---|----------|---------------|
+| ADR-12 | Cliente OIDC **manual** (`reqwest` + `jsonwebtoken`), **sin** el crate `openidconnect` | Permite apuntar discovery/token/JWKS a un mock (wiremock) en tests de integración; control total del flujo. |
+| ADR-13 | Sesión server-side con **`tower-sessions`** y un `SessionStore` propio sobre SQLite | Firma/cifrado de cookie idiomáticos, rotación con `cycle_id()`, persistencia y caducidad gestionadas; sin cripto propia. |
+| ADR-14 | Autorización en **doble vía** (cookie o `Bearer`) con una **tabla única de permisos** | Misma política para SPA y Valet; los permisos se leen del claim `scope` (Pocket ID *APIs and permissions*). |
+| ADR-15 | “Sesión pre-auth” para `state`/`nonce`/PKCE entre `/auth/login` y `/auth/callback` | Cumple “guardados en la sesión”; al autenticar se rota el identificador. |
+| ADR-16 | CSRF `X-CSRF-Token` **solo** en mutaciones autenticadas por cookie (Bearer exento) | Bearer no es *ambient authority*: no sufre CSRF. |
+| ADR-17 | Gate `OIDC_ENABLED`: `false` = API abierta + warning (compat tests); `true` = config obligatoria o fallo de arranque, y el arranque **no** depende del IdP | Cumple escenarios “OIDC desactivado”, “config incompleta” e “IdP caído al arrancar”. |
+
+### 12.3 Módulos nuevos (backend)
+
+```
+backend/src/auth/
+├── mod.rs        # AuthService (discovery+JWKS+token), constructor, estado
+├── oidc.rs       # discovery document + JWKS con caché y refresco por kid
+├── jwt.rs        # validación de access tokens RFC 9068 (iss/aud/exp/nbf/alg)
+├── session.rs    # modelo de sesión + SessionStore (tower-sessions) sobre SQLite
+├── csrf.rs       # comparación en tiempo constante
+├── middleware.rs # AuthContext + layer require_permission(perm)
+├── routes.rs     # /auth/login, /auth/callback, /auth/me, /auth/logout
+└── error.rs      # AuthError → 401 (WWW-Authenticate: Bearer) / 403
+backend/migrations/0004_sessions.sql
+```
+
+`AppState` gana `auth: Option<Arc<AuthService>>` (None ⇔ `OIDC_ENABLED=false`).
+
+### 12.4 Configuración (env) y validación de arranque
+
+Variables nuevas: `OIDC_ENABLED`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_API_AUDIENCE`, `OIDC_REDIRECT_URI`, `OIDC_POST_LOGOUT_REDIRECT_URI`, `ALLOWED_ORIGINS` (lista CSV), `OIDC_ALLOWED_GROUPS` (CSV), `SESSION_SECRET`, `SESSION_TTL_SECS` (def. 2592000 = 30 d), `SESSION_REFRESH_MARGIN_SECS` (def. 300), `SESSION_COOKIE_SECURE` (def. true), `SESSION_COOKIE_NAME` (def. `oximeal_session`).
+
+`Config::from_env()` pasa a devolver `anyhow::Result<Config>`. Reglas:
+- Con `OIDC_ENABLED=true`: obligatorios `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_API_AUDIENCE`, `OIDC_REDIRECT_URI`, `OIDC_POST_LOGOUT_REDIRECT_URI`, `OIDC_ALLOWED_GROUPS` y `SESSION_SECRET`; si falta alguno → `Err` con mensaje que liste los ausentes. `SESSION_SECRET` con valor vacío o por defecto conocido → `Err`.
+- Con `OIDC_ENABLED=false`: no se exige secreto; se emite `tracing::warn!` de que la API queda abierta.
+
+### 12.5 Migración `0004_sessions.sql` (no toca tablas de dominio)
+
+```sql
+CREATE TABLE sessions (
+    id      TEXT PRIMARY KEY,
+    data    BLOB NOT NULL,     -- registro de sesión serializado (tower-sessions)
+    expiry  INTEGER NOT NULL   -- unix seconds
+);
+CREATE INDEX idx_sessions_expiry ON sessions(expiry);
+```
+
+Contenido lógico de la sesión: en pre-auth `{state, nonce, code_verifier, return_to, exp}`; autenticada `{subject, name, groups[], permissions[], csrf_token, access_token, refresh_token, id_token, access_token_expires_at}`. Los tokens **nunca** salen al navegador.
+
+### 12.6 Tabla de permisos por endpoint
+
+| Método y ruta | Permiso |
+|---|---|
+| `GET /api/recipes`, `GET /api/recipes/{id}` | `read:recipes` |
+| `POST /api/recipes` | `write:recipes` |
+| `GET /api/meal-plan` | `read:plan` |
+| `POST /api/meal-plan`, `DELETE /api/meal-plan/{id}` | `write:plan` |
+| `GET /api/shopping-list` | `read:shopping` |
+| `POST /api/shopping-list`, `PATCH /api/shopping-list/{id}`, `POST /api/shopping-list/consolidate`, `DELETE /api/shopping-list/completed` | `write:shopping` |
+| `GET /api/agent/recent-recipes`, `GET /api/agent/search-recipes` | `agent:read` |
+| `POST /api/agent/weekly-plan` | `agent:plan` |
+| `POST /api/agent/shopping-items`, `DELETE /api/agent/shopping/completed` | `agent:shopping` |
+| `GET /api/health`, `/api/openapi.json`, `/api/docs*`, `/auth/*` | público |
+
+Sin credencial válida → 401 + `WWW-Authenticate: Bearer`; credencial válida sin permiso → 403. Los permisos `agent:*` **no** se conceden a clientes user-delegated.
+
+### 12.7 Bloques de ejecución (mapeo con `tasks.md`)
+
+1. **Bloque 1 — Deps, config, migración y arranque** (tasks 1.1–1.4). Tests: config incompleta falla; secreto por defecto falla; `OIDC_ENABLED=false` → warning y API abierta.
+2. **Bloque 2 — BFF y sesión** (tasks 2.1–2.7). Tests: login (state/nonce/PKCE S256), callback feliz con rotación, `state` inválido → 400, fuera de grupos → 403, `/auth/me` con/sin sesión, logout 204, refresh fallido → 401, CSRF 403/válido.
+3. **Bloque 3 — Validación de tokens y autorización** (tasks 3.1–3.5). Tests: kid desconocido, caducado, `aud` ajeno, `alg=none`; 401/403/200 por permiso; públicos; CORS por `ALLOWED_ORIGINS`; cookie o Bearer.
+4. **Bloque 4 — Agent API M2M** (tasks 4.1–4.4). Tests: M2M con `agent:*` accede; usuario sin `agent:*` → 403; contrato sin cambios; retirada del API key (solo doc, no existe en código).
+5. **Bloque 5 — Frontend** (tasks 5.1–5.5). Tests (vitest + Testing Library): estado de carga, guard de rutas con destino, 401→re-login, 403→aviso sin destruir sesión, `X-CSRF-Token` en mutaciones, nombre + logout.
+6. **Bloque 6 — IdP de desarrollo** (tasks 6.1–6.4). `compose` con Pocket ID; guía de API/resource `https://oximeal.local/api`, keys/permisos, cliente user-delegated (*Allowed user groups*), cliente M2M (Valet), HTTPS por reverse proxy.
+7. **Bloque 7 — Tests y CI** (tasks 7.1–7.7). Puertas: `cargo test` (con y sin `embed-ui`), `cargo test` con `OIDC_ENABLED=false`, `clippy -D warnings`, `fmt --check`, `just ci`, `just ci-ui`, `openspec validate oidc-auth --strict`.
+
+Bloque 8 (docs: `.env.example`, README, permisos, migración del API key, dependencia Fase 5) se cierra junto con el bloque 7.
+
+### 12.8 Estrategia de testing
+
+- **Unit**: `config.rs` (validación), `jwt.rs` (claims), `csrf.rs` (comparación), mapeo de permisos.
+- **Integración** (`backend/tests/*`): mock IdP con **`wiremock`** (discovery, JWKS y token endpoint) y tokens firmados con una clave RSA de test estática (`jsonwebtoken::encode`). Se ejercita el flujo BFF completo con cookies (`Set-Cookie`/`Cookie`) y `Authorization: Bearer`.
+- **Frontend**: `vitest` + Testing Library, mockeando `src/api/client` y el proveedor de sesión.
+- **IdP caído**: el arranque y `GET /api/health` no dependen del IdP; rutas protegidas sin credencial → 401.
+
+### 12.9 Riesgos específicos de la ejecución
+
+| Riesgo | Mitigación |
+|---|---|
+| Incompatibilidad de versión `tower-sessions` ↔ axum 0.8 | Verificar versiones con `cargo add`/docs antes de fijar; alternativa: `SessionStore` mínimo propio. |
+| Cripto de test (clave RSA) frágil | Clave PEM estática y determinista en `tests/common`; nunca en producción. |
+| Consultar el IdP real en tests | Prohibido: siempre mock (wiremock) o `OIDC_ENABLED=false`. |
+| Fuga de tokens por logs (riesgo global) | Prohibido loguear `Cookie`/`Authorization`; `/auth/me` nunca devuelve tokens. |
+| `OIDC_ENABLED=false` rompe tests existentes | `Config` por defecto en tests sin OIDC; suite legacy debe seguir verde. |
