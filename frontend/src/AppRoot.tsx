@@ -4,6 +4,7 @@ import { App } from './App';
 import { ForbiddenNotifier } from './auth/ForbiddenNotifier';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { theme } from './components/theme';
+import { MutationQueueNotifier } from './offline/MutationQueueNotifier';
 
 /**
  * Árbol de la aplicación que depende de antd.
@@ -18,6 +19,7 @@ export default function AppRoot() {
       <ConfigProvider theme={theme}>
         <AntdApp>
           <ForbiddenNotifier />
+          <MutationQueueNotifier />
           <BrowserRouter>
             <App />
           </BrowserRouter>

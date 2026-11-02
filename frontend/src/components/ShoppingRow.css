@@ -54,3 +54,8 @@
   color: #718096;
   white-space: nowrap;
 }
+
+.shopping-row__pending {
+  flex: 0 0 auto;
+  margin: 0;
+}

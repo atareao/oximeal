@@ -553,7 +553,7 @@ Convertir OxiMeal en una PWA instalable y offline-first: (a) shell instalable (m
 ### 18.5 Change C — `offline-write-queue` (issue #31)
 
 **Cambios backend:**
-- Migración `0005_shopping_item_client_id.sql`: columna `client_id TEXT` con índice único parcial.
+- Migración `0006_shopping_item_client_id.sql`: columna `client_id TEXT` con índice único parcial.
 - `backend/src/models` y `backend/src/repo/shopping_list.rs`: soporte de `client_id`.
 - `backend/src/routes/shopping_list.rs`: `POST /api/shopping-list` idempotente por `client_id`.
 
@@ -565,6 +565,13 @@ Convertir OxiMeal en una PWA instalable y offline-first: (a) shell instalable (m
 **Tests/verificación:** alta offline aparece localmente y se sincroniza al volver la conexión; reenvío con el mismo `client_id` no duplica (backend); toggle de un ítem no sincronizado se aplica a la operación encolada; 4xx no recuperable descarta y notifica.
 
 **DoD:** escritura offline funcional; alta idempotente; sin duplicados tras reconexión; change archivado; issue #31 cerrada.
+
+- [x] Issue #31. Backend: migración `0006_shopping_item_client_id.sql` (columna `client_id TEXT` + índice único parcial), `client_id` en modelo y repositorio, y `POST /api/shopping-list` idempotente (201 al crear, 200 con el ítem existente); el `SELECT` de `repo/agent.rs` incluye la columna nueva.
+- [x] `frontend/src/offline/mutationStore.ts`: store `mutationQueue` en IndexedDB (DB compartida `oximeal` v2, `keyPath: seq` autoincrement) con interfaz inyectable y degradación a cola en memoria.
+- [x] `frontend/src/offline/mutationQueue.ts`: cola FIFO, reentrante, drenado con parada en red/401 y descarte con aviso en 4xx no recuperable, reconciliación de ids `local:*` → ids reales, fusión de toggles sobre altas aún no sincronizadas y LWW con `parseServerTimestamp` (UTC real, no hora local).
+- [x] `frontend/src/api/hooks.ts`: mutaciones offline-aware (`useAddShoppingItem` encola en vez de fallar y cae al camino offline ante error de red; `useToggleShoppingItem` no llama al servidor si el ítem es local o no hay conexión, con rollback decidido por el contexto de `onMutate`); `networkMode: 'offlineFirst'` en las consultas.
+- [x] `syncShoppingQueue.ts` + `MutationQueueProvider` + `MutationQueueNotifier` (dentro de `<AntdApp>`, con `App.useApp()`); aviso de pendientes con botón «Sincronizar ahora» en `ShoppingPage` y etiqueta `Pendiente` en `ShoppingRow`.
+- [x] Tests: 199 en frontend (5 ejecuciones seguidas en verde, sin flakiness); `just ci`, `just ci-ui` (309,2 kB / 500 kB) y `openspec validate --all --strict` (21/21) en verde.
 
 ### 18.6 Orden de ejecución y ramas
 

@@ -26,16 +26,22 @@ export interface OfflineStore {
   clearQueries(): Promise<void>;
 }
 
-const DB_NAME = 'oximeal';
-const DB_VERSION = 1;
+export const DB_NAME = 'oximeal';
+export const DB_VERSION = 2;
 const STORE_NAME = 'queryCache';
+const MUTATION_STORE_NAME = 'mutationQueue';
 
 /**
- * Abre la base de datos. Resuelve con `null` si IndexedDB no está disponible o
- * la apertura falla. No se ocupa de cachear la conexión: eso lo hace
- * {@link createIdbStore}.
+ * Abre (y migra) la base de datos compartida. Resuelve con `null` si IndexedDB
+ * no está disponible o la apertura falla.
+ *
+ * La creación de stores es idempotente: en `onupgradeneeded` se crean **ambos**
+ * stores si faltan, de modo que un usuario con la versión 1 (solo
+ * `queryCache`) migra a la versión 2 sin perder la caché de consultas.
+ *
+ * No se ocupa de cachear la conexión: eso lo hace {@link createIdbStore}.
  */
-function openDatabase(): Promise<IDBDatabase | null> {
+export function openOximealDatabase(): Promise<IDBDatabase | null> {
   if (typeof indexedDB === 'undefined') {
     return Promise.resolve(null);
   }
@@ -48,6 +54,9 @@ function openDatabase(): Promise<IDBDatabase | null> {
         const db = request.result;
         if (!db.objectStoreNames.contains(STORE_NAME)) {
           db.createObjectStore(STORE_NAME, { keyPath: 'key' });
+        }
+        if (!db.objectStoreNames.contains(MUTATION_STORE_NAME)) {
+          db.createObjectStore(MUTATION_STORE_NAME, { keyPath: 'seq', autoIncrement: true });
         }
       };
       request.onsuccess = () => resolve(request.result);
@@ -68,7 +77,7 @@ export function createIdbStore(): OfflineStore {
       return connection;
     }
 
-    const pending = openDatabase().then((db) => {
+    const pending = openOximealDatabase().then((db) => {
       if (db) {
         // Si otra pestaña/versión necesita actualizar la DB, cerramos esta
         // conexión e invalidamos la caché para reabrir con la nueva versión.
