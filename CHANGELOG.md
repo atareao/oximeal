@@ -24,6 +24,67 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Seguridad
 
+## [0.3.0] - 2026-11-02
+
+Fase 4: **autenticación OIDC con Pocket ID** (PR
+[#15](https://github.com/atareao/oximeal/pull/15)). Cierra la instancia
+self-hosted mediante un BFF con cliente confidencial, sesión server-side y
+autorización por permisos. Retira el API key estático del issue #5.
+
+### Añadido
+
+#### Autenticación OIDC (backend)
+
+- BFF `/auth/{login,callback,me,logout}`: *authorization code* + PKCE `S256`,
+  `state`/`nonce`, intercambio de código en servidor, **sesión server-side** en
+  SQLite y cookie `httpOnly` + `Secure` + `SameSite=Lax`. El navegador nunca ve
+  tokens.
+- Descubrimiento OIDC y **JWKS** con caché y refresco por `kid`; validación de
+  ID tokens y de access tokens **RFC 9068** (`iss`/`aud`/`exp`/`nbf`,
+  `typ=at+jwt` y allowlist de algoritmos sin `none`).
+- **Autorización por permisos** del modelo *APIs and permissions* en doble vía
+  (cookie de sesión o `Authorization: Bearer`), con 401 (y
+  `WWW-Authenticate: Bearer`) / 403.
+- **CSRF** (`X-CSRF-Token`) en las mutaciones por cookie, renovación transparente
+  con *refresh token* y puerta de entrada por grupos permitidos
+  (`OIDC_ALLOWED_GROUPS`).
+- Agent API **M2M** con permisos dedicados `agent:read`, `agent:plan` y
+  `agent:shopping` (contrato sin cambios).
+- Migración `0004_sessions` para las sesiones server-side.
+
+#### Frontend
+
+- Contexto de sesión (`/auth/me`), guard de rutas con retorno al destino, manejo
+  de 401 (re-login) y 403 (aviso sin destruir la sesión), cabecera CSRF en las
+  mutaciones, e identidad y cierre de sesión en la interfaz.
+- Suite de tests del frontend: 110 tests.
+
+#### Despliegue y documentación
+
+- `deploy/compose.yaml` (Pocket ID v2.19.1) y `deploy/oidc-dev.md`: API/resource,
+  permisos, cliente user-delegated y cliente M2M.
+- README y `.env.example` con las variables OIDC/`SESSION_*`, la tabla de
+  permisos por endpoint y la migración del API key.
+- Especificaciones OpenSpec de la Fase 4 archivadas y consolidadas
+  (`agent-api-auth`, `api-authorization`, `auth-session`, `auth-ui`,
+  `oidc-config`).
+
+### Cambiado
+
+- El CORS deja de ser `Any` y pasa a la lista configurable `ALLOWED_ORIGINS`.
+- Todas las rutas, salvo `GET /api/health`, el documento OpenAPI y la Swagger UI,
+  pasan a exigir credenciales.
+
+### Obsoleto
+
+- `OXIMEAL_API_KEY`: el API key estático queda obsoleto y ya no se acepta; se
+  sustituye por **M2M OIDC** (issue #5).
+
+### Seguridad
+
+- La instancia puede cerrarse: sesión server-side, tokens nunca expuestos al
+  navegador, CSRF activo y autorización por permisos mínimos.
+
 ## [0.2.0] - 2026-11-02
 
 Primera release etiquetada. Integra la Fase 1 (núcleo backend) y la Fase 2
@@ -96,5 +157,6 @@ registrada como issues #2–#13.
   **Valet** es un proyecto hermano que consume la Agent API por HTTP, sin
   orquestador LLM, sin servidor MCP y sin chat dentro de OxiMeal.
 
-[No publicado]: https://github.com/atareao/oximeal/compare/v0.2.0...HEAD
+[No publicado]: https://github.com/atareao/oximeal/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/atareao/oximeal/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/atareao/oximeal/compare/04b8f6162fe54101a21ba4749641f4af610c6ca7...v0.2.0
