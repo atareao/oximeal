@@ -58,6 +58,13 @@ la receta del listado `GET /api/recipes`.
 - THEN se devuelve 404
 - AND no se borra ninguna otra receta
 
+#### Scenario: Receta referenciada por el plan
+
+- GIVEN una receta usada por una entrada del menú semanal
+- WHEN se envía a `DELETE /api/recipes/{id}`
+- THEN se devuelve 409 Conflict
+- AND la receta y la entrada del plan permanecen sin cambios
+
 #### Scenario: Borrado sin permiso
 
 - GIVEN una petición sin credenciales válidas y el modo abierto desactivado

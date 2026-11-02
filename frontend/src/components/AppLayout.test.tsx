@@ -127,4 +127,39 @@ describe('AppLayout', () => {
     // cuando la sesión pasa a anónima, no AppLayout.
     expect(assign).not.toHaveBeenCalled();
   });
+
+  it('muestra la sección Recetas en el Sider y navega a /recipes', async () => {
+    installMatchMedia(true);
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route element={<AppLayout />}>
+            <Route index element={<div>contenido</div>} />
+            <Route path="recipes" element={<div>catálogo de recetas</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByText(/Recetas/));
+
+    expect(screen.getByText('catálogo de recetas')).toBeInTheDocument();
+  });
+
+  it('marca Recetas como activa en /recipes', () => {
+    installMatchMedia(true);
+    render(
+      <MemoryRouter initialEntries={['/recipes']}>
+        <Routes>
+          <Route element={<AppLayout />}>
+            <Route path="recipes" element={<div>catálogo de recetas</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const selected = document.querySelector('.ant-menu-item-selected');
+    expect(selected).toHaveTextContent('Recetas');
+  });
 });

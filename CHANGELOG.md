@@ -14,6 +14,8 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Añadido
 
+- **Recetario:** gestión completa de recetas con `PUT /api/recipes/{id}` (reemplazo total en una transacción `BEGIN IMMEDIATE`; devuelve `409` si la receta está referenciada por una entrada del plan) y `DELETE /api/recipes/{id}` (borrado duro), bajo el permiso `write:recipes`; nueva página de recetas en el frontend (`/recipes` y `/recipes/:id`) con listado, búsqueda con debounce, paginación, alta, edición y borrado con confirmación, accesible desde el Sider y la barra inferior, con degradado offline y objetivos táctiles ≥48px (#45).
+
 ### Cambiado
 
 ### Obsoleto

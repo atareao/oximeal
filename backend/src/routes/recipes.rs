@@ -5,7 +5,7 @@ use axum::Router;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
@@ -23,7 +23,12 @@ pub fn read_router() -> Router<AppState> {
 
 /// Router de recetas de escritura (permiso `write:recipes`).
 pub fn write_router() -> Router<AppState> {
-    Router::new().route("/api/recipes", post(create_recipe))
+    Router::new()
+        .route("/api/recipes", post(create_recipe))
+        .route(
+            "/api/recipes/{id}",
+            put(update_recipe).delete(delete_recipe),
+        )
 }
 
 /// `GET /api/recipes` — listado con búsqueda (FTS5/LIKE), filtro y paginación.
@@ -111,7 +116,52 @@ pub async fn get_recipe(
     Ok(Json(recipe))
 }
 
-/// Valida el cuerpo de creación de receta. No persiste nada si falla.
+/// `PUT /api/recipes/{id}` — reemplaza una receta completa.
+#[utoipa::path(
+    put,
+    path = "/api/recipes/{id}",
+    tag = "recipes",
+    params(("id" = String, Path, description = "Identificador de la receta")),
+    request_body = RecipeInput,
+    responses(
+        (status = 200, description = "Receta actualizada", body = Recipe),
+        (status = 400, description = "Datos inválidos"),
+        (status = 404, description = "Receta no encontrada"),
+    )
+)]
+pub async fn update_recipe(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(input): Json<RecipeInput>,
+) -> AppResult<Json<Recipe>> {
+    validate_recipe(&input)?;
+
+    let recipe = repo::recipes::update(&state.pool, &id, &input).await?;
+
+    Ok(Json(recipe))
+}
+
+/// `DELETE /api/recipes/{id}` — borra una receta.
+#[utoipa::path(
+    delete,
+    path = "/api/recipes/{id}",
+    tag = "recipes",
+    params(("id" = String, Path, description = "Identificador de la receta")),
+    responses(
+        (status = 204, description = "Receta eliminada"),
+        (status = 404, description = "Receta no encontrada"),
+        (status = 409, description = "La receta está en uso en el plan semanal"),
+    )
+)]
+pub async fn delete_recipe(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> AppResult<StatusCode> {
+    repo::recipes::delete(&state.pool, &id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Valida el cuerpo de creación o actualización de receta. No persiste nada si falla.
 fn validate_recipe(input: &RecipeInput) -> AppResult<()> {
     if input.name.trim().is_empty() {
         return Err(AppError::Validation(

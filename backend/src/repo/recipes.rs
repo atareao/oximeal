@@ -1,5 +1,6 @@
 //! Repositorio de recetas (SQLite vía `sqlx`, queries en runtime).
 
+use anyhow::anyhow;
 use sqlx::{QueryBuilder, Sqlite, SqlitePool};
 
 use crate::error::{AppError, AppResult};
@@ -105,9 +106,8 @@ pub async fn create(pool: &SqlitePool, id: &str, input: &RecipeInput) -> AppResu
         .clone()
         .unwrap_or_else(|| "mediterranean".to_string());
     let servings = input.servings.unwrap_or(2);
-    let ingredients = serde_json::to_string(&input.ingredients).map_err(|error| {
-        AppError::Internal(anyhow::anyhow!("serializando ingredientes: {error}"))
-    })?;
+    let ingredients = serde_json::to_string(&input.ingredients)
+        .map_err(|error| AppError::Internal(anyhow!("serializando ingredientes: {error}")))?;
 
     sqlx::query(
         "INSERT INTO recipes \
@@ -144,5 +144,111 @@ pub async fn get(pool: &SqlitePool, id: &str) -> AppResult<Recipe> {
     match row {
         Some(row) => row.into_recipe(),
         None => Err(AppError::NotFound(format!("receta {id}"))),
+    }
+}
+
+/// Reemplaza una receta existente y devuelve su estado final.
+///
+/// Usa `BEGIN IMMEDIATE` (escritura read-then-write) para comprobar la
+/// existencia y reemplazar la fila de forma atómica. Reutiliza los mismos
+/// valores por defecto que [`create`] (`diet_type` → `mediterranean`,
+/// `servings` → 2). Devuelve 404 si la receta no existe, sin modificar nada.
+pub async fn update(pool: &SqlitePool, id: &str, input: &RecipeInput) -> AppResult<Recipe> {
+    let diet_type = input
+        .diet_type
+        .clone()
+        .unwrap_or_else(|| "mediterranean".to_string());
+    let servings = input.servings.unwrap_or(2);
+    let ingredients = serde_json::to_string(&input.ingredients)
+        .map_err(|error| AppError::Internal(anyhow!("serializando ingredientes: {error}")))?;
+
+    // Escritura read-then-write: BEGIN IMMEDIATE evita SQLITE_BUSY_SNAPSHOT en WAL.
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+
+    let exists: Option<String> = sqlx::query_scalar("SELECT id FROM recipes WHERE id = ?")
+        .bind(id)
+        .fetch_optional(&mut *tx)
+        .await?;
+    if exists.is_none() {
+        return Err(AppError::NotFound(format!("receta {id}")));
+    }
+
+    sqlx::query(
+        "UPDATE recipes SET name = ?, category = ?, diet_type = ?, prep_time_minutes = ?, \
+         servings = ?, ingredients = ?, instructions = ?, source_url = ? WHERE id = ?",
+    )
+    .bind(&input.name)
+    .bind(&input.category)
+    .bind(&diet_type)
+    .bind(input.prep_time_minutes)
+    .bind(servings)
+    .bind(ingredients)
+    .bind(&input.instructions)
+    .bind(&input.source_url)
+    .bind(id)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
+    get(pool, id).await
+}
+
+/// Elimina una receta; 404 si no existe y 409 si está referenciada por el plan.
+///
+/// El borrado es atómico (`BEGIN IMMEDIATE`). Los ingredientes **no** son una
+/// tabla propia (viven en la columna `ingredients JSON`), así que basta con
+/// borrar la fila; los triggers FTS (`recipes_ad`) limpian el índice. Si la
+/// receta está referenciada por una entrada de `meal_plan_entries`
+/// (`ON DELETE RESTRICT`), se devuelve [`AppError::Conflict`] (409) en lugar de
+/// un error de base de datos.
+pub async fn delete(pool: &SqlitePool, id: &str) -> AppResult<()> {
+    // Escritura read-then-write: BEGIN IMMEDIATE evita SQLITE_BUSY_SNAPSHOT en WAL.
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+
+    let exists: Option<String> = sqlx::query_scalar("SELECT id FROM recipes WHERE id = ?")
+        .bind(id)
+        .fetch_optional(&mut *tx)
+        .await?;
+    if exists.is_none() {
+        return Err(AppError::NotFound(format!("receta {id}")));
+    }
+
+    let result = sqlx::query("DELETE FROM recipes WHERE id = ?")
+        .bind(id)
+        .execute(&mut *tx)
+        .await;
+
+    match result {
+        Ok(_) => tx.commit().await?,
+        // La FK del plan (`ON DELETE RESTRICT`) impide el borrado: se traduce a
+        // un 409 controlado (la transacción se revierte al soltar `tx`).
+        Err(error) if is_foreign_key_violation(&error) => {
+            return Err(AppError::Conflict(format!(
+                "la receta {id} está en uso en el plan semanal"
+            )));
+        }
+        Err(error) => return Err(error.into()),
+    }
+
+    Ok(())
+}
+
+/// Indica si el error es una violación de clave foránea.
+///
+/// SQLite implementa las FK con triggers internos, por lo que un
+/// `ON DELETE RESTRICT` se reporta como `SQLITE_CONSTRAINT_TRIGGER` (código
+/// extendido **1811**) en lugar de `SQLITE_CONSTRAINT_FOREIGNKEY` (**787**).
+/// `sqlx` mapea el 1811 a `ErrorKind::Other`, así que `is_foreign_key_violation()`
+/// no lo detecta; por eso se comprueban también el código extendido y el
+/// mensaje canónico.
+fn is_foreign_key_violation(error: &sqlx::Error) -> bool {
+    match error {
+        sqlx::Error::Database(db) => {
+            db.is_foreign_key_violation()
+                || matches!(db.code().as_deref(), Some("787") | Some("1811"))
+                || db.message().contains("FOREIGN KEY constraint failed")
+        }
+        _ => false,
     }
 }

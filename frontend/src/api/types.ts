@@ -26,6 +26,18 @@ export interface Recipe extends RecipeSummary {
   source_url: string | null;
 }
 
+/** Cuerpo de alta/edición de receta (espejo de `RecipeInput` del backend). */
+export interface RecipeInput {
+  name: string;
+  category: string;
+  diet_type?: string;
+  prep_time_minutes?: number | null;
+  servings?: number | null;
+  ingredients: IngredientInput[];
+  instructions?: string | null;
+  source_url?: string | null;
+}
+
 export type MealType = 'lunch' | 'dinner' | 'breakfast' | 'snack';
 export type MealRole = 'main' | 'salad' | 'side';
 

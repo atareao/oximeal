@@ -82,4 +82,35 @@ describe('BottomNav', () => {
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
+
+  it('muestra la pestaña Recetas y navega a /recipes', async () => {
+    const user = userEvent.setup();
+    renderNav();
+
+    await user.click(screen.getByRole('button', { name: /recetas/i }));
+
+    expect(screen.getByTestId('location')).toHaveTextContent('/recipes');
+  });
+
+  it('marca Recetas como activa en /recipes', () => {
+    render(
+      <MemoryRouter initialEntries={['/recipes']}>
+        <Routes>
+          <Route
+            path="*"
+            element={
+              <>
+                <LocationProbe />
+                <BottomNav />
+              </>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const tab = screen.getByRole('button', { name: /recetas/i });
+    expect(tab).toHaveAttribute('aria-current', 'page');
+    expect(tab).toHaveClass('bottom-nav__tab--active');
+  });
 });

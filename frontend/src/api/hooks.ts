@@ -3,14 +3,18 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   clearCompletedShoppingItems,
   consolidateShoppingList,
+  createRecipe,
   createShoppingItem,
+  deleteRecipe,
   fetchMealPlan,
   fetchRecipe,
   fetchRecipes,
   fetchShoppingList,
   patchShoppingItem,
+  updateRecipe,
 } from './client';
 import type {
+  RecipeInput,
   RecipeQueryParams,
   ShoppingItem,
   ShoppingItemInput,
@@ -44,6 +48,8 @@ export function useRecipes(params: RecipeQueryParams = {}) {
   return useQuery({
     queryKey: queryKeys.recipes.list(params),
     queryFn: ({ signal }) => fetchRecipes(params, signal),
+    // Sin conexión se sirven los datos cacheados sin entrar en estado de error.
+    networkMode: 'offlineFirst',
   });
 }
 
@@ -52,6 +58,45 @@ export function useRecipe(id: string | undefined) {
     queryKey: queryKeys.recipes.detail(id ?? ''),
     queryFn: ({ signal }) => fetchRecipe(id as string, signal),
     enabled: Boolean(id),
+    // Sin conexión se sirve el detalle cacheado si lo hubiera.
+    networkMode: 'offlineFirst',
+  });
+}
+
+/**
+ * Alta de receta. Invalida el catálogo completo para que el listado refleje la
+ * nueva receta independientemente de la página o el filtro activos.
+ */
+export function useCreateRecipe() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: RecipeInput) => createRecipe(input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.recipes.all });
+    },
+  });
+}
+
+/** Edición de receta. Invalida el catálogo y el detalle concreto. */
+export function useUpdateRecipe() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: RecipeInput }) => updateRecipe(id, input),
+    onSuccess: (_recipe, { id }) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.recipes.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.recipes.detail(id) });
+    },
+  });
+}
+
+/** Borrado de receta. Invalida el catálogo completo. */
+export function useDeleteRecipe() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteRecipe(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.recipes.all });
+    },
   });
 }
 

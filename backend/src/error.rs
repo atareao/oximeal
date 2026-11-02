@@ -17,6 +17,9 @@ pub enum AppError {
     /// Datos de entrada inválidos (400).
     #[error("datos inválidos: {0}")]
     Validation(String),
+    /// Conflicto con el estado actual del recurso (409).
+    #[error("conflicto: {0}")]
+    Conflict(String),
     /// Método HTTP no permitido en la ruta (405).
     #[error("método no permitido: {0}")]
     MethodNotAllowed(String),
@@ -41,6 +44,7 @@ impl IntoResponse for AppError {
             AppError::Validation(message) => {
                 (StatusCode::BAD_REQUEST, "validation", message.clone())
             }
+            AppError::Conflict(message) => (StatusCode::CONFLICT, "conflict", message.clone()),
             AppError::MethodNotAllowed(message) => (
                 StatusCode::METHOD_NOT_ALLOWED,
                 "method_not_allowed",
@@ -93,6 +97,12 @@ mod tests {
     fn method_not_allowed_maps_to_405() {
         let response = AppError::MethodNotAllowed("POST".into()).into_response();
         assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+    }
+
+    #[test]
+    fn conflict_maps_to_409() {
+        let response = AppError::Conflict("receta en uso".into()).into_response();
+        assert_eq!(response.status(), StatusCode::CONFLICT);
     }
 
     #[tokio::test]
