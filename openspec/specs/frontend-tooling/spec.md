@@ -1,12 +1,13 @@
 # frontend-tooling Specification
 
 ## Purpose
-TBD - created by archiving change a11y-lint-prettier. Update Purpose after archive.
+
+Esta capacidad define el tooling de calidad del frontend: linting estático de accesibilidad con `eslint-plugin-jsx-a11y` sobre los componentes TSX y verificación de formato con Prettier, ambas integradas en `just ci-ui` y en el workflow de CI.
 
 ## Requirements
 
 ### Requirement: Linting de accesibilidad
-El frontend SHALL ejecutar ESLint con las reglas recomendadas de `eslint-plugin-jsx-a11y` sobre todos los ficheros TypeScript/TSX, y `pnpm lint` SHALL terminar con 0 problemas.
+El frontend SHALL ejecutar ESLint con las reglas recomendadas de `eslint-plugin-jsx-a11y` sobre todos los ficheros TSX (`**/*.tsx`), y `pnpm lint` SHALL terminar con 0 problemas.
 
 #### Scenario: Regla de a11y activa
 - GIVEN un componente con un atributo ARIA inválido
