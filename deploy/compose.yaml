@@ -1,0 +1,45 @@
+# Deploy Pocket ID for local development
+#
+# Public image: ghcr.io/pocket-id/pocket-id:v2.19.1
+# This version is the latest stable (v2.19.1). It listens on default port 1411.
+#
+# The compose file is fully compatible with both podman‑compose and docker‑compose.
+# Uncomment the `ports` section if you want to expose Pocket ID to the host.
+
+services:
+  pocket-id:
+    image: ghcr.io/pocket-id/pocket-id:v2.19.1
+    container_name: pocket-id
+    restart: unless-stopped
+    environment:
+      # Base URL that Pocket ID will use for redirects and discovery
+      APP_URL: http://localhost:1411
+      # Port Pocket ID listens on (default 1411)
+      PORT: 1411
+      # Use SQLite for persistence (no external DB required)
+      DB_PROVIDER: sqlite
+      DB_CONNECTION_STRING: /data/pocket-id.db
+      # Encryption key for protecting sensitive data (at least 32 ASCII chars)
+      # For local development, use the example key below or generate a fresh one:
+      ENCRYPTION_KEY: local-dev-key-32-bytes-padding!!
+    # Store SQLite data on the host so it survives container restarts
+    volumes:
+      - pocket-id-data:/data
+    # Healthcheck – Pocket ID exposes a /healthz endpoint
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:1411/healthz"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    # Private network dedicated to development services
+    networks:
+      - devnet
+
+networks:
+  devnet:
+    driver: bridge
+
+volumes:
+  pocket-id-data:
+    driver: local

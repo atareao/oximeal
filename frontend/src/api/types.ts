@@ -84,3 +84,18 @@ export interface ApiErrorBody {
   error: string;
   message: string;
 }
+
+/**
+ * Respuesta de `GET /auth/me` (contrato BFF).
+ *
+ * En modo OIDC desactivado el backend no monta `/auth/*` y la petición
+ * responde 404. En sesión anónima `authenticated` es `false` y el resto de
+ * campos llega ausente.
+ */
+export interface AuthMeResponse {
+  authenticated: boolean;
+  subject?: string;
+  name?: string;
+  permissions?: string[];
+  csrf_token?: string;
+}

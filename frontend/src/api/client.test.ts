@@ -1,5 +1,17 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { ApiError, apiRequest } from './client';
+import { message } from 'antd';
+import {
+  ApiError,
+  apiRequest,
+  clearCompletedShoppingItems,
+  createShoppingItem,
+  fetchAuthMe,
+  logoutAuth,
+  patchShoppingItem,
+  setCsrfToken,
+  setForbiddenHandler,
+  setUnauthorizedHandler,
+} from './client';
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -112,6 +124,162 @@ describe('apiRequest', () => {
         body: JSON.stringify({ name: 'Pan' }),
         headers: expect.objectContaining({ 'Content-Type': 'application/json' }),
       }),
+    );
+  });
+
+  it('envía las credenciales same-origin en cada petición', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(jsonResponse({ items: [], total: 0 }));
+
+    await apiRequest('/recipes');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/recipes',
+      expect.objectContaining({ credentials: 'same-origin' }),
+    );
+  });
+});
+
+describe('CSRF y manejo de sesión en el cliente', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+    setCsrfToken(null);
+    setUnauthorizedHandler(null);
+    setForbiddenHandler(null);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    setCsrfToken(null);
+    setUnauthorizedHandler(null);
+    setForbiddenHandler(null);
+  });
+
+  const csrfCases: ReadonlyArray<{
+    label: string;
+    method: string;
+    url: string;
+    response: () => Response;
+    call: () => Promise<unknown>;
+  }> = [
+    {
+      label: 'POST',
+      method: 'POST',
+      url: '/api/shopping-list',
+      response: () => jsonResponse({ id: '1' }, 201),
+      call: () => createShoppingItem({ name: 'Pan', amount: 1, unit: 'ud' }),
+    },
+    {
+      label: 'PATCH',
+      method: 'PATCH',
+      url: '/api/shopping-list/item-1',
+      response: () => jsonResponse({ id: 'item-1', checked: true }, 200),
+      call: () => patchShoppingItem('item-1', { checked: true }),
+    },
+    {
+      label: 'DELETE',
+      method: 'DELETE',
+      url: '/api/shopping-list/completed',
+      response: () => new Response(null, { status: 204 }),
+      call: () => clearCompletedShoppingItems(),
+    },
+  ];
+
+  it.each(csrfCases)(
+    'añade X-CSRF-Token a las mutaciones $label cuando hay token',
+    async ({ method, url, response, call }) => {
+      const fetchMock = vi.mocked(fetch);
+      fetchMock.mockResolvedValueOnce(response());
+
+      setCsrfToken('token-123');
+      await call();
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        url,
+        expect.objectContaining({
+          method,
+          headers: expect.objectContaining({ 'X-CSRF-Token': 'token-123' }),
+        }),
+      );
+    },
+  );
+
+  it('no añade X-CSRF-Token a las peticiones GET', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(jsonResponse({ items: [], total: 0 }));
+
+    setCsrfToken('token-123');
+    await apiRequest('/recipes');
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init?.headers).not.toHaveProperty('X-CSRF-Token');
+  });
+
+  it('notifica al handler global cuando una petición devuelve 401', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ error: 'unauthorized', message: 'sesión caducada' }, 401),
+    );
+    const handler = vi.fn();
+    setUnauthorizedHandler(handler);
+
+    await expect(apiRequest('/recipes')).rejects.toBeInstanceOf(ApiError);
+
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it('en 403 usa el aviso estático de antd cuando no hay handler inyectado', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ error: 'forbidden', message: 'permiso denegado' }, 403),
+    );
+    const warning = vi.spyOn(message, 'warning').mockImplementation((() => {}) as never);
+    const handler = vi.fn();
+    setUnauthorizedHandler(handler);
+
+    await expect(apiRequest('/recipes')).rejects.toMatchObject({ status: 403 });
+
+    expect(warning).toHaveBeenCalledTimes(1);
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('en 403 delega en el handler inyectado y no usa el aviso estático', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ error: 'forbidden', message: 'permiso denegado' }, 403),
+    );
+    const warning = vi.spyOn(message, 'warning').mockImplementation((() => {}) as never);
+    const forbidden = vi.fn();
+    const unauthorized = vi.fn();
+    setForbiddenHandler(forbidden);
+    setUnauthorizedHandler(unauthorized);
+
+    await expect(apiRequest('/recipes')).rejects.toMatchObject({ status: 403 });
+
+    expect(forbidden).toHaveBeenCalledTimes(1);
+    expect(warning).not.toHaveBeenCalled();
+    expect(unauthorized).not.toHaveBeenCalled();
+  });
+
+  it('obtiene /auth/me desde la raíz, no bajo /api', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(jsonResponse({ authenticated: true, name: 'Ana' }));
+
+    const me = await fetchAuthMe();
+
+    expect(me).toEqual({ authenticated: true, name: 'Ana' });
+    expect(fetchMock).toHaveBeenCalledWith('/auth/me', expect.objectContaining({ method: 'GET' }));
+  });
+
+  it('invoca POST /auth/logout', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+    await expect(logoutAuth()).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/auth/logout',
+      expect.objectContaining({ method: 'POST' }),
     );
   });
 });

@@ -47,6 +47,10 @@ const DOCS_PATH: &str = "/api/docs";
         agent::weekly_plan,
         agent::add_shopping_items,
         agent::delete_completed,
+        crate::auth::routes::login,
+        crate::auth::routes::callback,
+        crate::auth::routes::me,
+        crate::auth::routes::logout,
     ),
     components(schemas(
         crate::domain::ingredient::IngredientInput,
@@ -73,6 +77,7 @@ const DOCS_PATH: &str = "/api/docs";
         crate::models::agent::WeeklyPlanResponse,
         crate::models::agent::AgentShoppingItemsInput,
         crate::models::agent::RemovedResponse,
+        crate::auth::MeResponse,
     ))
 )]
 pub struct ApiDoc;
