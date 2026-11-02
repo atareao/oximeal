@@ -24,6 +24,7 @@ OxiMeal es un gestor self-hosted de menús semanales, recetas y listas de la com
 | ADR-7 | SQLite con `journal_mode=WAL`, `foreign_keys=on`, `busy_timeout` | Robustez en self-hosted con lecturas concurrentes. |
 | ADR-8 | `rust-embed` diferido a Fase 2 | Fase 1 expone API pura; el empaquetado monolítico necesita el frontend. |
 | ADR-9 | **Agent API** en `/api/agent` (5 endpoints) como contrato para Valet | Superficie estable y tipada para el orquestador; MCP sería un adapter opcional futuro sobre la misma API. |
+| ADR-10 | Frontend **React 19 + Antd v6** con Vite/TS y datos vía TanStack Query; empaquetado en el binario con `rust-embed` (feature `embed-ui`) | Mobile-first y binario único; sin SSR (no se necesita). |
 
 ## 3. Estructura del repositorio
 
@@ -114,7 +115,7 @@ oximeal/
 ## 6. Fases 2–4 (alto nivel, planificadas)
 
 - **Fase 1.5 — Agent API** (cerrada junto con la Fase 1 en esta ronda).
-- **Fase 2 — Frontend:** React 19 + Antd v6; layout responsive (Sider desktop / bottom-nav mobile); calendario semanal; lista de la compra mobile-first por pasillos (objetivos ≥48px, strike-through + reordenado + haptics); `rust-embed` para binario único.
+- **Fase 2 — Frontend:** React 19 + Antd v6 (Vite/TS) en `frontend/`; shell responsive (Sider en desktop / bottom-nav en móvil); menú semanal lunes–domingo; modo compra mobile-first por pasillos (objetivos ≥48px, strike-through + reordenado + haptics); servido con `rust-embed` (feature `embed-ui`) y fallback SPA; la pestaña Asistente enlaza/embebe Valet.
 - **Fase 3 — Integración con Valet (en el repo Valet, NO en OxiMeal):** cliente `src/services/oximeal.rs` + tools `src/tools/oximeal.rs` (con permisos) que consumen la Agent API. **No** se construye orquestador/MCP/chat en OxiMeal (Valet descartó MCP; usa integración nativa por servicio). La pestaña 🤖 del PWA enlaza/embebe el chat de Valet.
 - **Fase 4 — PWA/Offline:** `manifest.json` + iconos adaptativos; Service Worker (Stale-While-Revalidate para activos, Network-First con fallback IndexedDB para la lista); pruebas táctiles y de rendimiento.
 
@@ -142,6 +143,15 @@ oximeal/
 - [x] `/api/health` responde 200; Swagger accesible en `/api/docs`.
 - [x] Queries sqlx parametrizadas en runtime (sin dependencia de .sqlx).
 - [x] Agent API `/api/agent` implementada y cubierta por tests de integración.
+
+### Fase 2
+
+- [ ] `frontend/` compila sin errores: `npx tsc --noEmit` + `npm run build` (vite).
+- [ ] `npx vitest run` en verde.
+- [ ] `eslint` limpio.
+- [ ] Shell responsive verificado (Sider desktop / bottom-nav móvil).
+- [ ] Fallback SPA correcto (`/api/*` no cae al fallback).
+- [ ] `cargo test` sigue en verde con `embed-ui` on y off.
 
 ## 10. Riesgos y mitigaciones
 
