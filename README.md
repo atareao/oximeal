@@ -1,5 +1,8 @@
 # OxiMeal
 
+[![CI](https://github.com/atareao/oximeal/actions/workflows/ci.yml/badge.svg)](https://github.com/atareao/oximeal/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/atareao/oximeal)](https://github.com/atareao/oximeal/releases)
+
 Gestor **self-hosted** de menús semanales, recetas y listas de la compra:
 mobile-first, offline-capable y pensado para desplegarse como **binario único**
 (Axum + SQLite).
