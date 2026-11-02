@@ -476,6 +476,10 @@ Cerrar los tres hallazgos de la Fase 2 del frontend sin cambiar el comportamient
 
 **DoD:** spec y docstring coherentes; tests en verde; change archivado; issue #10 cerrada.
 
+- [x] Spec `shopping-mode` (requisito y Purpose) alineada con la Vibration API (`navigator.vibrate`); docstring de `useHaptics` documenta la decisión y el no-op en iOS Safari.
+- [x] Tests del patrón por defecto (10 ms) y de patrón en array; `pnpm test` (116), `pnpm typecheck` y `pnpm lint` (0 problemas) en verde.
+- [x] `openspec validate --all --strict` en verde (18/18 con @fission-ai/openspec@1.16.0); change `2026-11-02-haptics-vibration-api` archivado.
+
 ### 17.5 Orden de ejecución y ramas
 
 1. `feature/a11y-lint-prettier` → PR a `development`.

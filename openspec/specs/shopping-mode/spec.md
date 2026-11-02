@@ -1,7 +1,7 @@
 # shopping-mode Specification
 
 ## Purpose
-Define el modo compra en el supermercado: agrupa los ítems por pasillo con encabezados que incluyen emoji, permite marcarlos como comprados con tachado, opacidad y reordenación al final de su categoría, y emite feedback táctil con Web Haptics cuando está disponible. Además ofrece un input de alta rápida de ítems y la acción "Limpiar comprados" mediante `DELETE /api/shopping-list/completed`.
+Define el modo compra en el supermercado: agrupa los ítems por pasillo con encabezados que incluyen emoji, permite marcarlos como comprados con tachado, opacidad y reordenación al final de su categoría, y emite feedback táctil mediante la Vibration API (`navigator.vibrate`) cuando está disponible (no-op en navegadores sin soporte, p. ej. iOS Safari). Además ofrece un input de alta rápida de ítems y la acción "Limpiar comprados" mediante `DELETE /api/shopping-list/completed`.
 
 ## Requirements
 
@@ -15,19 +15,24 @@ La vista de la compra SHALL agrupar los ítems por pasillo, mostrando un encabez
 - AND cada encabezado incluye el emoji correspondiente
 
 ### Requirement: Marcar como comprado
-Al tocar un ítem, la aplicación SHALL marcarlo como comprado aplicando tachado y opacidad del 40%, SHALL moverlo al final de su categoría y SHALL emitir una vibración mediante Web Haptics cuando esté disponible.
+Al tocar un ítem, la aplicación SHALL marcarlo como comprado aplicando tachado y opacidad del 40%, SHALL moverlo al final de su categoría y SHALL emitir feedback táctil mediante la Vibration API (`navigator.vibrate`) cuando esté disponible. En navegadores sin soporte (p. ej. iOS Safari) la llamada SHALL ser un no-op.
 
 #### Scenario: Marcar un ítem
 - GIVEN un ítem pendiente dentro de una categoría
 - WHEN el usuario lo toca
 - THEN el ítem se muestra tachado con opacidad del 40%
 - AND se mueve al final de su categoría
-- AND se emite una vibración si Web Haptics está disponible
+- AND se emite una vibración si `navigator.vibrate` está disponible
 
 #### Scenario: Desmarcar un ítem
 - GIVEN un ítem marcado como comprado
 - WHEN el usuario lo vuelve a tocar
 - THEN el ítem recupera su estilo normal y su posición pendiente
+
+#### Scenario: Navegador sin Vibration API
+- GIVEN un navegador sin `navigator.vibrate` (p. ej. iOS Safari)
+- WHEN el usuario marca un ítem
+- THEN la aplicación no lanza ningún error y el ítem se marca igualmente
 
 ### Requirement: Alta rápida y limpieza
 La vista SHALL ofrecer un input superior para añadir ítems manualmente y una acción "Limpiar comprados" que invoca `DELETE /api/shopping-list/completed`.
