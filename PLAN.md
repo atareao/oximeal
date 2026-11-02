@@ -328,4 +328,4 @@ Capability nueva `persistence` en OpenSpec. Estado: implementado, en PR a `devel
 - [x] `cargo test` verde (454 tests con `embed-ui`); `clippy --all-targets --all-features -- -D warnings` limpio; `fmt --check` limpio.
 - [x] `just ci` exit 0 y `just ci-ui` exit 0.
 - [x] `openspec validate --all --strict` → 17/17.
-- [ ] Cerrar las issues #2 y #4 tras el merge del PR a `development`.
+- [x] Issues #2 y #4 cerradas (PR #19 fusionado en `development`); change `sqlite-hardening` archivado.

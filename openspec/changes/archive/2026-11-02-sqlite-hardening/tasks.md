@@ -20,4 +20,4 @@
 ## 4. Cierre
 - [x] 4.1 `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`, `cargo test -p oximeal-backend` y `--features embed-ui`
 - [x] 4.2 `openspec validate sqlite-hardening --strict` y `openspec validate --all --strict`
-- [ ] 4.3 Actualizar `PLAN.md` y cerrar las issues #2 y #4 (tras merge)
+- [x] 4.3 Actualizar `PLAN.md` y cerrar las issues #2 y #4 (tras merge)
