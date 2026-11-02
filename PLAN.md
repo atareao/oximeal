@@ -667,13 +667,15 @@ registrado en §10.
 - **Medición de RAM:** receta `just` que arranca `cargo build --release -p
   oximeal-backend --features embed-ui`, lanza el binario con una base temporal y
   mide RSS **pico y estable** (varias muestras), dejando el número documentado.
-- **Rendimiento web:** auditoría Lighthouse sobre el binario con UI embebida
-  (FCP/LCP, peso de transferencia, TTI) y presupuestos explícitos; comprobación
-  táctil de objetivos ≥48px y de gestos, con y sin conexión.
+- **Rendimiento web:** auditoría por **CDP de Chrome headless, sin
+  dependencias** (FCP y transferencia del grafo inicial declarado; no se miden
+  LCP ni TTI) con presupuestos explícitos; comprobación táctil de objetivos
+  ≥48px, trazada en `docs/performance.md` junto con los escenarios de
+  interacción con/sin conexión del smoke E2E de Fase 5.
 - **Entregable:** `docs/performance.md` con metodología, presupuestos y
   resultados, y la receta `just` reproducible.
 - **Specs:** capacidad nueva `performance` (ADDED *Presupuesto de memoria*,
-  *Presupuesto de rendimiento web*, *Objetivos táctiles verificados*).
+  *Presupuesto de rendimiento web*, *Verificación táctil*).
 
 ### 19.6 Orden de ejecución y ramas
 
@@ -697,5 +699,5 @@ registrado en §10.
 - [x] UI: página de recetas (lista, búsqueda, detalle, alta, edición, borrado) accesible desde la navegación, con tests de componente.
 - [x] Import: `POST /api/recipes/import` con guardas SSRF y parseo Schema.org, con tests (URL interna, HTML sin JSON-LD, fallo de red, idempotencia).
 - [x] Rendimiento: RSS del binario `--release --features embed-ui` medido y documentado; presupuestos web y táctiles verificados en `docs/performance.md`.
-- [ ] `just ci`, `just ci-ui` y `openspec validate --all --strict` en verde.
-- [ ] Sin regresiones en el smoke E2E (37/37 + casos nuevos del recetario).
+- [x] `just ci`, `just ci-ui` y `openspec validate --all --strict` en verde (verificado: los tres en verde).
+- [x] Sin regresiones en el smoke E2E (37/37 + casos nuevos del recetario) — verificado: smoke de Fase 5 37/37 en esta rama; los smokes del recetario (23/23) e importación (18/18) se verificaron en sus PRs y este change no toca código de producto.
