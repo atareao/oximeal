@@ -1,0 +1,54 @@
+.shopping-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: transparent;
+  text-align: left;
+  font-size: 16px;
+  color: #1a202c;
+  cursor: pointer;
+  transition: background-color 0.15s ease, opacity 0.15s ease;
+}
+
+.shopping-row:hover {
+  background: #f7fafc;
+}
+
+.shopping-row:focus-within {
+  outline: 2px solid #2f855a;
+  outline-offset: 1px;
+}
+
+.shopping-row--checked {
+  opacity: 0.4;
+}
+
+.shopping-row--checked .shopping-row__name {
+  text-decoration: line-through;
+}
+
+.shopping-row__check {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  accent-color: #2f855a;
+  cursor: pointer;
+}
+
+.shopping-row__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.shopping-row__amount {
+  flex: 0 0 auto;
+  font-size: 14px;
+  color: #718096;
+  white-space: nowrap;
+}
