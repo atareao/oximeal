@@ -22,4 +22,4 @@
 - [x] 4.2 GREEN/REFACTOR: `serve` recibe `HeaderMap`; decisión documentada en `design.md`
 - [x] 4.3 `cargo fmt`, `cargo clippy --all-targets --all-features -- -D warnings`, `cargo test -p oximeal-backend` (con y sin `embed-ui`)
 - [x] 4.4 `openspec validate static-serving-hardening --strict` y `openspec validate --all --strict`
-- [ ] 4.5 Actualizar `PLAN.md` y cerrar las issues #8 y #9 (tras merge)
+- [x] 4.5 Actualizar `PLAN.md` y cerrar las issues #8 y #9 (tras merge)
