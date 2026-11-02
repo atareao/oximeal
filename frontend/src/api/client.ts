@@ -1,4 +1,3 @@
-import { message } from 'antd';
 import type {
   ApiErrorBody,
   AuthMeResponse,
@@ -71,7 +70,8 @@ type ForbiddenHandler = () => void;
  * Lo registra un componente montado **dentro** de `<AntdApp>` (p. ej.
  * `ForbiddenNotifier`) que usa `App.useApp().message`, de forma que el aviso
  * comparta el contexto de tema/configuración de la aplicación. Si no hay
- * handler registrado se usa el `message` estático de antd como fallback.
+ * handler registrado, el fallback carga antd de forma **dinámica**
+ * (`import('antd')`) para no arrastrarlo al grafo estático del arranque.
  */
 let forbiddenHandler: ForbiddenHandler | null = null;
 
@@ -160,7 +160,12 @@ async function performRequest<T>(
       if (forbiddenHandler) {
         forbiddenHandler();
       } else {
-        message.warning('Permisos insuficientes');
+        // Carga diferida: mantiene antd fuera del grafo estático del entry.
+        void import('antd')
+          .then(({ message }) => message.warning('Permisos insuficientes'))
+          .catch(() => {
+            // antd no disponible (p. ej. chunk obsoleto): el 403 ya se lanzó como ApiError.
+          });
       }
     }
 
