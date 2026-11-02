@@ -543,6 +543,13 @@ Convertir OxiMeal en una PWA instalable y offline-first: (a) shell instalable (m
 
 **DoD:** datos disponibles sin conexión; modo degradado visible; logout limpia la caché; change archivado; issue #30 cerrada.
 
+- [x] Issue #30. `frontend/src/offline/idb.ts`: wrapper tipado de IndexedDB (DB `oximeal`, store `queryCache`) con interfaz `OfflineStore` inyectable, `replaceQueries` transaccional, `onversionchange`/`onabort` y degradación silenciosa sin `indexedDB`.
+- [x] `frontend/src/offline/queryPersist.ts`: hidratación con `hydrate`/`dehydrate` de react-query, persistencia con debounce de 250 ms + `visibilitychange`/`pagehide`, lista blanca (`shopping-list`, `meal-plan`, `recipes`), poda de claves obsoletas y flag `hasCachedData` sincronizado.
+- [x] `frontend/src/offline/connectivity.ts`: `isOnline()` y `useOnline()` con `useSyncExternalStore`.
+- [x] Modo degradado: `SessionStatus` gana `degraded`; 401 sin conexión con caché no redirige; 401 con conexión limpia `QueryClient` e IndexedDB antes de ir al login; la reconexión revalida la sesión.
+- [x] `OfflineBanner` en `AppLayout`; `main.tsx` hidrata antes del primer render con timeout de 2 s para no bloquear el arranque.
+- [x] Tests: 165 en frontend; `just ci-ui` (300,0 kB / 500 kB) y `openspec validate --all --strict` (21/21) en verde.
+
 ### 18.5 Change C — `offline-write-queue` (issue #31)
 
 **Cambios backend:**

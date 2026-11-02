@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   ApiError,
   fetchAuthMe,
@@ -8,6 +9,8 @@ import {
   setCsrfToken,
   setUnauthorizedHandler,
 } from '../api/client';
+import { isOnline, useOnline } from '../offline/connectivity';
+import { clearPersistedQueries, hasCachedData } from '../offline/queryPersist';
 import { SessionProvider } from './SessionProvider';
 import { useSession } from './session';
 
@@ -22,10 +25,24 @@ vi.mock('../api/client', async (importOriginal) => {
   };
 });
 
+vi.mock('../offline/connectivity', () => ({
+  isOnline: vi.fn(() => true),
+  useOnline: vi.fn(() => true),
+}));
+
+vi.mock('../offline/queryPersist', () => ({
+  hasCachedData: vi.fn(() => false),
+  clearPersistedQueries: vi.fn(async () => undefined),
+}));
+
 const mockedFetchAuthMe = vi.mocked(fetchAuthMe);
 const mockedLogoutAuth = vi.mocked(logoutAuth);
 const mockedSetCsrfToken = vi.mocked(setCsrfToken);
 const mockedSetUnauthorizedHandler = vi.mocked(setUnauthorizedHandler);
+const mockedIsOnline = vi.mocked(isOnline);
+const mockedUseOnline = vi.mocked(useOnline);
+const mockedHasCachedData = vi.mocked(hasCachedData);
+const mockedClearPersistedQueries = vi.mocked(clearPersistedQueries);
 
 function Probe() {
   const session = useSession();
@@ -40,12 +57,26 @@ function Probe() {
   );
 }
 
-function renderProvider() {
-  return render(
-    <SessionProvider>
-      <Probe />
-    </SessionProvider>,
+let queryClient: QueryClient;
+
+function providerTree() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <SessionProvider>
+        <Probe />
+      </SessionProvider>
+    </QueryClientProvider>
   );
+}
+
+function renderProvider() {
+  queryClient = new QueryClient();
+  const result = render(providerTree());
+  return {
+    ...result,
+    queryClient,
+    rerenderProvider: () => result.rerender(providerTree()),
+  };
 }
 
 describe('SessionProvider', () => {
@@ -54,7 +85,16 @@ describe('SessionProvider', () => {
     mockedLogoutAuth.mockReset();
     mockedSetCsrfToken.mockReset();
     mockedSetUnauthorizedHandler.mockReset();
+    mockedIsOnline.mockReset();
+    mockedUseOnline.mockReset();
+    mockedHasCachedData.mockReset();
+    mockedClearPersistedQueries.mockReset();
+
     mockedLogoutAuth.mockResolvedValue(undefined);
+    mockedIsOnline.mockReturnValue(true);
+    mockedUseOnline.mockReturnValue(true);
+    mockedHasCachedData.mockReturnValue(false);
+    mockedClearPersistedQueries.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -110,6 +150,74 @@ describe('SessionProvider', () => {
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('anonymous'));
   });
 
+  it('con 401 sin conexión y datos cacheados pasa a degradado conservando la identidad', async () => {
+    mockedFetchAuthMe.mockResolvedValue({
+      authenticated: true,
+      name: 'Ana',
+      permissions: ['read:recipes'],
+    });
+    renderProvider();
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('authenticated'));
+
+    mockedIsOnline.mockReturnValue(false);
+    mockedHasCachedData.mockReturnValue(true);
+
+    const handler = mockedSetUnauthorizedHandler.mock.calls.at(-1)?.[0];
+    act(() => handler?.());
+
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('degraded'));
+    expect(screen.getByTestId('name')).toHaveTextContent('Ana');
+  });
+
+  it('con 401 y conexión pasa a anónimo aunque haya datos cacheados', async () => {
+    mockedFetchAuthMe.mockResolvedValue({ authenticated: true, name: 'Ana' });
+    const { queryClient: client } = renderProvider();
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('authenticated'));
+
+    client.setQueryData(['shopping-list'], [{ id: '1' }]);
+    mockedIsOnline.mockReturnValue(true);
+    mockedHasCachedData.mockReturnValue(true);
+
+    const handler = mockedSetUnauthorizedHandler.mock.calls.at(-1)?.[0];
+    act(() => handler?.());
+
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('anonymous'));
+    expect(mockedClearPersistedQueries).toHaveBeenCalledTimes(1);
+    expect(client.getQueryCache().getAll()).toHaveLength(0);
+  });
+
+  it('un fallo de red al arrancar con datos cacheados pasa a degradado', async () => {
+    mockedFetchAuthMe.mockRejectedValue(new ApiError(0, 'network_error', 'sin red'));
+    mockedHasCachedData.mockReturnValue(true);
+    renderProvider();
+
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('degraded'));
+  });
+
+  it('un fallo de red al arrancar sin datos cacheados queda anónimo', async () => {
+    mockedFetchAuthMe.mockRejectedValue(new ApiError(0, 'network_error', 'sin red'));
+    mockedHasCachedData.mockReturnValue(false);
+    renderProvider();
+
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('anonymous'));
+  });
+
+  it('al recuperar la conexión desde degradado revalida la sesión', async () => {
+    mockedFetchAuthMe.mockRejectedValueOnce(new ApiError(0, 'network_error', 'sin red'));
+    mockedHasCachedData.mockReturnValue(true);
+    mockedUseOnline.mockReturnValue(false);
+    const { rerenderProvider } = renderProvider();
+
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('degraded'));
+
+    mockedUseOnline.mockReturnValue(true);
+    mockedFetchAuthMe.mockResolvedValue({ authenticated: true, name: 'Ana' });
+    rerenderProvider();
+
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('authenticated'));
+    expect(screen.getByTestId('name')).toHaveTextContent('Ana');
+  });
+
   it('logout llama a POST /auth/logout, limpia el token y queda anónimo', async () => {
     mockedFetchAuthMe.mockResolvedValue({ authenticated: true, name: 'Ana', csrf_token: 'csrf-1' });
     const user = userEvent.setup();
@@ -121,6 +229,21 @@ describe('SessionProvider', () => {
     expect(mockedLogoutAuth).toHaveBeenCalledTimes(1);
     expect(mockedSetCsrfToken).toHaveBeenCalledWith(null);
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('anonymous'));
+  });
+
+  it('logout limpia la caché de consultas y la persistida', async () => {
+    mockedFetchAuthMe.mockResolvedValue({ authenticated: true, name: 'Ana' });
+    const user = userEvent.setup();
+    const { queryClient: client } = renderProvider();
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('authenticated'));
+
+    client.setQueryData(['shopping-list'], [{ id: '1' }]);
+    expect(client.getQueryCache().getAll()).toHaveLength(1);
+
+    await user.click(screen.getByRole('button', { name: 'salir' }));
+
+    expect(mockedClearPersistedQueries).toHaveBeenCalledTimes(1);
+    expect(client.getQueryCache().getAll()).toHaveLength(0);
   });
 
   it('queda anónimo aunque el logout falle (500/red): la rama finally limpia la sesión', async () => {

@@ -13,3 +13,5 @@ Sin conexión o con la sesión OIDC caducada, la aplicación vacía las vistas o
 - Capabilities: nueva `offline-data`; delta en `auth-ui`.
 - Ficheros: `frontend/src/offline/**`, `frontend/src/auth/SessionProvider.tsx`, `frontend/src/auth/AuthGuard.tsx`, `frontend/src/components/OfflineBanner.tsx`, `frontend/src/main.tsx`, `PLAN.md`, `CHANGELOG.md`.
 - Sin dependencias nuevas.
+
+Cierra el issue #30.
