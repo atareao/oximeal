@@ -117,7 +117,8 @@ pub async fn consolidate(
     start_date: &str,
     end_date: &str,
 ) -> AppResult<Vec<ShoppingListGroup>> {
-    let mut tx = pool.begin().await?;
+    // Escritura read-then-write: BEGIN IMMEDIATE evita SQLITE_BUSY_SNAPSHOT en WAL.
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
 
     let drafts = collect_drafts(&mut tx, start_date, end_date).await?;
     replace_consolidated(&mut tx, &drafts).await?;
