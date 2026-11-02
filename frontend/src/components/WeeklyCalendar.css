@@ -1,0 +1,16 @@
+.weekly-calendar {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.weekly-calendar--desktop {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+@media (min-width: 768px) {
+  .weekly-calendar {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+}

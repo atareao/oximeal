@@ -1,6 +1,8 @@
-[package]
-name = "oximeal"
-version = "0.1.0"
-edition = "2024"
+[workspace]
+resolver = "3"
+members = ["backend"]
 
-[dependencies]
+[workspace.package]
+version = "0.2.0"
+edition = "2024"
+license = "MIT"

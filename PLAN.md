@@ -16,13 +16,15 @@ OxiMeal es un gestor self-hosted de menús semanales, recetas y listas de la com
 | # | Decisión | Justificación |
 |---|----------|---------------|
 | ADR-1 | Cargo **workspace** con `members = ["backend"]` y carpeta `frontend/` reservada | Permite añadir crates (shared, xtask) sin reestructurar; separa backend (F1) de UI (F2). |
-| ADR-2 | **sqlx** (runtime-tokio, sqlite, macros, migrate) con migraciones versionadas | Encaja con Axum/Tokio; queries verificadas en compile-time vía `.sqlx/` offline. |
+| ADR-2 | **sqlx** (runtime-tokio, sqlite, macros, migrate) con migraciones versionadas | Encaja con Axum/Tokio; queries parametrizadas en runtime (sin macros query! ni .sqlx). |
 | ADR-3 | FTS5 **external content** + tokenizer `trigram` + triggers ai/ad/au | Búsqueda difusa por substring en nombre/instrucciones; el índice se mantiene por triggers. |
 | ADR-4 | **Motor de consolidación determinista** en `src/domain/` | Normaliza unidades y suma cantidades; 100% testeable con TDD. |
-| ADR-5 | **OpenRouter** único proveedor LLM (F3), API key por variable de entorno | Simplicidad operativa; el chat degrada si falta la key sin romper el build. |
+| ADR-5 | **OxiMeal headless**: sin orquestador/LLM propio; el asistente es **Valet** vía integración nativa HTTP | Evita duplicar el asistente de Valet, que descartó MCP y usa integración nativa por servicio (services+tools). |
 | ADR-6 | **OpenAPI v3 (utoipa)** + Swagger UI en `/api/docs` desde Fase 1 | La spec lo lista bajo Axum; barato ahora y facilita el consumo desde MCP. |
 | ADR-7 | SQLite con `journal_mode=WAL`, `foreign_keys=on`, `busy_timeout` | Robustez en self-hosted con lecturas concurrentes. |
 | ADR-8 | `rust-embed` diferido a Fase 2 | Fase 1 expone API pura; el empaquetado monolítico necesita el frontend. |
+| ADR-9 | **Agent API** en `/api/agent` (5 endpoints) como contrato para Valet | Superficie estable y tipada para el orquestador; MCP sería un adapter opcional futuro sobre la misma API. |
+| ADR-10 | Frontend **React 19 + Antd v6** con Vite/TS y datos vía TanStack Query; empaquetado en el binario con `rust-embed` (feature `embed-ui`) | Mobile-first y binario único; sin SSR (no se necesita). |
 
 ## 3. Estructura del repositorio
 
@@ -30,13 +32,12 @@ OxiMeal es un gestor self-hosted de menús semanales, recetas y listas de la com
 oximeal/
 ├── Cargo.toml                 # [workspace] members = ["backend"]
 ├── rust-toolchain.toml        # stable (>=1.97), edition 2024
-├── justfile                   # dev / test / lint / fmt / migrate / sqlx-prepare
+├── justfile                   # dev / test / lint / fmt / migrate / check
 ├── .env.example               # DATABASE_URL, BIND_ADDR, RUST_LOG, OPENROUTER_*
 ├── .gitignore                 # /target, /data, node_modules, dist, .env
 ├── README.md
 ├── PLAN.md
 ├── GIT_FLOW.md
-├── .sqlx/                     # cache offline de queries (versionado)
 ├── openspec/
 │   ├── project.md
 │   ├── specs/                 # capacidades consolidadas (tras archivar)
@@ -107,14 +108,15 @@ oximeal/
     `POST /api/shopping-list/consolidate` (regenera desde el plan), `DELETE /api/shopping-list/completed`.
 - **T11 · Salud y documentación**
   - `GET /api/health`; OpenAPI en `/api/openapi.json` + Swagger UI en `/api/docs`.
-- **T12 · Tooling y offline**
-  - `justfile` con recetas `dev/test/lint/fmt/migrate/sqlx-prepare/check`.
-  - `cargo sqlx prepare` y commit de `.sqlx/`.
+- **T12 · Tooling**
+  - `justfile` con recetas `dev/test/lint/fmt/migrate/check`.
+- **T13 · Agent API (cierre F1)** — `/api/agent`: `GET recent-recipes?days=`, `GET search-recipes?query=&category=`, `POST weekly-plan` (bulk transaccional + reconstruye la compra), `POST shopping-items` (inserta/suma), `DELETE shopping/completed`.
 
 ## 6. Fases 2–4 (alto nivel, planificadas)
 
-- **Fase 2 — Frontend:** React 19 + Antd v6; layout responsive (Sider desktop / bottom-nav mobile); calendario semanal; lista de la compra mobile-first por pasillos (objetivos ≥48px, strike-through + reordenado + haptics); `rust-embed` para binario único.
-- **Fase 3 — MCP & Chat:** servidor MCP interno con tools `get_recent_recipes`, `search_recipes`, `save_weekly_plan`, `add_to_shopping_list`, `clear_completed_shopping`; endpoint SSE `POST /api/chat/stream`; panel chat React con OpenRouter.
+- **Fase 1.5 — Agent API** (cerrada junto con la Fase 1 en esta ronda).
+- **Fase 2 — Frontend (COMPLETADA):** React 19 + Antd v6 (Vite/TS) en `frontend/`; shell responsive (Sider en desktop / bottom-nav en móvil); menú semanal lunes–domingo; modo compra mobile-first por pasillos (objetivos ≥48px, strike-through + reordenado + haptics); servido con `rust-embed` (feature `embed-ui`) y fallback SPA; la pestaña Asistente enlaza/embebe Valet. La deuda diferida (ETag/304, `charset=utf-8`, Range/nosniff/CSP, `eslint-plugin-jsx-a11y`, Prettier, CI remoto) quedó registrada como issues.
+- **Fase 3 — Integración con Valet (en el repo Valet, NO en OxiMeal):** cliente `src/services/oximeal.rs` + tools `src/tools/oximeal.rs` (con permisos) que consumen la Agent API. **No** se construye orquestador/MCP/chat en OxiMeal (Valet descartó MCP; usa integración nativa por servicio). La pestaña 🤖 del PWA enlaza/embebe el chat de Valet.
 - **Fase 4 — PWA/Offline:** `manifest.json` + iconos adaptativos; Service Worker (Stale-While-Revalidate para activos, Network-First con fallback IndexedDB para la lista); pruebas táctiles y de rendimiento.
 
 ## 7. Estrategia de testing
@@ -122,7 +124,8 @@ oximeal/
 - **Unit (dominio):** `#[cfg(test)]` en `domain/*` — canonicalización de unidades, normalización de nombres, categorización, consolidación (sumas, no-aditivos, conflictos de unidad).
 - **Integración (API):** `backend/tests/*.rs` levantan el `Router` de `lib.rs` con SQLite temporal migrada (`tempfile`) y usan `oneshot`/`axum-test`.
 - **Contrato FTS:** caso que inserta recetas y verifica coincidencia por substring (trigram) y fallback LIKE.
-- **Puertas obligatorias:** `cargo test`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check`, `openspec validate phase-1-core-backend --strict`.
+- **Frontend:** `vitest` + Testing Library (`@testing-library/react` / `user-event`); se mockea `src/api/client` con `vi.mock` y se ejercitan hooks reales envueltos en `QueryClientProvider`.
+- **Puertas obligatorias:** `cargo test`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check`, `just ci`, `just ci-ui`, `openspec validate --all --strict`.
 
 ## 8. Git flow (resumen; detalle en GIT_FLOW.md)
 
@@ -132,14 +135,27 @@ oximeal/
 
 ## 9. Criterios de aceptación (Definition of Done, Fase 1)
 
-- [ ] Workspace compila: `cargo build` OK.
-- [ ] Migraciones aplican sobre base nueva; FTS5+trigram verificados en runtime.
-- [ ] Motor de consolidación con cobertura de tests (unidades, acentos, no-aditivos, conflictos).
-- [ ] Los 11 endpoints de §6 implementados y cubiertos por tests de integración.
-- [ ] `cargo test` en verde; `clippy -D warnings` limpio; `fmt --check` limpio.
-- [ ] `openspec validate phase-1-core-backend --strict` en verde.
-- [ ] `/api/health` responde 200; Swagger accesible en `/api/docs`.
-- [ ] `.sqlx/` versionado (build offline reproducible).
+- [x] Workspace compila: `cargo build` OK.
+- [x] Migraciones aplican sobre base nueva; FTS5+trigram verificados en runtime.
+- [x] Motor de consolidación con cobertura de tests (unidades, acentos, no-aditivos, conflictos).
+- [x] Los 12 endpoints REST de §6 + los 5 de la Agent API implementados y cubiertos por tests de integración.
+- [x] `cargo test` en verde; `clippy -D warnings` limpio; `fmt --check` limpio.
+- [x] `openspec validate phase-1-core-backend --strict` en verde.
+- [x] `/api/health` responde 200; Swagger accesible en `/api/docs`.
+- [x] Queries sqlx parametrizadas en runtime (sin dependencia de .sqlx).
+- [x] Agent API `/api/agent` implementada y cubierta por tests de integración.
+
+### Fase 2
+
+- [x] `frontend/` compila sin errores: `pnpm typecheck` + `pnpm build` (vite).
+- [x] `pnpm test` en verde (73 tests con Vitest + Testing Library).
+- [x] `eslint` limpio.
+- [x] Shell responsive verificado (Sider desktop / bottom-nav móvil).
+- [x] Fallback SPA correcto (`/api/*` no cae al fallback).
+- [x] `cargo test` sigue en verde con `embed-ui` on y off.
+- [x] Code-splitting por rutas activo (chunks de `MenuPage` / `ShoppingPage`).
+- [x] `just ci` y `just ci-ui` en verde.
+- [x] Auditoría `react-reviewer` + `rust-reviewer` aplicada (0 bloqueantes).
 
 ## 10. Riesgos y mitigaciones
 
@@ -149,12 +165,12 @@ oximeal/
 | Query trigram insensible a acentos limitada | `normalize.rs` aplica folding de acentos antes de indexar/buscar. |
 | Edición 2024 requiere toolchain reciente | `rust-toolchain.toml` fija stable ≥1.97 (presente en el entorno). |
 | Ambigüedad Schema.org en import | Fase 1 acepta solo JSON validado; el parser Schema.org se completa en F2/F3. |
-| Consumo de RAM <20 MB (objetivo global) | Fase 1 no añade runtime LLM; se mide con el binario monolítico en F2. |
+| Consumo de RAM <20 MB (objetivo global) | Fase 1 no añade runtime LLM; la medición real se hará sobre el binario monolítico (feature `embed-ui`), **pendiente** de ejecutar; no se fijan cifras aún. |
 
 ## 11. Trazabilidad con la especificación
 
 - §3 Modelo de datos → T3, T7.
-- §4 Tools MCP → Fase 3 (contratos ya tipados en `models/`).
+- §4 Tools MCP → Agent API HTTP (`/api/agent`), consumida por Valet.
 - §5 UI mobile-first → Fase 2.
 - §6 Endpoints REST → T8–T11.
 - §7 Roadmap → secciones 5 y 6 de este plan.
