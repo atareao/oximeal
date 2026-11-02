@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   clearCompletedShoppingItems,
@@ -16,6 +17,13 @@ import type {
   ShoppingItemPatch,
   ShoppingListGroup,
 } from './types';
+import { isOnline } from '../offline/connectivity';
+import {
+  enqueueCreate,
+  enqueueUpdate,
+  isLocalItemId,
+  isNetworkError,
+} from '../offline/mutationQueue';
 
 export const queryKeys = {
   recipes: {
@@ -25,8 +33,7 @@ export const queryKeys = {
   },
   mealPlan: {
     all: ['meal-plan'] as const,
-    range: (startDate: string, endDate: string) =>
-      ['meal-plan', startDate, endDate] as const,
+    range: (startDate: string, endDate: string) => ['meal-plan', startDate, endDate] as const,
   },
   shoppingList: {
     all: ['shopping-list'] as const,
@@ -60,11 +67,84 @@ export function useShoppingList() {
   return useQuery({
     queryKey: queryKeys.shoppingList.all,
     queryFn: ({ signal }) => fetchShoppingList(signal),
+    // Sin conexión se sirven los datos cacheados sin entrar en estado de error.
+    networkMode: 'offlineFirst',
   });
+}
+
+/** Busca un ítem por id en la lista agrupada. */
+export function findShoppingItem(
+  groups: ShoppingListGroup[] | undefined,
+  id: string,
+): ShoppingItem | undefined {
+  if (!groups) {
+    return undefined;
+  }
+  for (const group of groups) {
+    const found = group.items.find((item) => item.id === id);
+    if (found) {
+      return found;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Inserta un ítem en el grupo de su categoría (o en `Otros`), creando el grupo
+ * si no existe.
+ */
+function optimisticInsert(
+  groups: ShoppingListGroup[] | undefined,
+  localItem: ShoppingItem,
+): ShoppingListGroup[] {
+  const category = localItem.category || 'Otros';
+  const base = groups ?? [];
+  const index = base.findIndex((group) => group.category === category);
+
+  if (index === -1) {
+    return [...base, { category, items: [localItem] }];
+  }
+
+  return base.map((group, groupIndex) =>
+    groupIndex === index ? { ...group, items: [...group.items, localItem] } : group,
+  );
+}
+
+/** Encola un alta y la aplica de forma optimista a la caché. */
+async function queueOfflineCreate(
+  queryClient: ReturnType<typeof useQueryClient>,
+  input: ShoppingItemInput,
+): Promise<ShoppingItem> {
+  const { clientId, localId } = await enqueueCreate(input);
+  const optimistic: ShoppingItem = {
+    id: localId,
+    name: input.name,
+    amount: input.amount,
+    unit: input.unit,
+    category: input.category ?? 'Otros',
+    checked: false,
+    updated_at: new Date().toISOString(),
+    client_id: clientId,
+    pending: true,
+  };
+
+  queryClient.setQueryData<ShoppingListGroup[]>(queryKeys.shoppingList.all, (old) =>
+    optimisticInsert(old, optimistic),
+  );
+
+  return optimistic;
 }
 
 interface ToggleContext {
   previous: ShoppingListGroup[] | undefined;
+  /**
+   * `true` si el cambio no se enviará al servidor en este momento (id
+   * provisional o sin conexión), es decir, se encola. Capturado en `onMutate`
+   * para que el rollback no dependa de un `isOnline()` posterior.
+   */
+  deferred: boolean;
+  /** `true` cuando el cambio llegó a encolarse. */
+  queued: boolean;
 }
 
 function applyItemPatch(
@@ -85,53 +165,124 @@ function applyItemPatch(
  * Alterna el estado `checked` de un ítem con actualización optimista.
  *
  * - `onMutate`: cancela refetches en vuelo, guarda un snapshot y aplica el
- *   cambio en la caché para feedback inmediato.
- * - `onError`: restaura el snapshot (rollback).
+ *   cambio en la caché para feedback inmediato. Si el ítem es local o no hay
+ *   conexión, se marca además como `pending`.
+ * - Sin conexión o con id provisional: el cambio se encola y **no** se llama al
+ *   servidor; no hay rollback porque no hay petición que pueda fallar.
+ * - `onError`: restaura el snapshot (rollback) solo si el cambio se dirigió al
+ *   servidor (`deferred === false`); un cambio encolado nunca se revierte.
  * - `onSuccess`: sustituye el ítem por la versión del servidor, de modo que
  *   `updated_at` proviene del backend y no del reloj del cliente.
- * - `onSettled`: invalida para reconciliar con el servidor.
+ * - `onSettled`: invalida para reconciliar con el servidor (solo online).
  *
  * `scope` serializa las mutaciones de toggle: dos pulsaciones rápidas se
  * ejecutan en orden y no se pisan entre sí.
  */
 export function useToggleShoppingItem() {
   const queryClient = useQueryClient();
+  // Comparte la decisión capturada en `onMutate` con `mutationFn`, que no
+  // recibe el `onMutateResult`. `scope` serializa los toggles, así que solo hay
+  // un contexto vivo a la vez.
+  const contextRef = useRef<ToggleContext | undefined>(undefined);
+
   return useMutation<ShoppingItem, Error, { id: string; patch: ShoppingItemPatch }, ToggleContext>({
     scope: { id: 'shopping-toggle' },
-    mutationFn: ({ id, patch }: { id: string; patch: ShoppingItemPatch }) =>
-      patchShoppingItem(id, patch),
+    networkMode: 'always',
+    mutationFn: async ({ id, patch }: { id: string; patch: ShoppingItemPatch }) => {
+      const context = contextRef.current;
+      const deferred = context?.deferred ?? (isLocalItemId(id) || !isOnline());
+
+      if (deferred) {
+        await enqueueUpdate(id, patch);
+        if (context) {
+          context.queued = true;
+        }
+        const current = findShoppingItem(
+          queryClient.getQueryData<ShoppingListGroup[]>(queryKeys.shoppingList.all),
+          id,
+        );
+        if (current) {
+          return current;
+        }
+        return {
+          id,
+          name: '',
+          amount: 0,
+          unit: '',
+          category: 'Otros',
+          checked: false,
+          updated_at: new Date().toISOString(),
+          pending: true,
+        };
+      }
+      return patchShoppingItem(id, patch);
+    },
     onMutate: async ({ id, patch }) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.shoppingList.all });
-      const previous = queryClient.getQueryData<ShoppingListGroup[]>(
-        queryKeys.shoppingList.all,
-      );
+      const previous = queryClient.getQueryData<ShoppingListGroup[]>(queryKeys.shoppingList.all);
+      const deferred = isLocalItemId(id) || !isOnline();
+      const context: ToggleContext = { previous, deferred, queued: false };
+      contextRef.current = context;
       queryClient.setQueryData<ShoppingListGroup[]>(queryKeys.shoppingList.all, (old) =>
-        applyItemPatch(old, id, patch),
+        applyItemPatch(old, id, deferred ? { ...patch, pending: true } : patch),
       );
-      return { previous };
+      return context;
     },
     onError: (_error, _variables, context) => {
-      if (context?.previous) {
+      // Solo se revierte un cambio que iba al servidor; si se difirió (encoló),
+      // no hubo petición que fallar.
+      if (context?.deferred !== false) {
+        return;
+      }
+      if (context.previous) {
         queryClient.setQueryData(queryKeys.shoppingList.all, context.previous);
       }
     },
-    onSuccess: (updated) => {
+    onSuccess: (updated, _variables, context) => {
+      if (context?.deferred !== false) {
+        return;
+      }
       queryClient.setQueryData<ShoppingListGroup[]>(queryKeys.shoppingList.all, (old) =>
         applyItemPatch(old, updated.id, updated),
       );
     },
-    onSettled: () => {
+    onSettled: (_data, _error, _variables, context) => {
+      if (context?.deferred !== false) {
+        return;
+      }
       void queryClient.invalidateQueries({ queryKey: queryKeys.shoppingList.all });
     },
   });
 }
 
+/**
+ * Alta de un ítem.
+ *
+ * Sin conexión (o si la petición falla por red) el alta se encola y se aplica
+ * de forma optimista con un id provisional, sin propagar el error al
+ * formulario. Con conexión se envía al servidor y se invalida la lista.
+ */
 export function useAddShoppingItem() {
   const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (input: ShoppingItemInput) => createShoppingItem(input),
+  return useMutation<ShoppingItem, Error, ShoppingItemInput>({
+    networkMode: 'always',
+    mutationFn: async (input: ShoppingItemInput) => {
+      if (!isOnline()) {
+        return queueOfflineCreate(queryClient, input);
+      }
+      try {
+        return await createShoppingItem(input);
+      } catch (error) {
+        if (isNetworkError(error)) {
+          return queueOfflineCreate(queryClient, input);
+        }
+        throw error;
+      }
+    },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.shoppingList.all });
+      if (isOnline()) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.shoppingList.all });
+      }
     },
   });
 }
@@ -139,6 +290,7 @@ export function useAddShoppingItem() {
 export function useConsolidateShopping() {
   const queryClient = useQueryClient();
   return useMutation({
+    networkMode: 'offlineFirst',
     mutationFn: () => consolidateShoppingList(),
     onSuccess: (groups: ShoppingListGroup[]) => {
       queryClient.setQueryData(queryKeys.shoppingList.all, groups);
@@ -149,6 +301,7 @@ export function useConsolidateShopping() {
 export function useClearCompleted() {
   const queryClient = useQueryClient();
   return useMutation({
+    networkMode: 'offlineFirst',
     mutationFn: () => clearCompletedShoppingItems(),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.shoppingList.all });

@@ -71,7 +71,9 @@ describe('apiRequest', () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
 
-    await expect(apiRequest('/shopping-list/completed', { method: 'DELETE' })).resolves.toBeUndefined();
+    await expect(
+      apiRequest('/shopping-list/completed', { method: 'DELETE' }),
+    ).resolves.toBeUndefined();
   });
 
   it('resuelve undefined con la sobrecarga apiRequest<void> en un DELETE 204', async () => {
@@ -228,7 +230,7 @@ describe('CSRF y manejo de sesión en el cliente', () => {
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
-  it('en 403 usa el aviso estático de antd cuando no hay handler inyectado', async () => {
+  it('en 403 usa el aviso de antd cargado dinámicamente cuando no hay handler inyectado', async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock.mockResolvedValueOnce(
       jsonResponse({ error: 'forbidden', message: 'permiso denegado' }, 403),
@@ -239,7 +241,7 @@ describe('CSRF y manejo de sesión en el cliente', () => {
 
     await expect(apiRequest('/recipes')).rejects.toMatchObject({ status: 403 });
 
-    expect(warning).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(warning).toHaveBeenCalledTimes(1));
     expect(handler).not.toHaveBeenCalled();
   });
 

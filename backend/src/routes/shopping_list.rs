@@ -50,6 +50,9 @@ pub async fn list_shopping_list(
 }
 
 /// `POST /api/shopping-list` — alta manual de un ítem.
+///
+/// Si el cuerpo trae un `client_id` que ya existe, devuelve `200` con el ítem
+/// existente (alta idempotente); en caso contrario crea el ítem y responde `201`.
 #[utoipa::path(
     post,
     path = "/api/shopping-list",
@@ -57,6 +60,7 @@ pub async fn list_shopping_list(
     request_body = ShoppingItemInput,
     responses(
         (status = 201, description = "Ítem creado", body = ShoppingItem),
+        (status = 200, description = "Ítem existente (alta idempotente)", body = ShoppingItem),
         (status = 400, description = "Datos inválidos"),
     )
 )]
@@ -73,8 +77,12 @@ pub async fn create_item(
         return Err(AppError::Validation("amount debe ser >= 0".into()));
     }
 
-    let item = repo::shopping_list::create_item(&state.pool, &input).await?;
-    Ok((StatusCode::CREATED, Json(item)))
+    let outcome = repo::shopping_list::create_item(&state.pool, &input).await?;
+    let (status, item) = match outcome {
+        repo::shopping_list::CreateOutcome::Created(item) => (StatusCode::CREATED, item),
+        repo::shopping_list::CreateOutcome::Existing(item) => (StatusCode::OK, item),
+    };
+    Ok((status, Json(item)))
 }
 
 /// `PATCH /api/shopping-list/{id}` — alterna `checked` o actualiza `amount`.

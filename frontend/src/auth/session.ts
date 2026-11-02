@@ -7,8 +7,10 @@ import { createContext, useContext } from 'react';
  * - `authenticated`: hay sesión con identidad.
  * - `anonymous`: no hay sesión; hay que ir al login.
  * - `disabled`: el backend no monta `/auth/*` (OIDC desactivado); modo abierto.
+ * - `degraded`: sin conexión y con datos cacheados; se muestran los datos
+ *   guardados en lugar de redirigir al login.
  */
-export type SessionStatus = 'loading' | 'authenticated' | 'anonymous' | 'disabled';
+export type SessionStatus = 'loading' | 'authenticated' | 'anonymous' | 'disabled' | 'degraded';
 
 export interface SessionContextValue {
   status: SessionStatus;

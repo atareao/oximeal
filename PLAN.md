@@ -119,7 +119,7 @@ oximeal/
 - **Fase 2 — Frontend (COMPLETADA):** React 19 + Antd v6 (Vite/TS) en `frontend/`; shell responsive (Sider en desktop / bottom-nav en móvil); menú semanal lunes–domingo; modo compra mobile-first por pasillos (objetivos ≥48px, strike-through + reordenado + haptics); servido con `rust-embed` (feature `embed-ui`) y fallback SPA; la pestaña Asistente enlaza/embebe Valet. La deuda diferida (ETag/304, `charset=utf-8`, Range/nosniff/CSP, `eslint-plugin-jsx-a11y`, Prettier, CI remoto) quedó registrada como issues.
 - **Fase 3 — Integración con Valet (en el repo Valet, NO en OxiMeal):** cliente `src/services/oximeal.rs` + tools `src/tools/oximeal.rs` (con permisos) que consumen la Agent API. **No** se construye orquestador/MCP/chat en OxiMeal (Valet descartó MCP; usa integración nativa por servicio). La pestaña 🤖 del PWA enlaza/embebe el chat de Valet.
 - **Fase 4 — Autenticación OIDC (Pocket ID):** BFF con cliente confidencial, sesión server-side y cookie `httpOnly` (el navegador nunca ve tokens); autorización por **permisos** del modelo *APIs and permissions* (user-delegated para el SPA y **M2M `client_credentials`** para Valet); puerta de entrada por grupos permitidos (*Allowed user groups* del cliente + `OIDC_ALLOWED_GROUPS`), **sin roles** ni administración de instancia; CSRF y guard de rutas en el frontend; `compose` con un IdP de desarrollo. Cierra el issue #5 (API key estático). Dependencia registrada: la Fase 5 deberá tolerar sesión caducada (access token 60 min, refresh 30 días) sirviendo datos cacheados.
-- **Fase 5 — PWA/Offline:** `manifest.json` + iconos adaptativos; Service Worker (Stale-While-Revalidate para activos, Network-First con fallback IndexedDB para la lista); pruebas táctiles y de rendimiento. Debe tolerar la sesión OIDC caducada sirviendo datos cacheados mientras no haya autenticación.
+- **Fase 5 — PWA/Offline (COMPLETADA):** `manifest.json` + iconos adaptativos; Service Worker (Stale-While-Revalidate para activos, Network-First con fallback IndexedDB para la lista); pruebas táctiles y de rendimiento. Debe tolerar la sesión OIDC caducada sirviendo datos cacheados mientras no haya autenticación.
 
 ## 7. Estrategia de testing
 
@@ -296,3 +296,316 @@ Bloque 8 (docs: `.env.example`, README, permisos, migración del API key, depend
 | Consultar el IdP real en tests | Prohibido: siempre mock (wiremock) o `OIDC_ENABLED=false`. |
 | Fuga de tokens por logs (riesgo global) | Prohibido loguear `Cookie`/`Authorization`; `/auth/me` nunca devuelve tokens. |
 | `OIDC_ENABLED=false` rompe tests existentes | `Config` por defecto en tests sin OIDC; suite legacy debe seguir verde. |
+
+## 13. Hardening de SQLite (issues #2 y #4) — change `sqlite-hardening`
+
+Capability nueva `persistence` en OpenSpec. Estado: implementado, en PR a `development`.
+
+### 13.1 Objetivo
+
+- **#2**: eliminar `SQLITE_BUSY_SNAPSHOT` en las operaciones read-then-write abriendo las transacciones de escritura con `SqlitePool::begin_with("BEGIN IMMEDIATE")` (sqlx 0.9; `&'static str` implementa `SqlSafeStr`).
+- **#4**: garantizar integridad referencial y de dominio con `ON DELETE RESTRICT` en `meal_plan_entries.recipe_id → recipes(id)` y `CHECK` de dominio.
+
+### 13.2 Decisiones de diseño
+
+- Un único change `sqlite-hardening` cubre #2 y #4.
+- Escrituras con `begin_with("BEGIN IMMEDIATE")`; lecturas siguen con `begin()` (diferido) para no serializarlas.
+- `ON DELETE RESTRICT` (no `CASCADE`) para impedir borrar recetas referenciadas por el plan.
+- `CHECK` de dominio: `shopping_list_items.amount >= 0`; `recipes.servings` y `meal_plan_entries.servings` NULL o `>= 1`; `recipes.prep_time_minutes` NULL o `>= 0`.
+
+### 13.3 Módulos y migración
+
+- `backend/src/repo/agent.rs` (`set_weekly_plan`, `add_shopping_items`) y `backend/src/repo/shopping_list.rs` (`consolidate`): las 3 transacciones de escritura usan `begin_with`.
+- Migración nueva append-only `0005_schema_constraints.sql`: rebuild de 12 pasos de `recipes` (+ recrear `recipes_fts`, triggers e `INSERT INTO recipes_fts(recipes_fts) VALUES('rebuild')`), `meal_plan_entries` y `shopping_list_items`. Primera línea `-- no-transaction` para poder usar `PRAGMA foreign_keys = OFF` fuera de transacción; el DDL va envuelto en `BEGIN/COMMIT` (atómico) con `PRAGMA foreign_key_check` antes del `COMMIT`.
+
+### 13.4 Tests
+
+- `backend/tests/write_transactions.rs` (4): reproducción de `BUSY_SNAPSHOT` con `BEGIN` diferido (código extendido `517`), serialización con `BEGIN IMMEDIATE`, y concurrencia de `set_weekly_plan` + `consolidate` + `add_shopping_items` sin `BUSY_SNAPSHOT`.
+- `backend/tests/schema_constraints.rs` (9): FK `on_delete == 'RESTRICT'` vía `PRAGMA foreign_key_list`; borrado de receta referenciada rechazado; `CHECK` de amount/servings/prep_time (negativos y `< 1` rechazados, válidos y NULL aceptados); datos y búsqueda FTS5 sobreviven a la migración.
+
+### 13.5 Criterios de aceptación (DoD)
+
+- [x] `cargo test` verde (454 tests con `embed-ui`); `clippy --all-targets --all-features -- -D warnings` limpio; `fmt --check` limpio.
+- [x] `just ci` exit 0 y `just ci-ui` exit 0.
+- [x] `openspec validate --all --strict` → 17/17.
+- [x] Issues #2 y #4 cerradas (PR #19 fusionado en `development`); change `sqlite-hardening` archivado.
+
+## 14. Hardening del servido estático (issues #8 y #9) — change `static-serving-hardening`
+
+Capability `frontend-serving` (requisitos añadidos). Estado: implementado, en PR a `development`.
+
+### 14.1 Objetivo
+
+- **#8**: revalidación con `ETag`/`If-None-Match` → `304 Not Modified` sin cuerpo, en vez de un `200` con cuerpo completo en cada revalidación.
+- **#9**: `charset=utf-8` en tipos `text/*` y cabeceras de seguridad (`X-Content-Type-Options: nosniff` y `Content-Security-Policy`).
+
+### 14.2 Decisiones de diseño
+
+- `ETag` fuerte `"<hex sha256>"` tomado del hash que `rust-embed` calcula en compilación (`EmbeddedFile::metadata.sha256_hash()`), sin re-hashear activos grandes por petición.
+- `If-None-Match` según RFC 9110 (lista separada por comas, `W/`, comodín `*`).
+- CSP compatible con Ant Design CSS-in-JS (`style-src 'self' 'unsafe-inline'`), aplicada solo a documentos HTML y XHTML; `nosniff` en todas las respuestas estáticas.
+- `Range` **no soportado** por decisión (activos inmutables y pequeños de un SPA): `200` completo, sin `Accept-Ranges`.
+
+### 14.3 Módulos
+
+- `backend/src/static_files/embedded.rs`: `serve(method, headers, uri)` + helpers `etag_value`, `content_type_for`, `cache_control_for`, `apply_security_headers`, `with_security_headers`, `if_none_match_matches`, `respond`, `asset_response`.
+- Tests: `backend/tests/static_files.rs` (23 integración con `embed-ui`) + unitarios en `embedded.rs`.
+
+### 14.4 Criterios de aceptación (DoD)
+
+- [x] `just ci` exit 0 (467 tests con `embed-ui`) y `just ci-ui` exit 0.
+- [x] `clippy -D warnings` y `fmt --check` limpios.
+- [x] `openspec validate --all --strict` en verde.
+- [x] Issues #8 y #9 cerradas; change `static-serving-hardening` archivado.
+
+## 15. Consolidación escalada por raciones (issue #3) — change `consolidation-servings-scaling`
+
+Capability `ingredient-consolidation` (requisito añadido). Estado: implementado, PR #23 fusionado.
+
+### 15.1 Objetivo
+
+Al consolidar la lista de la compra, escalar la cantidad de cada ingrediente por el cociente entre las raciones planificadas en la entrada del plan y las raciones de la receta, de modo que una receta de 2 raciones planificada a 4 duplique las cantidades.
+
+### 15.2 Decisión de diseño
+
+- El escalado se hace **en `collect_drafts`** (`backend/src/repo/shopping_list.rs`), **antes** de `domain::consolidate`: la consulta lee `COALESCE(e.servings, 2)` y `COALESCE(r.servings, 2)` y multiplica cada `IngredientInput.amount` por `factor = entry / recipe`. El motor de consolidación no cambia.
+- Dos rutas afectadas: `POST /api/shopping-list/consolidate` y `POST /api/agent/weekly-plan` (ambas comparten `collect_drafts` y `BEGIN IMMEDIATE`).
+- Helper puro `servings_factor(entry, recipe)` con denominador acotado (`recipe.max(1)`) por defensa; `round2` redondea una sola vez al final por subgrupo.
+
+### 15.3 Tests
+
+- `backend/tests/shopping_list.rs`: 5 de integración (2→4 duplica; 4→2 mitad; sin raciones factor 1; `NULL`/`NULL` factor 1; misma receta con raciones distintas se suma) + unitario de `servings_factor`.
+
+### 15.4 Criterios de aceptación (DoD)
+
+- [x] `just ci` exit 0 (481 tests) y `just ci-ui` exit 0.
+- [x] `clippy -D warnings` y `fmt --check` limpios.
+- [x] `openspec validate --all --strict` en verde.
+- [x] Issue #3 cerrada (PR #23); change `consolidation-servings-scaling` archivado.
+
+## 16. Semántica de búsqueda trigram (issue #6) — change `trigram-search-semantics`
+
+Capability `recipe-search` (requisito documental añadido). Estado: implementado, PR #24 fusionado.
+
+### 16.1 Objetivo
+
+Documentar y fijar con tests de caracterización la semántica real del buscador de recetas: `q` se envía entre comillas (frase) a `recipes_fts MATCH` y, con el tokenizer `trigram`, equivale a una **subcadena contigua** del nombre o de las instrucciones, no a un AND de palabras.
+
+### 16.2 Hallazgo / decisión
+
+- Con `q` de **≥3 caracteres**: coincidencia por subcadena contigua, insensible a mayúsculas y diacríticos; `"estofadas con"` coincide, `"lentejas zanahoria"` no; `"cafe"` encuentra `"Café"`.
+- Con `q` de **<3 caracteres**: fallback `LIKE '%q%'` **solo sobre el nombre** (no pliega diacríticos; case-insensitive solo ASCII).
+- Sin cambio de comportamiento de producción: solo docstring de `repo::recipes::list`, `docs/search.md` (nuevo) y tests.
+
+### 16.3 Tests
+
+- `backend/tests/recipes.rs`: 5 de caracterización (subcadena contigua multi-palabra; palabras no contiguas → `total=0`; término de 3 chars solo en instrucciones → FTS; `<3` chars no busca en instrucciones).
+
+### 16.4 Criterios de aceptación (DoD)
+
+- [x] `just ci` exit 0 (489 tests) y `just ci-ui` exit 0.
+- [x] `clippy -D warnings` y `fmt --check` limpios.
+- [x] `openspec validate --all --strict` en verde.
+- [x] Issue #6 cerrada (PR #24); change `trigram-search-semantics` archivado.
+
+## 17. Frontend hardening: a11y/Prettier, lazy antd y haptics (issues #11, #13, #10)
+
+Estado: planificado. Tres changes independientes, una rama/PR por issue desde `development`.
+
+### 17.1 Objetivo
+
+Cerrar los tres hallazgos de la Fase 2 del frontend sin cambiar el comportamiento de producto:
+- #11: linting estático de accesibilidad y formato verificable en CI.
+- #13: sacar antd del critical path de arranque mediante carga diferida.
+- #10: alinear spec y código de haptics documentando la Vibration API.
+
+### 17.2 Issue #11 — `a11y-lint-prettier`
+
+**Decisión:** añadir `eslint-plugin-jsx-a11y@^6.10.2`, `prettier@^3.9.10` y `eslint-config-prettier@^10.1.8`. El peer de `eslint-plugin-jsx-a11y` declara ESLint ≤9; se resuelve con `pnpm.peerDependencyRules.allowedVersions` para ESLint 10 y se valida que las reglas funcionan.
+
+**Cambios:**
+- `frontend/eslint.config.js`: `jsxA11y.flatConfigs.recommended` + `eslint-config-prettier` al final.
+- `frontend/.prettierrc.json` (`singleQuote`, `trailingComma: all`, `printWidth: 100`, `semi`) y `.prettierignore` (`dist`, `node_modules`, `coverage`, `pnpm-lock.yaml`, `*.md`, `tsconfig.tsbuildinfo`).
+- `frontend/package.json`: scripts `format` y `format:check`; bloque `pnpm.peerDependencyRules`.
+- `justfile` (`ci-ui`) y `.github/workflows/ci.yml`: paso `pnpm format:check`.
+- Formatear `frontend/src` y corregir los avisos de a11y que aparezcan.
+
+**Tests/verificación:** `pnpm lint` 0 problemas, `pnpm format:check` limpio, `pnpm typecheck`, `pnpm test`, `pnpm build` y `just ci-ui` en verde.
+
+**DoD:** reglas de a11y activas; Prettier integrado en `just ci-ui` y CI; change archivado; issue #11 cerrada.
+
+- [x] `pnpm lint` 0 problemas y `pnpm format:check` limpio (110 tests).
+- [x] `just ci-ui` exit 0; `openspec validate --all --strict` en verde (20/20).
+- [x] Versiones: `eslint-plugin-jsx-a11y@6.10.2`, `prettier@3.9.10`, `eslint-config-prettier@10.1.8`; peer de ESLint 10 resuelto en `pnpm-workspace.yaml`.
+- [x] Change `2026-11-02-a11y-lint-prettier` archivado; capability `frontend-tooling` creada.
+
+### 17.3 Issue #13 — `antd-lazy-boot`
+
+**Decisión:** mantener los componentes antd actuales y cargar todo el árbol que los usa de forma diferida. No se reescribe el shell ni las páginas.
+
+**Cambios:**
+- `frontend/src/AppRoot.tsx` (nuevo, default export): `ErrorBoundary`, `ConfigProvider`, `AntdApp`, `ForbiddenNotifier`, `BrowserRouter` y `App`.
+- `frontend/src/components/BootFallback.tsx` y `BootErrorBoundary.tsx` (nuevos, sin antd): fallback de primer pintado y boundary de arranque.
+- `frontend/src/main.tsx`: `lazy(() => import('./AppRoot'))` + `Suspense` + `BootErrorBoundary`; se mantienen `QueryClientProvider` y `SessionProvider` en el entry.
+- `frontend/src/api/client.ts`: eliminar `import { message } from 'antd'`; el fallback de 403 usa `void import('antd').then(({ message }) => message.warning(...))`.
+- `frontend/vite.config.ts`: `build.manifest = true`.
+- `frontend/scripts/check-bundle.mjs` (nuevo): recorre el manifest y suma el grafo estático del entry; falla si supera 500 kB en bruto.
+- `justfile`: `ci-ui` ejecuta `node scripts/check-bundle.mjs` tras el build.
+
+**Medición:** línea base `antd` 694,20 kB (224,66 kB gzip), entry 11,23 kB. Objetivo: el grafo estático inicial (entry + react + query + session/client) < 500 kB en bruto; antd pasa a chunk asíncrono. Se anotan los tamaños antes/después en este apartado y en `CHANGELOG.md`.
+
+**Tests/verificación:** `pnpm build` + `check-bundle` en verde; `pnpm typecheck`, `pnpm test`, `pnpm lint`; prueba manual de shell, login, menú y compra.
+
+**DoD:** antd fuera del grafo estático inicial; presupuesto < 500 kB; UI sin regresiones; change archivado; issue #13 cerrada.
+
+- [x] Antes: grafo estático del entry 761,3 kB (antd 694,20 kB / 224,66 kB gzip en el chunk estático).
+- [x] Después: grafo estático del entry **293,7 kB** (react 251,9 + query 34,0 + entry 7,1 + runtime 0,6); antd pasa a chunk diferido de 458,95 kB (150,86 kB gzip).
+- [x] `pnpm lint` 0 problemas, 114 tests; `pnpm check-bundle` (presupuesto 500 kB) y `just ci-ui` en verde.
+- [x] `openspec validate --all --strict` en verde (19/19 con @fission-ai/openspec@1.16.0); change `2026-11-02-antd-lazy-boot` archivado.
+
+### 17.4 Issue #10 — `haptics-vibration-api`
+
+**Decisión:** documentar la Vibration API (`navigator.vibrate`) y no migrar a `web-haptics` (0.0.6, API inmadura, dependencia nueva y workaround frágil para iOS). En navegadores sin soporte (iOS Safari) el hook es un no-op.
+
+**Cambios:**
+- `openspec/specs/shopping-mode/spec.md`: requisito "Marcar como comprado" pasa de "Web Haptics" a "Vibration API (`navigator.vibrate`)" con no-op si no hay soporte.
+- `frontend/src/hooks/useHaptics.ts`: docstring con la decisión y el comportamiento en iOS Safari.
+- `frontend/src/hooks/useHaptics.test.ts`: tests del patrón por defecto (10 ms) y de patrón en array.
+
+**Tests/verificación:** `pnpm test`, `pnpm typecheck`, `pnpm lint`; `openspec validate --all --strict`.
+
+**DoD:** spec y docstring coherentes; tests en verde; change archivado; issue #10 cerrada.
+
+- [x] Spec `shopping-mode` (requisito y Purpose) alineada con la Vibration API (`navigator.vibrate`); docstring de `useHaptics` documenta la decisión y el no-op en iOS Safari.
+- [x] Tests del patrón por defecto (10 ms) y de patrón en array; `pnpm test` (116), `pnpm typecheck` y `pnpm lint` (0 problemas) en verde.
+- [x] `openspec validate --all --strict` en verde (18/18 con @fission-ai/openspec@1.16.0); change `2026-11-02-haptics-vibration-api` archivado.
+
+### 17.5 Orden de ejecución y ramas
+
+1. `feature/a11y-lint-prettier` → PR a `development`.
+2. `feature/antd-lazy-boot` → PR a `development`.
+3. `feature/haptics-vibration-api` → PR a `development`.
+
+Cada PR: `just ci-ui` + `openspec validate --all --strict` en verde, `CHANGELOG.md` actualizado y change archivado tras el merge.
+## 18. Fase 5 — PWA/Offline (shell instalable, caché de datos y cola de escrituras)
+
+Se ejecuta en **tres changes encadenados**, cada uno en su rama y su PR a `development`. El Service Worker es propio (vanilla), sin Workbox ni `vite-plugin-pwa`; los iconos se generan con IA y se derivan los tamaños con `magick`.
+
+### 18.1 Objetivo
+
+Convertir OxiMeal en una PWA instalable y offline-first: (a) shell instalable (manifiesto + iconos + Service Worker de activos), (b) lectura sin conexión con tolerancia a la sesión OIDC caducada, y (c) escritura sin conexión con cola de sincronización. Cierra la Fase 5 del roadmap (§6) y la dependencia registrada en §12/§4 (la Fase 5 debe tolerar sesión caducada sirviendo datos cacheados).
+
+### 18.2 Decisiones de diseño (ADR-18…27)
+
+- **ADR-18 — Service Worker propio.** `frontend/public/sw.js`, sin dependencias de build. Coherente con la CSP existente (`worker-src 'self' blob:`) y con el ethos de binario único. Alternativa descartada: `vite-plugin-pwa`/Workbox (añade dependencias de build).
+- **ADR-19 — El SW NO intercepta `/api/*` ni `/auth/*`.** La caché de datos vive en IndexedDB (capa de datos), no en el HTTP cache del SW. Evita cachear respuestas autenticadas, fugas de datos entre sesiones y respuestas 401 cacheadas.
+- **ADR-20 — Estrategias del SW.** `install`: precache del shell y de los assets con hash (inyectados en build). `activate`: limpieza de cachés `oximeal-*` obsoletas y `clients.claim()`. `fetch`: *cache-first* para `assets/*` (nombres con hash, inmutables), *network-first* para navegaciones con fallback al `index.html` cacheado, *stale-while-revalidate* acotado a manifiesto, favicon e iconos. Sin `skipWaiting()`: el SW nuevo espera a que se cierren las pestañas para no romper chunks de un build anterior.
+- **ADR-21 — Precache y versión inyectados en build.** `frontend/scripts/build-sw.mjs` lee `.vite/manifest.json`, compone la lista de assets (entry, chunks diferidos y CSS) y la inyecta en `dist/sw.js` junto con una `CACHE_VERSION` derivada del hash de esa lista. El script falla si no encuentra los marcadores, si el precache queda vacío o si falta algún asset en `dist`.
+- **ADR-22 — Registro solo en producción.** El SW se registra desde `frontend/src/offline/register-sw.ts` únicamente si `import.meta.env.PROD`; en `pnpm dev` no se registra (evita interferencias con HMR).
+- **ADR-23 — Manifiesto e iconos en `public/`.** `frontend/public/` no existía; se crea. Al vivir en `public/`, el manifiesto y el SW se copian verbatim a `dist/` y **no** entran en el grafo del bundle (el presupuesto de 500 kB de §17.3 sigue intacto).
+- **ADR-24 — Caché de datos con IndexedDB propio.** Wrapper tipado sobre la API nativa (`frontend/src/offline/idb.ts`), DB `oximeal` con stores `queryCache` y `mutations`. Cero dependencias nuevas.
+- **ADR-25 — Persistencia de react-query sin librería extra.** Hidratación al arranque (antes del primer render de datos) y persistencia tras cada carga correcta usando `dehydrate`/`hydrate` de `@tanstack/react-query` y una suscripción a `queryClient.getQueryCache()`, con lista blanca de claves (`shopping-list`, `meal-plan`, `recipes`). Se descarta `@tanstack/react-query-persist-client` para no añadir dependencias.
+- **ADR-26 — Modo degradado por sesión caducada.** Si hay caché y no hay red (o la sesión ha caducado estando offline), la aplicación muestra los datos cacheados con un aviso persistente y **no** redirige al login ni vacía la vista. Si hay red y 401, se mantiene el comportamiento actual (volver al login).
+- **ADR-27 — Cola de escrituras FIFO con idempotencia por `client_id`.** Las mutaciones offline se encolan en IndexedDB y se drenan al recuperar la conexión, en orden. Para que un alta reenviada tras un fallo de red no duplique ítems, el backend acepta un `client_id` opcional y único en `POST /api/shopping-list` (devuelve el ítem existente si ya existe). Reconciliación last-write-wins por `updated_at`; un 4xx no recuperable descarta la operación y notifica; un 401 o un fallo de red detiene el drenado.
+
+### 18.3 Change A — `pwa-installable-shell` (issue #29)
+
+**Cambios:**
+- `frontend/public/manifest.webmanifest`: `id`, `name`, `short_name`, `description`, `start_url: "/"`, `scope: "/"`, `display: "standalone"`, `orientation: "any"`, `theme_color: "#2f855a"`, `background_color: "#ffffff"`, `lang: "es"`, `icons` (192, 512, 512 maskable).
+- `frontend/public/icons/`: `icon-192.png`, `icon-512.png`, `icon-512-maskable.png`, `apple-touch-icon-180.png` (derivados del icono maestro con `magick`), más `favicon.svg`.
+- `frontend/public/sw.js`: Service Worker de activos según ADR-20.
+- `frontend/scripts/build-sw.mjs`: inyección de precache y versión (ADR-21); `package.json` lo ejecuta tras `vite build`.
+- `frontend/src/offline/register-sw.ts`: registro en producción; invocado desde `frontend/src/main.tsx`.
+- `frontend/index.html`: `<link rel="manifest">`, `<link rel="icon">`, `<link rel="apple-touch-icon">`.
+- `backend/src/static_files/embedded.rs`: mapeo explícito `.webmanifest` → `application/manifest+json` (independiente de `mime_guess`), `.webmanifest` tratado como fichero en `is_orphan_asset`, y `Cache-Control: no-cache` para `sw.js`.
+
+**Tests/verificación:** 137 tests en frontend (arnés real del SW con `caches`/`self`/`fetch` simulados y ciclo de vida fiel al evento); 271 tests en backend con `embed-ui` (tests puros de `content_type_for`/`cache_control_for`/`is_orphan_asset` + e2e con guard, verdes también sin `frontend/dist`).
+
+**DoD:** manifiesto e iconos servidos con MIME correcto; SW registrado solo en producción; recarga offline del shell garantizada por el precache; CSP sin cambios; change archivado; issue #29 cerrada.
+
+- [x] Manifiesto `manifest.webmanifest` (`id`, `scope`, `display: standalone`, `orientation: any`) e iconos 192/512/maskable/apple-touch-180 derivados del icono maestro con `magick`.
+- [x] `frontend/public/sw.js`: precache del shell + assets con hash inyectados en build (16 assets, versión = hash del listado); `cache-first` para `assets/*`, `network-first` para navegaciones con fallback al `index.html`, `stale-while-revalidate` acotado a manifiesto/favicon/iconos; sin `skipWaiting`; limpieza acotada al prefijo `oximeal-`; no intercepta `/api` ni `/auth`.
+- [x] Registro del Service Worker solo en producción (`register-sw.ts`), con `readyState` y `console.warn` en el rechazo.
+- [x] Backend: `.webmanifest` → `application/manifest+json` con mapeo explícito independiente de `mime_guess`; `sw.js` con `Cache-Control: no-cache`; `.webmanifest` tratado como fichero (404, no fallback SPA).
+- [x] `just ci`, `just ci-ui` (294,0 kB / 500 kB) y `openspec validate --all --strict` (21/21) en verde.
+
+### 18.4 Change B — `offline-data-cache` (issue #30)
+
+**Cambios:**
+- `frontend/src/offline/idb.ts`: wrapper tipado de IndexedDB (DB `oximeal`; stores `queryCache` y `mutations`).
+- `frontend/src/offline/queryPersist.ts`: hidratación y persistencia del `QueryClient` (ADR-25).
+- `frontend/src/offline/connectivity.ts`: hook de estado de red (`useOnline`) sobre eventos `online`/`offline`.
+- `frontend/src/auth/SessionProvider.tsx` y `frontend/src/auth/AuthGuard.tsx`: modo degradado (ADR-26); limpieza de la caché de IndexedDB al cerrar sesión.
+- `frontend/src/components/OfflineBanner.tsx`: aviso de modo degradado.
+- `frontend/src/main.tsx`: hidratar la caché antes del primer render de datos.
+
+**Tests/verificación:** arranque offline con caché previa muestra la lista guardada; la persistencia se escribe tras una carga correcta; 401 sin red no redirige; 401 con red redirige; el logout limpia IndexedDB.
+
+**DoD:** datos disponibles sin conexión; modo degradado visible; logout limpia la caché; change archivado; issue #30 cerrada.
+
+- [x] Issue #30. `frontend/src/offline/idb.ts`: wrapper tipado de IndexedDB (DB `oximeal`, store `queryCache`) con interfaz `OfflineStore` inyectable, `replaceQueries` transaccional, `onversionchange`/`onabort` y degradación silenciosa sin `indexedDB`.
+- [x] `frontend/src/offline/queryPersist.ts`: hidratación con `hydrate`/`dehydrate` de react-query, persistencia con debounce de 250 ms + `visibilitychange`/`pagehide`, lista blanca (`shopping-list`, `meal-plan`, `recipes`), poda de claves obsoletas y flag `hasCachedData` sincronizado.
+- [x] `frontend/src/offline/connectivity.ts`: `isOnline()` y `useOnline()` con `useSyncExternalStore`.
+- [x] Modo degradado: `SessionStatus` gana `degraded`; 401 sin conexión con caché no redirige; 401 con conexión limpia `QueryClient` e IndexedDB antes de ir al login; la reconexión revalida la sesión.
+- [x] `OfflineBanner` en `AppLayout`; `main.tsx` hidrata antes del primer render con timeout de 2 s para no bloquear el arranque.
+- [x] Tests: 165 en frontend; `just ci-ui` (300,0 kB / 500 kB) y `openspec validate --all --strict` (21/21) en verde.
+
+### 18.5 Change C — `offline-write-queue` (issue #31)
+
+**Cambios backend:**
+- Migración `0006_shopping_item_client_id.sql`: columna `client_id TEXT` con índice único parcial.
+- `backend/src/models` y `backend/src/repo/shopping_list.rs`: soporte de `client_id`.
+- `backend/src/routes/shopping_list.rs`: `POST /api/shopping-list` idempotente por `client_id`.
+
+**Cambios frontend:**
+- `frontend/src/offline/mutationQueue.ts`: cola FIFO en IndexedDB, drenado al volver `online`, reconciliación de `client_id` provisional → real, LWW por `updated_at`.
+- `frontend/src/api/hooks.ts`: mutaciones offline-aware (encolar en vez de fallar).
+- `frontend/src/pages/ShoppingPage.tsx`: indicador de cambios pendientes de sincronizar.
+
+**Tests/verificación:** alta offline aparece localmente y se sincroniza al volver la conexión; reenvío con el mismo `client_id` no duplica (backend); toggle de un ítem no sincronizado se aplica a la operación encolada; 4xx no recuperable descarta y notifica.
+
+**DoD:** escritura offline funcional; alta idempotente; sin duplicados tras reconexión; change archivado; issue #31 cerrada.
+
+- [x] Issue #31. Backend: migración `0006_shopping_item_client_id.sql` (columna `client_id TEXT` + índice único parcial), `client_id` en modelo y repositorio, y `POST /api/shopping-list` idempotente (201 al crear, 200 con el ítem existente); el `SELECT` de `repo/agent.rs` incluye la columna nueva.
+- [x] `frontend/src/offline/mutationStore.ts`: store `mutationQueue` en IndexedDB (DB compartida `oximeal` v2, `keyPath: seq` autoincrement) con interfaz inyectable y degradación a cola en memoria.
+- [x] `frontend/src/offline/mutationQueue.ts`: cola FIFO, reentrante, drenado con parada en red/401 y descarte con aviso en 4xx no recuperable, reconciliación de ids `local:*` → ids reales, fusión de toggles sobre altas aún no sincronizadas y LWW con `parseServerTimestamp` (UTC real, no hora local).
+- [x] `frontend/src/api/hooks.ts`: mutaciones offline-aware (`useAddShoppingItem` encola en vez de fallar y cae al camino offline ante error de red; `useToggleShoppingItem` no llama al servidor si el ítem es local o no hay conexión, con rollback decidido por el contexto de `onMutate`); `networkMode: 'offlineFirst'` en las consultas.
+- [x] `syncShoppingQueue.ts` + `MutationQueueProvider` + `MutationQueueNotifier` (dentro de `<AntdApp>`, con `App.useApp()`); aviso de pendientes con botón «Sincronizar ahora» en `ShoppingPage` y etiqueta `Pendiente` en `ShoppingRow`.
+- [x] Tests: 199 en frontend (5 ejecuciones seguidas en verde, sin flakiness); `just ci`, `just ci-ui` (309,2 kB / 500 kB) y `openspec validate --all --strict` (21/21) en verde.
+
+### 18.6 Orden de ejecución y ramas
+
+1. `feature/pwa-installable-shell` → PR a `development` (issue #29).
+2. `feature/offline-data-cache` → PR a `development` (issue #30).
+3. `feature/offline-write-queue` → PR a `development` (issue #31).
+
+Cada PR: `just ci` + `just ci-ui` + `openspec validate --all --strict` en verde, `CHANGELOG.md` actualizado y change archivado tras el merge.
+
+### 18.7 Riesgos
+
+| Riesgo | Mitigación |
+|---|---|
+| Doble caché (SW y datos) con estados divergentes | El SW no toca `/api/*` ni `/auth/*` (ADR-19): activos y datos tienen dueños distintos. |
+| Fuga de datos entre usuarios en IndexedDB | Limpieza de la caché de datos al cerrar sesión (Change B). |
+| Complejidad de la cola de escrituras | Acotada a 4 operaciones, FIFO, idempotencia por `client_id` y LWW; 4xx no recuperable se descarta. |
+| Cambio de contrato del alta de ítems | `client_id` es **opcional** y retrocompatible; la ruta sigue creando sin él. |
+| SW sirviendo un shell obsoleto o rompiendo pestañas abiertas | `no-cache` en `sw.js`, versión derivada del build, sin `skipWaiting` y limpieza acotada por prefijo. |
+| Precache silenciosamente vacío | `build-sw.mjs` falla si no inyecta, si el precache queda vacío o si falta un asset en `dist`. |
+| Presupuesto de bundle | Manifiesto e iconos viven en `public/`, fuera del grafo del entry. |
+
+### 18.8 Criterios de aceptación (DoD de la Fase 5)
+
+- [x] Aplicación instalable en Android (Chrome) e iOS (Safari) con iconos correctos.
+- [x] Shell arranca sin conexión tras una visita previa.
+- [x] Lista de la compra visible sin conexión y con sesión caducada, con aviso de modo degradado.
+- [x] Mutaciones offline encoladas y sincronizadas sin duplicados al recuperar la conexión.
+- [x] `just ci`, `just ci-ui` y `openspec validate --all --strict` en verde en las tres ramas.
+- [x] Los tres changes archivados y la Fase 5 marcada como cerrada en este plan.
+
+> Verificado el 2026-11-02 con Chrome sobre el binario con `--features embed-ui`
+> y `OIDC_ENABLED=false`: smoke E2E **37/37**. Chrome reporta 0 errores de
+> instalabilidad (`Page.getInstallabilityErrors` → `[]`); el shell arranca sin
+> conexión; la lista se ve desde la caché con aviso de modo degradado; el alta
+> offline se encola, sobrevive a la recarga y se sincroniza sola al recuperar la
+> conexión con **un único POST** y sin duplicados; reenviar el mismo `client_id`
+> responde 200 sin duplicar.

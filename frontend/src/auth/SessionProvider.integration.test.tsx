@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { message } from 'antd';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { apiRequest } from '../api/client';
 import { AuthGuard } from './AuthGuard';
@@ -59,10 +60,7 @@ function Probe() {
   return (
     <div>
       <span data-testid="status">{status}</span>
-      <button
-        type="button"
-        onClick={() => void apiRequest('/recipes').catch(() => undefined)}
-      >
+      <button type="button" onClick={() => void apiRequest('/recipes').catch(() => undefined)}>
         403
       </button>
       <button
@@ -79,15 +77,18 @@ function Probe() {
 }
 
 function renderSession() {
+  const queryClient = new QueryClient();
   return render(
-    <MemoryRouter initialEntries={['/shopping']}>
-      <SessionProvider>
-        <Probe />
-        <AuthGuard>
-          <div data-testid="protected">datos</div>
-        </AuthGuard>
-      </SessionProvider>
-    </MemoryRouter>,
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={['/shopping']}>
+        <SessionProvider>
+          <Probe />
+          <AuthGuard>
+            <div data-testid="protected">datos</div>
+          </AuthGuard>
+        </SessionProvider>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
@@ -128,9 +129,7 @@ describe('SessionProvider + AuthGuard (integración 401/403)', () => {
     await user.click(screen.getByRole('button', { name: '401' }));
 
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('anonymous'));
-    await waitFor(() =>
-      expect(assign).toHaveBeenCalledWith('/auth/login?return_to=%2Fshopping'),
-    );
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/auth/login?return_to=%2Fshopping'));
     expect(screen.queryByTestId('protected')).not.toBeInTheDocument();
   });
 
@@ -144,9 +143,7 @@ describe('SessionProvider + AuthGuard (integración 401/403)', () => {
     await user.click(screen.getByRole('button', { name: 'salir' }));
 
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('anonymous'));
-    await waitFor(() =>
-      expect(assign).toHaveBeenCalledWith('/auth/login?return_to=%2Fshopping'),
-    );
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/auth/login?return_to=%2Fshopping'));
     expect(assign).toHaveBeenCalledTimes(1);
   });
 });

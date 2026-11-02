@@ -30,6 +30,46 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Seguridad
 
+## [0.4.0] - 2026-11-02
+
+Fase 5: **PWA/Offline** (issues #29, #30, #31; arreglos #35 y #36). Convierte
+OxiMeal en una PWA instalable y *offline-first*: shell precacheado con Service
+Worker propio, lectura sin conexión desde IndexedDB con modo degradado, y cola
+de escrituras con alta idempotente que se sincroniza sola al recuperar la
+conexión.
+
+### Añadido
+
+- **Frontend:** linting estático de accesibilidad con `eslint-plugin-jsx-a11y` y formato verificado con Prettier, integrados en `just ci-ui` y en CI (#11).
+- **Frontend:** shell PWA instalable con manifiesto, iconos adaptativos y Service Worker propio que precachea el shell y los assets con hash; recarga sin conexión y actualización de caché versionada por build (#29).
+- **Frontend:** caché de datos en IndexedDB con hidratación al arrancar y modo degradado: sin conexión o con la sesión caducada se muestran los datos guardados con un aviso, en lugar de vaciar la vista o redirigir al login; el cierre de sesión limpia la caché (#30).
+- **Offline:** cola de escrituras en IndexedDB: los cambios de la lista de la compra hechos sin conexión se encolan, se aplican de forma optimista y se sincronizan en orden al recuperar la conexión. El alta es idempotente por `client_id` (migración 0006) para no duplicar ítems, una operación inválida (4xx) se descarta avisando al usuario y el marcado se resuelve por el `updated_at` más reciente (#31).
+
+### Cambiado
+
+- **Frontend:** antd deja de descargarse en el arranque (carga diferida vía `React.lazy` + splitting por grupos); grafo estático inicial 761,3 kB → **293,7 kB** con presupuesto de 500 kB verificado en `just ci-ui` y CI (#13).
+- **Frontend:** haptics documentados como Vibration API (`navigator.vibrate`), con no-op en navegadores sin soporte; se descarta `web-haptics` (#10).
+
+### Obsoleto
+
+### Eliminado
+
+### Corregido
+
+- **Modo abierto inservible**: con `OIDC_ENABLED=false`, `GET /auth/me` caía al
+  fallback SPA y devolvía `index.html` con 200 en lugar del 404 JSON que el
+  frontend espera, lo que dejaba la aplicación embebida bloqueada en
+  `/auth/login`. Las rutas `/auth/*` se clasifican ahora como rutas de API en el
+  fallback ([#36](https://github.com/atareao/oximeal/issues/36)).
+- **La cola de escrituras offline no se drenaba al recuperar la conexión**: si el
+  drenado fallaba por red mientras `navigator.onLine` seguía en `true`, nadie
+  reintentaba y el aviso de cambios pendientes quedaba indefinidamente. Un nuevo
+  planificador (`drainScheduler`) reintenta con backoff exponencial acotado
+  (2→30 s), sin bucle ante 401/403, y reintenta al volver al primer plano o
+  recuperar el foco ([#35](https://github.com/atareao/oximeal/issues/35)).
+
+### Seguridad
+
 ## [0.3.0] - 2026-11-02
 
 Fase 4: **autenticación OIDC con Pocket ID** (PR

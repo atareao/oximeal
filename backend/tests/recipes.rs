@@ -271,3 +271,119 @@ async fn create_recipe_with_negative_ingredient_amount_returns_400() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(list["total"], 0, "no debe persistirse ninguna receta");
 }
+
+/// Caracterización — el término es una frase FTS: una subcadena contigua
+/// multi-palabra (aunque cruce fronteras de palabras) debe coincidir.
+#[tokio::test]
+async fn search_matches_contiguous_substring_across_words() {
+    let state = common::test_state().await;
+
+    let (status, _) = common::request(
+        state.clone(),
+        "POST",
+        "/api/recipes",
+        Some(json!({
+            "name": "Guiso",
+            "category": "main",
+            "ingredients": [{"name": "Zanahoria", "amount": 1.0, "unit": "ud"}],
+            "instructions": "lentejas estofadas con zanahoria"
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    // "estofadas con" es una subcadena contigua de las instrucciones.
+    let uri = format!("/api/recipes?q={}", encode_query("estofadas con"));
+    let (status, body) = common::request(state, "GET", &uri, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        body["total"], 1,
+        "subcadena contigua multi-palabra debe coincidir"
+    );
+    assert_eq!(body["items"][0]["name"], "Guiso");
+}
+
+/// Caracterización — al ser una frase contigua, palabras no adyacentes con
+/// texto intercalado NO coinciden.
+#[tokio::test]
+async fn search_does_not_match_non_contiguous_words() {
+    let state = common::test_state().await;
+
+    let (status, _) = common::request(
+        state.clone(),
+        "POST",
+        "/api/recipes",
+        Some(json!({
+            "name": "Guiso",
+            "category": "main",
+            "ingredients": [{"name": "Zanahoria", "amount": 1.0, "unit": "ud"}],
+            "instructions": "lentejas estofadas con zanahoria"
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    // "lentejas zanahoria" NO es una subcadena contigua: la frase no coincide.
+    let uri = format!("/api/recipes?q={}", encode_query("lentejas zanahoria"));
+    let (status, body) = common::request(state, "GET", &uri, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["total"], 0, "palabras no contiguas no deben coincidir");
+}
+
+#[tokio::test]
+async fn search_three_char_term_in_instructions_uses_fts() {
+    let state = common::test_state().await;
+
+    let (status, _) = common::request(
+        state.clone(),
+        "POST",
+        "/api/recipes",
+        Some(json!({
+            "name": "Guiso",
+            "category": "main",
+            "ingredients": [{"name": "Puerro", "amount": 1.0, "unit": "ud"}],
+            "instructions": "salteado con puerro"
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    // "uer" (3 chars) solo aparece en las instrucciones: si la búsqueda no usara
+    // FTS (>= 3 caracteres), el `LIKE` sobre el nombre no lo encontraría.
+    let uri = format!("/api/recipes?q={}", encode_query("uer"));
+    let (status, body) = common::request(state, "GET", &uri, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        body["total"], 1,
+        "un término de 3 chars debe buscar también en instrucciones (FTS)"
+    );
+}
+
+#[tokio::test]
+async fn short_query_searches_only_name_not_instructions() {
+    let state = common::test_state().await;
+
+    let (status, _) = common::request(
+        state.clone(),
+        "POST",
+        "/api/recipes",
+        Some(json!({
+            "name": "Guiso",
+            "category": "main",
+            "ingredients": [{"name": "Puerro", "amount": 1.0, "unit": "ud"}],
+            "instructions": "salteado con puerro"
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    // "ue" (2 chars) está en las instrucciones pero el fallback LIKE solo mira
+    // el nombre de la receta: no debe encontrarla.
+    let uri = format!("/api/recipes?q={}", encode_query("ue"));
+    let (status, body) = common::request(state, "GET", &uri, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        body["total"], 0,
+        "con < 3 caracteres solo se busca en el nombre"
+    );
+}

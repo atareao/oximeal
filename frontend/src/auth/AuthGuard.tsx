@@ -27,7 +27,8 @@ export interface AuthGuardProps {
  *
  * - `loading`: muestra un estado de carga y no renderiza los datos.
  * - `anonymous`: redirige a `/auth/login` conservando el destino actual.
- * - `authenticated` / `disabled` (modo abierto): renderiza el contenido.
+ * - `authenticated` / `disabled` (modo abierto) / `degraded` (sin conexión con
+ *   datos cacheados): renderiza el contenido.
  */
 export function AuthGuard({ children }: AuthGuardProps) {
   const { status } = useSession();

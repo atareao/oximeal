@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main, development]
+  pull_request:
+    branches: [main, development]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar toolchain (rust-toolchain.toml)
+        run: rustup show
+      - name: Cache de Cargo
+        uses: Swatinem/rust-cache@v2
+      - name: Formato
+        run: cargo fmt --check
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Tests
+        run: cargo test -p oximeal-backend
+      - name: Tests con UI embebida
+        run: cargo test -p oximeal-backend --features embed-ui
+
+  frontend:
+    name: Frontend (React/TS)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12
+      - name: Instalar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+      - name: Tipos
+        run: pnpm typecheck
+      - name: Formato
+        run: pnpm format:check
+      - name: Tests
+        run: pnpm test
+      - name: Lint
+        run: pnpm lint
+      - name: Build
+        run: pnpm build
+      - name: Presupuesto de bundle
+        run: pnpm check-bundle
+
+  openspec:
+    name: OpenSpec (specs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Validar especificaciones
+        run: npx --yes @fission-ai/openspec@1.16.0 validate --all --strict

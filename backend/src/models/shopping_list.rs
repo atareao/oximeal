@@ -20,6 +20,8 @@ pub struct ShoppingItem {
     pub checked: bool,
     /// Última actualización (texto tal cual lo produce SQLite).
     pub updated_at: String,
+    /// Identificador de cliente del alta idempotente (si lo hubo).
+    pub client_id: Option<String>,
 }
 
 /// Grupo de ítems por categoría de pasillo.
@@ -43,6 +45,9 @@ pub struct ShoppingItemInput {
     /// Categoría explícita (si falta, se infiere por heurística).
     #[serde(default)]
     pub category: Option<String>,
+    /// Identificador de cliente opcional para que el alta sea idempotente.
+    #[serde(default)]
+    pub client_id: Option<String>,
 }
 
 /// Cuerpo de actualización parcial de un ítem.
