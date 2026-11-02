@@ -101,6 +101,64 @@ pub async fn list(
 
 /// Inserta una receta y devuelve su representación completa.
 pub async fn create(pool: &SqlitePool, id: &str, input: &RecipeInput) -> AppResult<Recipe> {
+    insert(pool, id, input).await?;
+    get(pool, id).await
+}
+
+/// Crea una receta de forma idempotente por `source_url`.
+///
+/// Dentro de una transacción `BEGIN IMMEDIATE` busca una receta con la misma
+/// `source_url`; si existe, la devuelve con `false` sin crear nada. Si no (o si
+/// `source_url` es `None`), inserta `input` y devuelve la nueva con `true`.
+/// Reutiliza la misma sentencia de inserción que [`create`].
+///
+/// # Limitación conocida
+///
+/// No existe un índice `UNIQUE` sobre `source_url`: la idempotencia es atómica
+/// por el `BEGIN IMMEDIATE`, que serializa a los escritores de SQLite y cierra
+/// la ventana de carrera entre el `SELECT` y el `INSERT`. Añadir un índice único
+/// sobre datos de usuario ya existentes podría romper upgrades (duplicados
+/// previos) sin aportar garantía adicional frente a writers concurrentes.
+/// Si en el futuro se normaliza `source_url` (p. ej. quitando el fragmento), el
+/// índice único sí sería la mejor defensa.
+pub async fn create_or_get_by_source_url(
+    pool: &SqlitePool,
+    id: &str,
+    input: &RecipeInput,
+) -> AppResult<(Recipe, bool)> {
+    // Escritura read-then-write: BEGIN IMMEDIATE evita SQLITE_BUSY_SNAPSHOT en WAL.
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+
+    if let Some(source_url) = input.source_url.as_deref() {
+        let existing: Option<RecipeDetailRow> = sqlx::query_as(
+            "SELECT id, name, category, diet_type, prep_time_minutes, \
+             COALESCE(servings, 2) AS servings, CAST(created_at AS TEXT) AS created_at, \
+             CAST(ingredients AS TEXT) AS ingredients, instructions, source_url \
+             FROM recipes WHERE source_url = ? LIMIT 1",
+        )
+        .bind(source_url)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        if let Some(row) = existing {
+            let recipe = row.into_recipe()?;
+            tx.commit().await?;
+            return Ok((recipe, false));
+        }
+    }
+
+    insert(&mut *tx, id, input).await?;
+    let recipe = get_with(&mut *tx, id).await?;
+    tx.commit().await?;
+
+    Ok((recipe, true))
+}
+
+/// Inserta la fila de una receta usando el ejecutor dado (pool o transacción).
+async fn insert<'e, E>(executor: E, id: &str, input: &RecipeInput) -> AppResult<()>
+where
+    E: sqlx::Executor<'e, Database = Sqlite>,
+{
     let diet_type = input
         .diet_type
         .clone()
@@ -123,14 +181,22 @@ pub async fn create(pool: &SqlitePool, id: &str, input: &RecipeInput) -> AppResu
     .bind(ingredients)
     .bind(&input.instructions)
     .bind(&input.source_url)
-    .execute(pool)
+    .execute(executor)
     .await?;
 
-    get(pool, id).await
+    Ok(())
 }
 
 /// Obtiene una receta completa por id; devuelve 404 si no existe.
 pub async fn get(pool: &SqlitePool, id: &str) -> AppResult<Recipe> {
+    get_with(pool, id).await
+}
+
+/// Obtiene una receta completa por id usando el ejecutor dado.
+async fn get_with<'e, E>(executor: E, id: &str) -> AppResult<Recipe>
+where
+    E: sqlx::Executor<'e, Database = Sqlite>,
+{
     let row: Option<RecipeDetailRow> = sqlx::query_as(
         "SELECT id, name, category, diet_type, prep_time_minutes, \
          COALESCE(servings, 2) AS servings, CAST(created_at AS TEXT) AS created_at, \
@@ -138,7 +204,7 @@ pub async fn get(pool: &SqlitePool, id: &str) -> AppResult<Recipe> {
          FROM recipes WHERE id = ?",
     )
     .bind(id)
-    .fetch_optional(pool)
+    .fetch_optional(executor)
     .await?;
 
     match row {
