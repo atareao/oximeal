@@ -296,3 +296,36 @@ Bloque 8 (docs: `.env.example`, README, permisos, migración del API key, depend
 | Consultar el IdP real en tests | Prohibido: siempre mock (wiremock) o `OIDC_ENABLED=false`. |
 | Fuga de tokens por logs (riesgo global) | Prohibido loguear `Cookie`/`Authorization`; `/auth/me` nunca devuelve tokens. |
 | `OIDC_ENABLED=false` rompe tests existentes | `Config` por defecto en tests sin OIDC; suite legacy debe seguir verde. |
+
+## 13. Hardening de SQLite (issues #2 y #4) — change `sqlite-hardening`
+
+Capability nueva `persistence` en OpenSpec. Estado: implementado, en PR a `development`.
+
+### 13.1 Objetivo
+
+- **#2**: eliminar `SQLITE_BUSY_SNAPSHOT` en las operaciones read-then-write abriendo las transacciones de escritura con `SqlitePool::begin_with("BEGIN IMMEDIATE")` (sqlx 0.9; `&'static str` implementa `SqlSafeStr`).
+- **#4**: garantizar integridad referencial y de dominio con `ON DELETE RESTRICT` en `meal_plan_entries.recipe_id → recipes(id)` y `CHECK` de dominio.
+
+### 13.2 Decisiones de diseño
+
+- Un único change `sqlite-hardening` cubre #2 y #4.
+- Escrituras con `begin_with("BEGIN IMMEDIATE")`; lecturas siguen con `begin()` (diferido) para no serializarlas.
+- `ON DELETE RESTRICT` (no `CASCADE`) para impedir borrar recetas referenciadas por el plan.
+- `CHECK` de dominio: `shopping_list_items.amount >= 0`; `recipes.servings` y `meal_plan_entries.servings` NULL o `>= 1`; `recipes.prep_time_minutes` NULL o `>= 0`.
+
+### 13.3 Módulos y migración
+
+- `backend/src/repo/agent.rs` (`set_weekly_plan`, `add_shopping_items`) y `backend/src/repo/shopping_list.rs` (`consolidate`): las 3 transacciones de escritura usan `begin_with`.
+- Migración nueva append-only `0005_schema_constraints.sql`: rebuild de 12 pasos de `recipes` (+ recrear `recipes_fts`, triggers e `INSERT INTO recipes_fts(recipes_fts) VALUES('rebuild')`), `meal_plan_entries` y `shopping_list_items`. Primera línea `-- no-transaction` para poder usar `PRAGMA foreign_keys = OFF` fuera de transacción; el DDL va envuelto en `BEGIN/COMMIT` (atómico) con `PRAGMA foreign_key_check` antes del `COMMIT`.
+
+### 13.4 Tests
+
+- `backend/tests/write_transactions.rs` (4): reproducción de `BUSY_SNAPSHOT` con `BEGIN` diferido (código extendido `517`), serialización con `BEGIN IMMEDIATE`, y concurrencia de `set_weekly_plan` + `consolidate` + `add_shopping_items` sin `BUSY_SNAPSHOT`.
+- `backend/tests/schema_constraints.rs` (9): FK `on_delete == 'RESTRICT'` vía `PRAGMA foreign_key_list`; borrado de receta referenciada rechazado; `CHECK` de amount/servings/prep_time (negativos y `< 1` rechazados, válidos y NULL aceptados); datos y búsqueda FTS5 sobreviven a la migración.
+
+### 13.5 Criterios de aceptación (DoD)
+
+- [x] `cargo test` verde (454 tests con `embed-ui`); `clippy --all-targets --all-features -- -D warnings` limpio; `fmt --check` limpio.
+- [x] `just ci` exit 0 y `just ci-ui` exit 0.
+- [x] `openspec validate --all --strict` → 17/17.
+- [ ] Cerrar las issues #2 y #4 tras el merge del PR a `development`.

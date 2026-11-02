@@ -61,7 +61,8 @@ pub async fn set_weekly_plan(
         return Ok((0, shopping_list::list_grouped(pool).await?));
     }
 
-    let mut tx = pool.begin().await?;
+    // Escritura read-then-write: BEGIN IMMEDIATE evita SQLITE_BUSY_SNAPSHOT en WAL.
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
 
     // Validación previa: todos los `recipe_id` deben existir.
     let mut recipe_ids: Vec<&str> = entries
@@ -140,7 +141,8 @@ pub async fn add_shopping_items(
     pool: &SqlitePool,
     items: &[IngredientInput],
 ) -> AppResult<Vec<ShoppingListGroup>> {
-    let mut tx = pool.begin().await?;
+    // Escritura read-then-write: BEGIN IMMEDIATE evita SQLITE_BUSY_SNAPSHOT en WAL.
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
 
     // Ítems manuales existentes, indexados por (clave normalizada, unidad canónica).
     let existing: Vec<ShoppingItem> = sqlx::query_as(
