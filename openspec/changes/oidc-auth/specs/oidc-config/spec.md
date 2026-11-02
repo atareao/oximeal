@@ -3,7 +3,7 @@
 ## ADDED Requirements
 
 ### Requirement: Configuración por entorno
-El backend SHALL leer su configuración OIDC de variables de entorno: `OIDC_ENABLED`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_API_AUDIENCE` (el resource del API), `OIDC_REDIRECT_URI`, `OIDC_POST_LOGOUT_REDIRECT_URI`, `ALLOWED_ORIGINS`, las variables `SESSION_*` (clave y duración) y el mapeo grupo→rol. Si `OIDC_ENABLED=true` y falta algún valor obligatorio, el servidor SHALL **fallar el arranque** con un mensaje claro.
+El backend SHALL leer su configuración OIDC de variables de entorno: `OIDC_ENABLED`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_API_AUDIENCE` (el resource del API), `OIDC_REDIRECT_URI`, `OIDC_POST_LOGOUT_REDIRECT_URI`, `ALLOWED_ORIGINS`, `OIDC_ALLOWED_GROUPS` (grupos autorizados) y las variables `SESSION_*` (clave y duración). Si `OIDC_ENABLED=true` y falta algún valor obligatorio, el servidor SHALL **fallar el arranque** con un mensaje claro.
 
 #### Scenario: Configuración incompleta con OIDC activo
 - GIVEN `OIDC_ENABLED=true` y alguna variable obligatoria ausente
@@ -29,7 +29,7 @@ El backend SHALL usar el documento de descubrimiento OIDC y el JWKS publicados p
 #### Scenario: IdP caído al arrancar
 - GIVEN que el proveedor de identidad no responde al arrancar
 - WHEN el servidor arranca
-- THEN el servidor arranca igualmente y las rutas protegidas responden 503 o 401 de forma coherente
+- THEN el servidor arranca igualmente; `GET /api/health` responde 200 y las rutas protegidas sin credencial válida responden 401
 
 #### Scenario: Refresco de JWKS
 - GIVEN un JWKS cacheado y un token con un `kid` nuevo

@@ -7,16 +7,17 @@ Cerrar la instancia self-hosted de OxiMeal, que hoy está **completamente abiert
 - **BFF/sesión**: `GET /auth/login`, `GET /auth/callback`, `GET /auth/me`, `POST /auth/logout`; sesión server-side con cookie `httpOnly` + `Secure` + `SameSite=Lax`, rotación de identificador y renovación transparente con refresh token.
 - **Autorización por permisos** del modelo *APIs and permissions* de Pocket ID: validación de access tokens JWT (RFC 9068) contra JWKS, `iss`, `aud` (el resource del API), `exp`/`nbf` y algoritmo; tabla de permisos por endpoint (`read:recipes`, `write:recipes`, `read:plan`, `write:plan`, `read:shopping`, `write:shopping`).
 - **Autorización en doble vía**: cookie de sesión (SPA) o `Authorization: Bearer` (Valet u otros clientes), con la misma tabla de permisos.
-- **Roles**: los grupos de Pocket ID mapean a roles (`admin`, `member`); la puerta de entrada se controla con *Allowed user groups* del cliente en Pocket ID.
+- **Puerta de entrada**: el acceso se limita con los *Allowed user groups* del cliente en Pocket ID más una allowlist de grupos permitidos en la configuración (`OIDC_ALLOWED_GROUPS`); **no hay roles** ni administración de instancia, la autorización interna es exclusivamente por permisos.
 - **Agent API M2M**: los cinco endpoints `/api/agent/*` se consumen con `client_credentials` de un cliente confidencial, con permisos dedicados (`agent:plan`, `agent:shopping`, `agent:read`).
 - **CSRF**: cabecera `X-CSRF-Token` obligatoria en mutaciones autenticadas por cookie.
-- **Frontend**: guard de rutas, consulta de `/auth/me`, manejo de 401/403 y UI consciente del rol.
+- **Frontend**: guard de rutas, consulta de `/auth/me`, manejo de 401/403 y control de cierre de sesión.
 - **Despliegue local**: `compose` con Pocket ID + su base de datos y checklist de configuración.
 
 ## Out of scope
 - **PWA/offline** (service worker, IndexedDB, cola de escrituras): pasa a **Fase 5**.
 - **Cambios en el esquema**: NO se añade `user_id`; un único dataset compartido por instancia (uso familiar).
 - **API key estática** (`OXIMEAL_API_KEY`, issue #5): queda obsoleta en favor de OIDC; su retirada se documenta.
+- **Roles y administración de instancia**: no se implementan roles (`admin`/`member`) ni endpoints de administración; todas las acciones operativas se rigen por permisos.
 - Proveedores de identidad distintos de Pocket ID.
 - Orquestador/LLM/chat dentro de OxiMeal (sigue siendo Valet, Fase 3).
 
@@ -26,6 +27,6 @@ Cerrar la instancia self-hosted de OxiMeal, que hoy está **completamente abiert
 - **Datos**: nueva tabla de sesiones server-side en el SQLite del proyecto (sin cambios en las tablas de dominio).
 - **Backend**: nuevo middleware de autenticación/autorización, cliente OIDC confidencial (discovery + JWKS con caché), gestión de sesión y CSRF.
 - **Frontend**: contexto de sesión, guard de rutas, redirección a login y cabecera CSRF.
-- **Configuración/despliegue**: nuevas variables de entorno (`OIDC_*`, `ALLOWED_ORIGINS`, `SESSION_*`), `compose` de desarrollo y reverse proxy HTTPS para redirect URIs fuera de localhost.
+- **Configuración/despliegue**: nuevas variables de entorno (`OIDC_*`, `ALLOWED_ORIGINS`, `OIDC_ALLOWED_GROUPS`, `SESSION_*`), `compose` de desarrollo y reverse proxy HTTPS para redirect URIs fuera de localhost.
 - **Dependencia futura**: los access tokens caducan a los 60 min y el refresh a los 30 días, por lo que la **Fase 5** deberá tolerar sesión caducada sirviendo datos cacheados.
 - **Trazabilidad**: cierra el issue #5 (autenticación/API key) y desbloquea la exposición segura de la Agent API a Valet.

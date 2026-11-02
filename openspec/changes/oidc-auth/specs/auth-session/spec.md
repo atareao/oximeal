@@ -8,7 +8,7 @@ El backend SHALL exponer `GET /auth/login`, que redirige al endpoint de autoriza
 #### Scenario: Redirección a Pocket ID
 - GIVEN un usuario sin sesión
 - WHEN se solicita `GET /auth/login`
-- THEN se responde con una redirección al endpoint de autorización que incluye `code`, `S256`, `state`, `nonce`, el `resource` del API y los permisos solicitados
+- THEN se responde con una redirección al endpoint de autorización que incluye `response_type=code`, `code_challenge_method=S256`, `state`, `nonce`, el `resource` del API y los permisos solicitados
 
 #### Scenario: El navegador nunca recibe tokens
 - GIVEN el flujo de autorización iniciado
@@ -16,7 +16,7 @@ El backend SHALL exponer `GET /auth/login`, que redirige al endpoint de autoriza
 - THEN la redirección no expone `client_secret` ni tokens al navegador
 
 ### Requirement: Callback y sesión server-side
-El backend SHALL exponer `GET /auth/callback`, que valida el `state` recibido contra el guardado en la sesión, intercambia el código de autorización **en servidor** contra el endpoint de token, y valida el ID token (firma, `iss`, `aud`, `exp` y `nonce`). El backend SHALL exigir que el usuario pertenezca a un grupo permitido, resolver su rol desde el claim `groups` y crear una sesión nueva con cookie `httpOnly` + `Secure` + `SameSite=Lax` + `Path=/`, rotando el identificador de sesión al autenticar. Ante cualquier error de validación SHALL responder 400 o 403 **sin** crear sesión.
+El backend SHALL exponer `GET /auth/callback`, que valida el `state` recibido contra el guardado en la sesión, intercambia el código de autorización **en servidor** contra el endpoint de token, y valida el ID token (firma, `iss`, `aud`, `exp` y `nonce`). El backend SHALL exigir que el usuario pertenezca a un grupo permitido y crear una sesión nueva con cookie `httpOnly` + `Secure` + `SameSite=Lax` + `Path=/`, rotando el identificador de sesión al autenticar. Ante cualquier error de validación SHALL responder 400 o 403 **sin** crear sesión.
 
 #### Scenario: Login feliz
 - GIVEN un `state` válido, un código de autorización correcto y un ID token válido de un usuario en un grupo permitido
@@ -34,12 +34,12 @@ El backend SHALL exponer `GET /auth/callback`, que valida el `state` recibido co
 - THEN se responde 403 y no se crea ninguna sesión
 
 ### Requirement: Consulta de sesión
-El backend SHALL exponer `GET /auth/me`, que devuelve 200 con `{ authenticated, subject, name, roles, permissions }` cuando hay sesión, y 200 con `{ authenticated: false }` cuando no la hay. La respuesta SHALL incluir el token anti-CSRF para las mutaciones y **nunca** SHALL exponer access tokens, refresh tokens ni el ID token.
+El backend SHALL exponer `GET /auth/me`, que devuelve 200 con `{ authenticated, subject, name, permissions, csrf_token }` cuando hay sesión, y 200 con `{ authenticated: false }` cuando no la hay. La respuesta SHALL incluir el token anti-CSRF para las mutaciones y **nunca** SHALL exponer access tokens, refresh tokens ni el ID token.
 
 #### Scenario: Con sesión activa
 - GIVEN una sesión válida de un usuario autenticado
 - WHEN se solicita `GET /auth/me`
-- THEN se responde 200 con `authenticated: true`, el sujeto, el nombre, los roles, los permisos y el token anti-CSRF
+- THEN se responde 200 con `authenticated: true`, el sujeto, el nombre, los permisos y el token anti-CSRF
 
 #### Scenario: Sin sesión
 - GIVEN una petición sin cookie de sesión válida

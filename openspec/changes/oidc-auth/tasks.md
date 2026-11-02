@@ -2,7 +2,7 @@
 
 ## 1. Dependencias y configuración
 - [ ] 1.1 Añadir dependencias backend (`openidconnect`/`oauth2`, `jsonwebtoken`, `tower-sessions` o equivalente, `sha2`, `rand`) y verificar que el workspace compila.
-- [ ] 1.2 Extender `config.rs` con `OIDC_ENABLED`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_API_AUDIENCE`, `OIDC_REDIRECT_URI`, `OIDC_POST_LOGOUT_REDIRECT_URI`, `ALLOWED_ORIGINS`, `SESSION_*` y el mapeo grupo→rol.
+- [ ] 1.2 Extender `config.rs` con `OIDC_ENABLED`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_API_AUDIENCE`, `OIDC_REDIRECT_URI`, `OIDC_POST_LOGOUT_REDIRECT_URI`, `ALLOWED_ORIGINS`, `OIDC_ALLOWED_GROUPS` y `SESSION_*`.
 - [ ] 1.3 Migración nueva con la tabla de sesiones server-side (sin tocar las tablas de dominio).
 - [ ] 1.4 Fallo de arranque con config incompleta o secreto de sesión por defecto; warning explícito con `OIDC_ENABLED=false`.
 
@@ -10,7 +10,7 @@
 - [ ] 2.1 `GET /auth/login`: redirección con `response_type=code`, `scope`, `resource`, `state`, `nonce` y PKCE `S256` (test primero).
 - [ ] 2.2 `GET /auth/callback`: validación de `state`, intercambio de código en servidor, validación del ID token y creación de sesión con rotación de ID.
 - [ ] 2.3 Cookie `httpOnly` + `Secure` + `SameSite=Lax` + `Path=/`; sin exponer tokens al navegador.
-- [ ] 2.4 `GET /auth/me` con `{ authenticated, subject, name, roles, permissions }` y token anti-CSRF; nunca expone tokens.
+- [ ] 2.4 `GET /auth/me` con `{ authenticated, subject, name, permissions, csrf_token }` y token anti-CSRF; nunca expone tokens.
 - [ ] 2.5 `POST /auth/logout`: destrucción de sesión, limpieza de cookie y 204.
 - [ ] 2.6 Renovación transparente con refresh token y destrucción de sesión ante fallo (401).
 - [ ] 2.7 Middleware CSRF `X-CSRF-Token` en mutaciones autenticadas por cookie.
@@ -33,7 +33,7 @@
 - [ ] 5.2 Guard de rutas: sin sesión, redirección a `/auth/login` conservando el destino.
 - [ ] 5.3 Manejo de 401 (re-login) y 403 (aviso sin destruir sesión).
 - [ ] 5.4 Cabecera `X-CSRF-Token` en todas las mutaciones.
-- [ ] 5.5 UI consciente del rol: nombre/rol visibles y acciones de administración ocultas a `member`.
+- [ ] 5.5 Identidad de sesión visible: nombre del usuario y control de cierre de sesión; sin roles ni acciones de administración.
 
 ## 6. Despliegue local (IdP de desarrollo)
 - [ ] 6.1 `compose` (podman/docker) con Pocket ID + su base de datos para desarrollo.
@@ -46,12 +46,12 @@
 - [ ] 7.2 Tests de validación de tokens (firma/clave desconocida, caducado, `aud` ajeno, algoritmo no permitido).
 - [ ] 7.3 Tests de autorización por permiso (401/403/200) y de endpoints públicos.
 - [ ] 7.4 Tests de la Agent API M2M y no-regresión del contrato.
-- [ ] 7.5 Tests de frontend (guard de rutas, 401/403, CSRF, rol `member`).
+- [ ] 7.5 Tests de frontend (guard de rutas, 401/403, CSRF, identidad y cierre de sesión).
 - [ ] 7.6 `cargo test` en verde con `OIDC_ENABLED=false`; `clippy -D warnings` y `fmt --check` limpios.
 - [ ] 7.7 `openspec validate oidc-auth --strict` y `just ci` / `just ci-ui` en verde.
 
 ## 8. Documentación
-- [ ] 8.1 Actualizar `.env.example` y README con las variables OIDC, `ALLOWED_ORIGINS` y `SESSION_*`.
-- [ ] 8.2 Documentar el mapeo grupos→roles y los permisos por endpoint.
+- [ ] 8.1 Actualizar `.env.example` y README con las variables OIDC, `ALLOWED_ORIGINS`, `OIDC_ALLOWED_GROUPS` y `SESSION_*`.
+- [ ] 8.2 Documentar los permisos por endpoint y la allowlist de grupos permitidos.
 - [ ] 8.3 Documentar la migración del API key estático a M2M (issue #5) y los pasos del `compose` de desarrollo.
 - [ ] 8.4 Anotar la dependencia de la Fase 5 (offline con sesión potencialmente caducada).

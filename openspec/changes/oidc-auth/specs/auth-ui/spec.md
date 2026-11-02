@@ -39,10 +39,15 @@ El cliente del frontend SHALL añadir la cabecera `X-CSRF-Token`, con el valor o
 - WHEN el frontend realiza una mutación
 - THEN la petición incluye la cabecera `X-CSRF-Token`
 
-### Requirement: UI consciente del rol
-La aplicación SHALL mostrar el nombre del usuario y su rol, y SHALL ocultar a los usuarios con rol `member` las acciones de administración.
+### Requirement: Identidad y cierre de sesión en la interfaz
+La aplicación SHALL mostrar el nombre del usuario de la sesión y SHALL ofrecer un control de cierre de sesión que invoca `POST /auth/logout`. Al completarse el cierre de sesión, la aplicación SHALL volver al login. No existen roles ni acciones de administración.
 
-#### Scenario: Member no ve acciones de admin
-- GIVEN un usuario autenticado con rol `member`
-- WHEN se renderiza la interfaz
-- THEN las acciones de administración de la instancia no son visibles
+#### Scenario: Se muestra el nombre del usuario
+- GIVEN una sesión válida
+- WHEN la aplicación renderiza la interfaz
+- THEN el nombre del usuario de la sesión es visible
+
+#### Scenario: Cierre de sesión desde la interfaz
+- GIVEN un usuario autenticado
+- WHEN pulsa el control de cierre de sesión
+- THEN el frontend invoca `POST /auth/logout` y vuelve al login
