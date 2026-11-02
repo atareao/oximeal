@@ -21,13 +21,17 @@ dev:
 test:
     cargo test -p oximeal-backend
 
+# Ejecuta la suite de tests del backend con la UI embebida.
+test-embed-ui:
+    cargo test -p oximeal-backend --features embed-ui
+
 # Verifica la compilación de todos los targets sin ejecutar tests.
 check:
-    cargo check --all-targets
+    cargo check --all-targets --all-features
 
 # Linter estricto (falla ante cualquier warning).
 lint:
-    cargo clippy --all-targets -- -D warnings
+    cargo clippy --all-targets --all-features -- -D warnings
 
 # Formatea el código.
 fmt:
@@ -37,8 +41,24 @@ fmt:
 fmt-check:
     cargo fmt --check
 
-# Puerta de calidad completa: formato + lint + tests.
-ci: fmt-check lint test
+# Puerta de calidad completa: formato + lint + tests (ambas features).
+ci: fmt-check lint test test-embed-ui
+
+# Instala las dependencias del frontend.
+ui-install:
+    cd frontend && pnpm install
+
+# Compila el frontend a `frontend/dist`.
+ui-build:
+    cd frontend && pnpm build
+
+# Compila el binario con la UI embebida (requiere `ui-build`).
+build-full: ui-build
+    cargo build --release -p oximeal-backend --features embed-ui
+
+# Puerta de calidad del frontend: tipos + tests + lint + build.
+ci-ui:
+    cd frontend && pnpm typecheck && pnpm test && pnpm lint && pnpm build
 
 # Aplica las migraciones con la CLI de `sqlx` si está disponible.
 migrate:

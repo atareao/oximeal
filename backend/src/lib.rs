@@ -8,6 +8,7 @@ pub mod models;
 pub mod repo;
 pub mod routes;
 pub mod state;
+pub mod static_files;
 
 use axum::Router;
 use tower_http::cors::{Any, CorsLayer};
@@ -27,6 +28,14 @@ pub fn app(state: AppState) -> Router {
 
     Router::new()
         .merge(routes::router())
+        // El fallback del frontend debe fusionarse al final: solo actúa cuando
+        // ninguna ruta de la API ha casado.
+        //
+        // ADVERTENCIA: `routes::router()` NO debe definir un `fallback()` propio.
+        // Fusionar dos routers que aportan un `fallback` hace que axum entre en
+        // pánico ("Cannot merge two `Router`s that both have a fallback"). El
+        // fallback único del árbol es el de `static_files::router()`.
+        .merge(static_files::router())
         .layer(TraceLayer::new_for_http())
         .layer(cors)
         .with_state(state)

@@ -115,7 +115,7 @@ oximeal/
 ## 6. Fases 2–4 (alto nivel, planificadas)
 
 - **Fase 1.5 — Agent API** (cerrada junto con la Fase 1 en esta ronda).
-- **Fase 2 — Frontend:** React 19 + Antd v6 (Vite/TS) en `frontend/`; shell responsive (Sider en desktop / bottom-nav en móvil); menú semanal lunes–domingo; modo compra mobile-first por pasillos (objetivos ≥48px, strike-through + reordenado + haptics); servido con `rust-embed` (feature `embed-ui`) y fallback SPA; la pestaña Asistente enlaza/embebe Valet.
+- **Fase 2 — Frontend (COMPLETADA):** React 19 + Antd v6 (Vite/TS) en `frontend/`; shell responsive (Sider en desktop / bottom-nav en móvil); menú semanal lunes–domingo; modo compra mobile-first por pasillos (objetivos ≥48px, strike-through + reordenado + haptics); servido con `rust-embed` (feature `embed-ui`) y fallback SPA; la pestaña Asistente enlaza/embebe Valet. La deuda diferida (ETag/304, `charset=utf-8`, Range/nosniff/CSP, `eslint-plugin-jsx-a11y`, Prettier, CI remoto) quedó registrada como issues.
 - **Fase 3 — Integración con Valet (en el repo Valet, NO en OxiMeal):** cliente `src/services/oximeal.rs` + tools `src/tools/oximeal.rs` (con permisos) que consumen la Agent API. **No** se construye orquestador/MCP/chat en OxiMeal (Valet descartó MCP; usa integración nativa por servicio). La pestaña 🤖 del PWA enlaza/embebe el chat de Valet.
 - **Fase 4 — PWA/Offline:** `manifest.json` + iconos adaptativos; Service Worker (Stale-While-Revalidate para activos, Network-First con fallback IndexedDB para la lista); pruebas táctiles y de rendimiento.
 
@@ -124,7 +124,8 @@ oximeal/
 - **Unit (dominio):** `#[cfg(test)]` en `domain/*` — canonicalización de unidades, normalización de nombres, categorización, consolidación (sumas, no-aditivos, conflictos de unidad).
 - **Integración (API):** `backend/tests/*.rs` levantan el `Router` de `lib.rs` con SQLite temporal migrada (`tempfile`) y usan `oneshot`/`axum-test`.
 - **Contrato FTS:** caso que inserta recetas y verifica coincidencia por substring (trigram) y fallback LIKE.
-- **Puertas obligatorias:** `cargo test`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check`, `openspec validate phase-1-core-backend --strict`.
+- **Frontend:** `vitest` + Testing Library (`@testing-library/react` / `user-event`); se mockea `src/api/client` con `vi.mock` y se ejercitan hooks reales envueltos en `QueryClientProvider`.
+- **Puertas obligatorias:** `cargo test`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check`, `just ci`, `just ci-ui`, `openspec validate --all --strict`.
 
 ## 8. Git flow (resumen; detalle en GIT_FLOW.md)
 
@@ -137,7 +138,7 @@ oximeal/
 - [x] Workspace compila: `cargo build` OK.
 - [x] Migraciones aplican sobre base nueva; FTS5+trigram verificados en runtime.
 - [x] Motor de consolidación con cobertura de tests (unidades, acentos, no-aditivos, conflictos).
-- [x] Los 11 endpoints de §6 implementados y cubiertos por tests de integración.
+- [x] Los 12 endpoints REST de §6 + los 5 de la Agent API implementados y cubiertos por tests de integración.
 - [x] `cargo test` en verde; `clippy -D warnings` limpio; `fmt --check` limpio.
 - [x] `openspec validate phase-1-core-backend --strict` en verde.
 - [x] `/api/health` responde 200; Swagger accesible en `/api/docs`.
@@ -146,12 +147,15 @@ oximeal/
 
 ### Fase 2
 
-- [ ] `frontend/` compila sin errores: `npx tsc --noEmit` + `npm run build` (vite).
-- [ ] `npx vitest run` en verde.
-- [ ] `eslint` limpio.
-- [ ] Shell responsive verificado (Sider desktop / bottom-nav móvil).
-- [ ] Fallback SPA correcto (`/api/*` no cae al fallback).
-- [ ] `cargo test` sigue en verde con `embed-ui` on y off.
+- [x] `frontend/` compila sin errores: `pnpm typecheck` + `pnpm build` (vite).
+- [x] `pnpm test` en verde (73 tests con Vitest + Testing Library).
+- [x] `eslint` limpio.
+- [x] Shell responsive verificado (Sider desktop / bottom-nav móvil).
+- [x] Fallback SPA correcto (`/api/*` no cae al fallback).
+- [x] `cargo test` sigue en verde con `embed-ui` on y off.
+- [x] Code-splitting por rutas activo (chunks de `MenuPage` / `ShoppingPage`).
+- [x] `just ci` y `just ci-ui` en verde.
+- [x] Auditoría `react-reviewer` + `rust-reviewer` aplicada (0 bloqueantes).
 
 ## 10. Riesgos y mitigaciones
 
@@ -161,7 +165,7 @@ oximeal/
 | Query trigram insensible a acentos limitada | `normalize.rs` aplica folding de acentos antes de indexar/buscar. |
 | Edición 2024 requiere toolchain reciente | `rust-toolchain.toml` fija stable ≥1.97 (presente en el entorno). |
 | Ambigüedad Schema.org en import | Fase 1 acepta solo JSON validado; el parser Schema.org se completa en F2/F3. |
-| Consumo de RAM <20 MB (objetivo global) | Fase 1 no añade runtime LLM; se mide con el binario monolítico en F2. |
+| Consumo de RAM <20 MB (objetivo global) | Fase 1 no añade runtime LLM; la medición real se hará sobre el binario monolítico (feature `embed-ui`), **pendiente** de ejecutar; no se fijan cifras aún. |
 
 ## 11. Trazabilidad con la especificación
 

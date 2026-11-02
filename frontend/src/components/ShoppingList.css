@@ -1,0 +1,35 @@
+.shopping-list {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.shopping-list__group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.shopping-list__heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0 4px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #2d3748;
+}
+
+.shopping-list__emoji {
+  font-size: 18px;
+}
+
+.shopping-list__items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}

@@ -1,0 +1,42 @@
+.shopping-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.shopping-page__header {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.shopping-page__title {
+  margin: 0 !important;
+}
+
+.shopping-page__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.shopping-page__actions .ant-btn {
+  min-height: 48px;
+}
+
+.shopping-page__loading {
+  padding: 8px 0;
+}
+
+.shopping-page__empty-hint {
+  margin: 0 !important;
+  max-width: 320px;
+}
+
+@media (min-width: 640px) {
+  .shopping-page__header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}

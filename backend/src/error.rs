@@ -17,6 +17,9 @@ pub enum AppError {
     /// Datos de entrada inválidos (400).
     #[error("datos inválidos: {0}")]
     Validation(String),
+    /// Método HTTP no permitido en la ruta (405).
+    #[error("método no permitido: {0}")]
+    MethodNotAllowed(String),
     /// Error de base de datos (500, detalle no expuesto al cliente).
     #[error("error de base de datos: {0}")]
     Database(#[from] sqlx::Error),
@@ -38,6 +41,11 @@ impl IntoResponse for AppError {
             AppError::Validation(message) => {
                 (StatusCode::BAD_REQUEST, "validation", message.clone())
             }
+            AppError::MethodNotAllowed(message) => (
+                StatusCode::METHOD_NOT_ALLOWED,
+                "method_not_allowed",
+                message.clone(),
+            ),
             AppError::Database(error) => {
                 tracing::error!(error = %error, "error de base de datos");
                 (
@@ -79,6 +87,12 @@ mod tests {
     fn validation_maps_to_400() {
         let response = AppError::Validation("campo requerido".into()).into_response();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn method_not_allowed_maps_to_405() {
+        let response = AppError::MethodNotAllowed("POST".into()).into_response();
+        assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
     }
 
     #[tokio::test]

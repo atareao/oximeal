@@ -1,0 +1,54 @@
+.app-mobile {
+  min-height: 100dvh;
+  background: #f7fafc;
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.app-mobile__content {
+  padding: 16px 16px calc(72px + env(safe-area-inset-bottom, 0px));
+}
+
+.app-desktop {
+  min-height: 100dvh;
+}
+
+.app-sider {
+  border-right: 1px solid #e2e8f0;
+}
+
+.app-sider__brand {
+  padding: 20px 16px;
+  font-size: 20px;
+  font-weight: 700;
+  color: #2f855a;
+}
+
+.app-sider__assistant {
+  margin: 24px 16px;
+  padding: 16px;
+  border-radius: 12px;
+  background: #f0fff4;
+  border: 1px solid #c6f6d5;
+}
+
+.app-sider__assistant-title {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #22543d;
+}
+
+.app-sider__assistant-text {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: #4a5568;
+}
+
+.app-sider__assistant-link {
+  font-weight: 600;
+  color: #2f855a;
+}
+
+.app-content {
+  padding: 24px;
+}
