@@ -35,6 +35,12 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
   frontend espera, lo que dejaba la aplicación embebida bloqueada en
   `/auth/login`. Las rutas `/auth/*` se clasifican ahora como rutas de API en el
   fallback ([#36](https://github.com/atareao/oximeal/issues/36)).
+- **La cola de escrituras offline no se drenaba al recuperar la conexión**: si el
+  drenado fallaba por red mientras `navigator.onLine` seguía en `true`, nadie
+  reintentaba y el aviso de cambios pendientes quedaba indefinidamente. Un nuevo
+  planificador (`drainScheduler`) reintenta con backoff exponencial acotado
+  (2→30 s), sin bucle ante 401/403, y reintenta al volver al primer plano o
+  recuperar el foco ([#35](https://github.com/atareao/oximeal/issues/35)).
 
 ### Seguridad
 
