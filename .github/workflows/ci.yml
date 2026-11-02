@@ -54,6 +54,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Tipos
         run: pnpm typecheck
+      - name: Formato
+        run: pnpm format:check
       - name: Tests
         run: pnpm test
       - name: Lint
