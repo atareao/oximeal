@@ -1,6 +1,8 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import { isOnline, useOnline } from './connectivity';
+
+const originalOnLine = Object.getOwnPropertyDescriptor(Navigator.prototype, 'onLine');
 
 function setNavigatorOnline(value: boolean) {
   Object.defineProperty(navigator, 'onLine', {
@@ -11,7 +13,10 @@ function setNavigatorOnline(value: boolean) {
 
 describe('connectivity', () => {
   afterEach(() => {
-    setNavigatorOnline(true);
+    vi.unstubAllGlobals();
+    if (originalOnLine) {
+      Object.defineProperty(navigator, 'onLine', originalOnLine);
+    }
   });
 
   it('isOnline refleja navigator.onLine', () => {

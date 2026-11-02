@@ -144,6 +144,7 @@ describe('persistQueryClient', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
     if (originalVisibilityState) {
       Object.defineProperty(document, 'visibilityState', originalVisibilityState);
     }

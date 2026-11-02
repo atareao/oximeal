@@ -6,6 +6,7 @@ import { SessionProvider } from './auth/SessionProvider';
 import { BootErrorBoundary } from './components/BootErrorBoundary';
 import { BootFallback } from './components/BootFallback';
 import { hydrateQueryClient, persistQueryClient } from './offline/queryPersist';
+import { MutationQueueProvider } from './offline/MutationQueueProvider';
 import { registerServiceWorker } from './offline/register-sw';
 import './index.css';
 
@@ -68,6 +69,7 @@ async function bootstrap() {
       <BootErrorBoundary>
         <QueryClientProvider client={queryClient}>
           <SessionProvider>
+            <MutationQueueProvider />
             <Suspense fallback={<BootFallback />}>
               <AppRoot />
             </Suspense>

@@ -12,6 +12,8 @@ import {
   patchShoppingItem,
 } from '../api/client';
 import { ShoppingPage } from './ShoppingPage';
+import { configureMutationQueue, enqueueCreate } from '../offline/mutationQueue';
+import { createMutationStore } from '../offline/mutationStore';
 
 // Se mockea el cliente HTTP, no los hooks: así se ejerce la integración real
 // (React Query + actualización optimista + rollback) de la página.
@@ -263,5 +265,15 @@ describe('ShoppingPage', () => {
     const headings = screen.getAllByRole('heading', { level: 2 }).slice(1);
     expect(within(headings[0]).getByText('Despensa')).toBeInTheDocument();
     expect(within(headings[1]).getByText('Verdulería')).toBeInTheDocument();
+  });
+
+  it('muestra el aviso de cambios pendientes cuando hay cola', async () => {
+    configureMutationQueue(createMutationStore());
+    await enqueueCreate({ name: 'Leche', amount: 1, unit: 'ud' });
+    renderShopping();
+
+    const alert = await screen.findByTestId('pending-mutations');
+    expect(alert).toHaveTextContent('1 cambio(s) pendiente(s) de sincronizar');
+    expect(within(alert).getByRole('button', { name: /sincronizar ahora/i })).toBeEnabled();
   });
 });

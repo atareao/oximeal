@@ -61,6 +61,131 @@ async fn manual_create_uses_heuristic_category() {
 }
 
 #[tokio::test]
+async fn create_without_client_id_returns_201_and_null_client_id() {
+    let state = common::test_state().await;
+
+    let (status, body) = common::request(
+        state,
+        "POST",
+        "/api/shopping-list",
+        Some(json!({"name": "Tomate", "amount": 2.0, "unit": "ud"})),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(body["client_id"], Value::Null);
+}
+
+#[tokio::test]
+async fn create_with_new_client_id_returns_201_and_echoes_it() {
+    let state = common::test_state().await;
+
+    let (status, body) = common::request(
+        state,
+        "POST",
+        "/api/shopping-list",
+        Some(json!({"name": "Tomate", "amount": 2.0, "unit": "ud", "client_id": "abc"})),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(body["client_id"], "abc");
+}
+
+#[tokio::test]
+async fn create_twice_with_same_client_id_returns_existing_without_duplicating() {
+    let state = common::test_state().await;
+
+    let (first_status, first) = common::request(
+        state.clone(),
+        "POST",
+        "/api/shopping-list",
+        Some(json!({"name": "Tomate", "amount": 2.0, "unit": "ud", "client_id": "abc"})),
+    )
+    .await;
+    assert_eq!(first_status, StatusCode::CREATED);
+
+    let (status, second) = common::request(
+        state.clone(),
+        "POST",
+        "/api/shopping-list",
+        Some(json!({"name": "Tomate", "amount": 2.0, "unit": "ud", "client_id": "abc"})),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "el alta repetida devuelve 200");
+    assert_eq!(second["id"], first["id"], "devuelve el ítem existente");
+
+    let count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM shopping_list_items WHERE client_id = 'abc'")
+            .fetch_one(&state.pool)
+            .await
+            .expect("contar ítems con client_id");
+    assert_eq!(count, 1, "no debe duplicar el ítem");
+}
+
+#[tokio::test]
+async fn concurrent_creates_with_same_client_id_create_a_single_row() {
+    let state = common::test_state().await;
+
+    let payload = json!({"name": "Tomate", "amount": 2.0, "unit": "ud", "client_id": "race"});
+    let (first, second) = tokio::join!(
+        common::request(
+            state.clone(),
+            "POST",
+            "/api/shopping-list",
+            Some(payload.clone())
+        ),
+        common::request(state.clone(), "POST", "/api/shopping-list", Some(payload)),
+    );
+
+    let statuses = [first.0, second.0];
+    assert!(
+        statuses.contains(&StatusCode::CREATED),
+        "una de las altas debe crear el ítem: {statuses:?}"
+    );
+    assert!(
+        statuses
+            .iter()
+            .all(|status| *status == StatusCode::CREATED || *status == StatusCode::OK),
+        "ninguna alta debe fallar: {statuses:?}"
+    );
+    assert_eq!(
+        first.1["id"], second.1["id"],
+        "ambas respuestas apuntan al mismo ítem"
+    );
+
+    let count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM shopping_list_items WHERE client_id = 'race'")
+            .fetch_one(&state.pool)
+            .await
+            .expect("contar ítems con client_id");
+    assert_eq!(
+        count, 1,
+        "nunca debe haber dos filas con el mismo client_id"
+    );
+}
+
+#[tokio::test]
+async fn list_exposes_client_id() {
+    let state = common::test_state().await;
+
+    let (status, _) = common::request(
+        state.clone(),
+        "POST",
+        "/api/shopping-list",
+        Some(json!({"name": "Leche", "amount": 1.0, "unit": "l", "client_id": "lista"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let (status, groups) = common::request(state, "GET", "/api/shopping-list", None).await;
+    assert_eq!(status, StatusCode::OK);
+    let item = find_item(&groups, "Leche").expect("leche en la lista");
+    assert_eq!(item["client_id"], "lista");
+}
+
+#[tokio::test]
 async fn patch_toggles_checked() {
     let state = common::test_state().await;
 

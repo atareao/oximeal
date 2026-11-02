@@ -147,7 +147,7 @@ pub async fn add_shopping_items(
     // Ítems manuales existentes, indexados por (clave normalizada, unidad canónica).
     let existing: Vec<ShoppingItem> = sqlx::query_as(
         "SELECT id, name, amount, unit, category, checked, \
-         CAST(updated_at AS TEXT) AS updated_at \
+         CAST(updated_at AS TEXT) AS updated_at, client_id \
          FROM shopping_list_items WHERE source_plan_id IS NULL",
     )
     .fetch_all(&mut *tx)

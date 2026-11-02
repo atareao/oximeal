@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Alert,
   App as AntdApp,
@@ -9,6 +9,7 @@ import {
   Skeleton,
   Typography,
 } from 'antd';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   useClearCompleted,
   useConsolidateShopping,
@@ -19,6 +20,9 @@ import type { ShoppingItem } from '../api/types';
 import { AddItemForm } from '../components/AddItemForm';
 import { ShoppingList } from '../components/ShoppingList';
 import { useHaptics } from '../hooks/useHaptics';
+import { useOnline } from '../offline/connectivity';
+import { useQueuedMutations } from '../offline/mutationQueue';
+import { syncShoppingQueue } from '../offline/syncShoppingQueue';
 import './ShoppingPage.css';
 
 const { Title, Paragraph } = Typography;
@@ -26,11 +30,15 @@ const { Title, Paragraph } = Typography;
 /** Vista de la compra: alta rápida, agrupación por pasillo y marcado táctil. */
 export function ShoppingPage() {
   const { message } = AntdApp.useApp();
+  const queryClient = useQueryClient();
   const { data, isLoading, isError, error, refetch } = useShoppingList();
   const toggleItem = useToggleShoppingItem();
   const clearCompleted = useClearCompleted();
   const consolidate = useConsolidateShopping();
   const haptics = useHaptics();
+  const online = useOnline();
+  const queuedMutations = useQueuedMutations();
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const groups = useMemo(() => data ?? [], [data]);
 
@@ -45,6 +53,13 @@ export function ShoppingPage() {
   const handleToggle = (item: ShoppingItem) => {
     haptics(10);
     toggleItem.mutate({ id: item.id, patch: { checked: !item.checked } });
+  };
+
+  const handleSync = () => {
+    setIsSyncing(true);
+    void syncShoppingQueue(queryClient).finally(() => {
+      setIsSyncing(false);
+    });
   };
 
   const handleClearCompleted = () => {
@@ -108,6 +123,20 @@ export function ShoppingPage() {
       </header>
 
       <AddItemForm />
+
+      {queuedMutations.length > 0 && (
+        <Alert
+          type="info"
+          showIcon
+          data-testid="pending-mutations"
+          message={`${queuedMutations.length} cambio(s) pendiente(s) de sincronizar`}
+          action={
+            <Button size="small" onClick={handleSync} disabled={!online} loading={isSyncing}>
+              Sincronizar ahora
+            </Button>
+          }
+        />
+      )}
 
       {isLoading && (
         <div className="shopping-page__loading" data-testid="shopping-loading">

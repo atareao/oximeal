@@ -17,6 +17,7 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 - **Frontend:** linting estático de accesibilidad con `eslint-plugin-jsx-a11y` y formato verificado con Prettier, integrados en `just ci-ui` y en CI (#11).
 - **Frontend:** shell PWA instalable con manifiesto, iconos adaptativos y Service Worker propio que precachea el shell y los assets con hash; recarga sin conexión y actualización de caché versionada por build (#29).
 - **Frontend:** caché de datos en IndexedDB con hidratación al arrancar y modo degradado: sin conexión o con la sesión caducada se muestran los datos guardados con un aviso, en lugar de vaciar la vista o redirigir al login; el cierre de sesión limpia la caché (#30).
+- **Offline:** cola de escrituras en IndexedDB: los cambios de la lista de la compra hechos sin conexión se encolan, se aplican de forma optimista y se sincronizan en orden al recuperar la conexión. El alta es idempotente por `client_id` (migración 0006) para no duplicar ítems, una operación inválida (4xx) se descarta avisando al usuario y el marcado se resuelve por el `updated_at` más reciente (#31).
 
 ### Cambiado
 

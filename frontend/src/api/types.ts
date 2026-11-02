@@ -46,6 +46,10 @@ export interface ShoppingItem {
   category: string;
   checked: boolean;
   updated_at: string;
+  /** Identificador de cliente del alta idempotente, si lo hubo. */
+  client_id?: string | null;
+  /** Solo en cliente: ítem creado sin conexión y aún no confirmado por el servidor. */
+  pending?: boolean;
 }
 
 export interface ShoppingListGroup {
@@ -72,6 +76,7 @@ export interface ShoppingItemInput {
   amount: number;
   unit: string;
   category?: string;
+  client_id?: string;
 }
 
 export interface ShoppingItemPatch {

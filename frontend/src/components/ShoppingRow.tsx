@@ -1,3 +1,4 @@
+import { Tag } from 'antd';
 import type { ShoppingItem } from '../api/types';
 import { formatAmount } from '../lib/shopping';
 import './ShoppingRow.css';
@@ -19,6 +20,16 @@ export function ShoppingRow({ item, onToggle }: ShoppingRowProps) {
           onChange={() => onToggle(item)}
         />
         <span className="shopping-row__name">{item.name}</span>
+        {item.pending && (
+          <Tag
+            color="orange"
+            className="shopping-row__pending"
+            data-testid="item-pending"
+            aria-label="Pendiente de sincronizar"
+          >
+            Pendiente
+          </Tag>
+        )}
         <span className="shopping-row__amount">
           {formatAmount(item.amount)} {item.unit}
         </span>

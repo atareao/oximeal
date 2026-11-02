@@ -12,6 +12,8 @@ Con la lectura offline resuelta, falta poder escribir sin conexión: marcar íte
 
 ## Impact
 - Capabilities: nueva `offline-writes`; delta en `shopping-list`.
-- Backend: `backend/migrations/0005_shopping_item_client_id.sql`, `backend/src/models`, `backend/src/repo/shopping_list.rs`, `backend/src/routes/shopping_list.rs`.
+- Backend: `backend/migrations/0006_shopping_item_client_id.sql`, `backend/src/models`, `backend/src/repo/shopping_list.rs`, `backend/src/routes/shopping_list.rs`.
 - Frontend: `frontend/src/offline/mutationQueue.ts`, `frontend/src/api/hooks.ts`, `frontend/src/pages/ShoppingPage.tsx`.
 - `client_id` es opcional y retrocompatible: el alta sin él sigue creando un ítem nuevo.
+
+Cierra el issue #31.
