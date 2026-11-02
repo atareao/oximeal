@@ -18,6 +18,8 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 
 - **Recetario:** importación de recetas desde una URL con `POST /api/recipes/import` (permiso `write:recipes`): descarga server-side con guardas SSRF (solo `http`/`https`, pin de IP frente a DNS rebinding, veto de loopback/RFC1918/link-local, redirecciones acotadas, timeout y tope de tamaño) y parseo del JSON-LD Schema.org `@type: Recipe` (incl. `@graph`), idempotente por `source_url`; diálogo «Importar desde URL» en la página de recetas y allowlist opcional `IMPORT_ALLOWED_HOSTS` para orígenes en LAN (#46).
 
+- **Rendimiento:** verificación en dispositivo real con la receta `just perf`, que mide el RSS estable/pico del binario release con la UI embebida (nuevo `[profile.release]`: `lto`, `codegen-units=1`, `panic="abort"` y `strip`) y audita la web por CDP (FCP, transferencia del grafo inicial declarado y objetivos táctiles ≥48px); presupuestos y resultados documentados en `docs/performance.md` — RSS estable ~11 MB, FCP ~40 ms y transferencia ~317 kB. Es una medición on-demand, no un *gate* de CI (ADR-31) (#47).
+
 ### Cambiado
 
 ### Obsoleto

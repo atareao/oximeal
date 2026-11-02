@@ -56,6 +56,21 @@ ui-build:
 build-full: ui-build
     cargo build --release -p oximeal-backend --features embed-ui
 
+# Mide el RSS (estable y pico) del binario release con la UI embebida.
+# NO es un gate de CI (ADR-31): verificación manual de rendimiento.
+perf-mem: build-full
+    ./scripts/perf-rss.sh
+
+# Audita FCP, transferencia inicial y objetivos táctiles por CDP (Chrome
+# headless; el propio script arranca y para el binario). NO es un gate de CI
+# (ADR-31).
+perf-web: build-full
+    node scripts/perf-web.mjs
+
+# Verificación completa de rendimiento (RSS + web). NO es un gate de CI
+# (ADR-31): se ejecuta a mano sobre el binario release.
+perf: perf-mem perf-web
+
 # Puerta de calidad del frontend: tipos + formato + tests + lint + build.
 ci-ui:
     cd frontend && pnpm typecheck && pnpm format:check && pnpm test && pnpm lint && pnpm build && pnpm check-bundle
