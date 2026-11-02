@@ -4,11 +4,14 @@ import {
   ApiError,
   apiRequest,
   clearCompletedShoppingItems,
+  createRecipe,
   createShoppingItem,
+  deleteRecipe,
   fetchAuthMe,
   logoutAuth,
   patchShoppingItem,
   setCsrfToken,
+  updateRecipe,
   setForbiddenHandler,
   setUnauthorizedHandler,
 } from './client';
@@ -282,6 +285,69 @@ describe('CSRF y manejo de sesión en el cliente', () => {
     expect(fetchMock).toHaveBeenCalledWith(
       '/auth/logout',
       expect.objectContaining({ method: 'POST' }),
+    );
+  });
+});
+
+describe('mutaciones de recetas', () => {
+  const input = {
+    name: 'Tortilla',
+    category: 'main',
+    ingredients: [{ name: 'Patata', amount: 500, unit: 'g' }],
+  };
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+    setCsrfToken(null);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    setCsrfToken(null);
+  });
+
+  it('createRecipe hace POST /api/recipes', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'r1', ...input }, 201));
+
+    await createRecipe(input);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/recipes',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify(input) }),
+    );
+  });
+
+  it('updateRecipe hace PUT /api/recipes/{id} con CSRF', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'r1', ...input }));
+    setCsrfToken('token-123');
+
+    await updateRecipe('r1', input);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/recipes/r1',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify(input),
+        headers: expect.objectContaining({ 'X-CSRF-Token': 'token-123' }),
+      }),
+    );
+  });
+
+  it('deleteRecipe hace DELETE /api/recipes/{id} y resuelve undefined en 204', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+    setCsrfToken('token-123');
+
+    await expect(deleteRecipe('r1')).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/recipes/r1',
+      expect.objectContaining({
+        method: 'DELETE',
+        headers: expect.objectContaining({ 'X-CSRF-Token': 'token-123' }),
+      }),
     );
   });
 });

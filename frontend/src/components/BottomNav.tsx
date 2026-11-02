@@ -12,6 +12,7 @@ interface NavTab {
 
 const NAV_TABS: readonly NavTab[] = [
   { key: 'menu', label: 'Menú', icon: '📅', path: '/' },
+  { key: 'recipes', label: 'Recetas', icon: '🍳', path: '/recipes' },
   { key: 'shopping', label: 'Compra', icon: '🛒', path: '/shopping' },
 ];
 
@@ -29,7 +30,8 @@ export function BottomNav() {
   return (
     <nav className="bottom-nav" data-testid="bottom-nav" aria-label="Navegación principal">
       {NAV_TABS.map((tab) => {
-        const isActive = location.pathname === tab.path;
+        const isActive =
+          location.pathname === tab.path || location.pathname.startsWith(`${tab.path}/`);
         return (
           <button
             key={tab.key}

@@ -1,10 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { createShoppingItem, patchShoppingItem } from './client';
-import { queryKeys, useAddShoppingItem, useToggleShoppingItem } from './hooks';
-import type { ShoppingItem, ShoppingListGroup } from './types';
+import {
+  createRecipe,
+  createShoppingItem,
+  deleteRecipe,
+  patchShoppingItem,
+  updateRecipe,
+} from './client';
+import {
+  queryKeys,
+  useAddShoppingItem,
+  useCreateRecipe,
+  useDeleteRecipe,
+  useToggleShoppingItem,
+  useUpdateRecipe,
+} from './hooks';
+import type { Recipe, RecipeInput, ShoppingItem, ShoppingListGroup } from './types';
 import { isOnline } from '../offline/connectivity';
 import {
   configureMutationQueue,
@@ -15,7 +28,14 @@ import { createMutationStore, type MutationStore } from '../offline/mutationStor
 
 vi.mock('./client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./client')>();
-  return { ...actual, createShoppingItem: vi.fn(), patchShoppingItem: vi.fn() };
+  return {
+    ...actual,
+    createShoppingItem: vi.fn(),
+    patchShoppingItem: vi.fn(),
+    createRecipe: vi.fn(),
+    updateRecipe: vi.fn(),
+    deleteRecipe: vi.fn(),
+  };
 });
 
 vi.mock('../offline/connectivity', () => ({
@@ -160,5 +180,85 @@ describe('mutaciones offline-aware', () => {
 
     const data = queryClient.getQueryData<ShoppingListGroup[]>(queryKeys.shoppingList.all);
     expect(data?.[0].items[0]).toMatchObject({ checked: true, pending: true });
+  });
+});
+
+describe('mutaciones de recetas', () => {
+  const mockedCreateRecipe = vi.mocked(createRecipe);
+  const mockedUpdateRecipe = vi.mocked(updateRecipe);
+  const mockedDeleteRecipe = vi.mocked(deleteRecipe);
+
+  const input: RecipeInput = {
+    name: 'Tortilla',
+    category: 'main',
+    ingredients: [{ name: 'Patata', amount: 500, unit: 'g' }],
+  };
+
+  const recipe: Recipe = {
+    id: 'r1',
+    name: 'Tortilla',
+    category: 'main',
+    diet_type: 'mediterranean',
+    prep_time_minutes: 25,
+    servings: 4,
+    created_at: '2026-11-01T10:00:00Z',
+    ingredients: [{ name: 'Patata', amount: 500, unit: 'g' }],
+    instructions: null,
+    source_url: null,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+  });
+
+  it('useCreateRecipe crea e invalida el catálogo', async () => {
+    mockedCreateRecipe.mockResolvedValue(recipe);
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useCreateRecipe(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync(input);
+    });
+
+    expect(mockedCreateRecipe).toHaveBeenCalledWith(input);
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.recipes.all }),
+    );
+  });
+
+  it('useUpdateRecipe actualiza e invalida catálogo y detalle', async () => {
+    mockedUpdateRecipe.mockResolvedValue({ ...recipe, name: 'Nueva' });
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useUpdateRecipe(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({ id: 'r1', input });
+    });
+
+    expect(mockedUpdateRecipe).toHaveBeenCalledWith('r1', input);
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.recipes.all }),
+    );
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.recipes.detail('r1') }),
+    );
+  });
+
+  it('useDeleteRecipe borra e invalida el catálogo', async () => {
+    mockedDeleteRecipe.mockResolvedValue(undefined);
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useDeleteRecipe(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync('r1');
+    });
+
+    expect(mockedDeleteRecipe).toHaveBeenCalledWith('r1');
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.recipes.all }),
+    );
   });
 });

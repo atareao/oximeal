@@ -3,6 +3,7 @@ import type {
   AuthMeResponse,
   MealPlanEntryView,
   Recipe,
+  RecipeInput,
   RecipeListResponse,
   RecipeQueryParams,
   ShoppingItem,
@@ -16,6 +17,7 @@ const REQUEST_TIMEOUT_MS = 10_000;
 const CSRF_HEADER = 'X-CSRF-Token';
 const MUTATION_METHODS: ReadonlySet<NonNullable<RequestOptions['method']>> = new Set([
   'POST',
+  'PUT',
   'PATCH',
   'DELETE',
 ]);
@@ -34,7 +36,7 @@ export class ApiError extends Error {
 }
 
 export interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   signal?: AbortSignal;
 }
@@ -227,6 +229,21 @@ export function fetchRecipes(
 
 export function fetchRecipe(id: string, signal?: AbortSignal): Promise<Recipe> {
   return apiRequest<Recipe>(`/recipes/${encodeURIComponent(id)}`, { signal });
+}
+
+/** `POST /api/recipes` — alta de receta. */
+export function createRecipe(input: RecipeInput): Promise<Recipe> {
+  return apiRequest<Recipe>('/recipes', { method: 'POST', body: input });
+}
+
+/** `PUT /api/recipes/{id}` — reemplazo completo de una receta. */
+export function updateRecipe(id: string, input: RecipeInput): Promise<Recipe> {
+  return apiRequest<Recipe>(`/recipes/${encodeURIComponent(id)}`, { method: 'PUT', body: input });
+}
+
+/** `DELETE /api/recipes/{id}` — borrado de una receta (204 sin cuerpo). */
+export function deleteRecipe(id: string): Promise<void> {
+  return apiRequest(`/recipes/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
 export function fetchMealPlan(
