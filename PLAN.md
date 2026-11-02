@@ -329,3 +329,31 @@ Capability nueva `persistence` en OpenSpec. Estado: implementado, en PR a `devel
 - [x] `just ci` exit 0 y `just ci-ui` exit 0.
 - [x] `openspec validate --all --strict` → 17/17.
 - [x] Issues #2 y #4 cerradas (PR #19 fusionado en `development`); change `sqlite-hardening` archivado.
+
+## 14. Hardening del servido estático (issues #8 y #9) — change `static-serving-hardening`
+
+Capability `frontend-serving` (requisitos añadidos). Estado: implementado, en PR a `development`.
+
+### 14.1 Objetivo
+
+- **#8**: revalidación con `ETag`/`If-None-Match` → `304 Not Modified` sin cuerpo, en vez de un `200` con cuerpo completo en cada revalidación.
+- **#9**: `charset=utf-8` en tipos `text/*` y cabeceras de seguridad (`X-Content-Type-Options: nosniff` y `Content-Security-Policy`).
+
+### 14.2 Decisiones de diseño
+
+- `ETag` fuerte `"<hex sha256>"` tomado del hash que `rust-embed` calcula en compilación (`EmbeddedFile::metadata.sha256_hash()`), sin re-hashear activos grandes por petición.
+- `If-None-Match` según RFC 9110 (lista separada por comas, `W/`, comodín `*`).
+- CSP compatible con Ant Design CSS-in-JS (`style-src 'self' 'unsafe-inline'`), aplicada solo a documentos HTML y XHTML; `nosniff` en todas las respuestas estáticas.
+- `Range` **no soportado** por decisión (activos inmutables y pequeños de un SPA): `200` completo, sin `Accept-Ranges`.
+
+### 14.3 Módulos
+
+- `backend/src/static_files/embedded.rs`: `serve(method, headers, uri)` + helpers `etag_value`, `content_type_for`, `cache_control_for`, `apply_security_headers`, `with_security_headers`, `if_none_match_matches`, `respond`, `asset_response`.
+- Tests: `backend/tests/static_files.rs` (23 integración con `embed-ui`) + unitarios en `embedded.rs`.
+
+### 14.4 Criterios de aceptación (DoD)
+
+- [x] `just ci` exit 0 (467 tests con `embed-ui`) y `just ci-ui` exit 0.
+- [x] `clippy -D warnings` y `fmt --check` limpios.
+- [x] `openspec validate --all --strict` en verde.
+- [x] Issues #8 y #9 cerradas; change `static-serving-hardening` archivado.
