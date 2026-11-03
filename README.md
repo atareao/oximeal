@@ -240,3 +240,33 @@ fallar o vaciar la interfaz.
 ## Licencia
 
 MIT.
+
+## 📦 Releases / Publicación
+
+Las releases se generan automáticamente con el workflow `release.yml` al crear y
+publicar un tag `v<version>` (desde `main`); los tags *pre-release* (`-rc.N`) se
+marcan como tales y no mueven `latest`:
+
+1. **PR de release** de `development` a `main` con el *bump* manual de versión en
+   `Cargo.toml` (`[workspace.package] version`), `frontend/package.json` y la
+   nueva sección en `CHANGELOG.md` (las tres deben coincidir).
+2. Al fusionar, **crear el tag**: `git tag v0.5.0 && git push origin v0.5.0`.
+3. El tag dispara el pipeline: **puertas de calidad** (reutiliza `ci.yml`),
+   **artefactos** (`x86_64` y `aarch64`, `.tar.gz` + `.sha256`), **imagen** en
+   GHCR (`ghcr.io/atareao/oximeal:<version>` y `:latest`) y la **GitHub Release**
+   con notas generadas por `git-cliff` desde los commits.
+
+**Consumir los artefactos:**
+
+```bash
+# Binario (x86_64)
+curl -L -o oximeal.tar.gz \
+  https://github.com/atareao/oximeal/releases/latest/download/oximeal-<version>-x86_64-unknown-linux-gnu.tar.gz
+tar -xzf oximeal.tar.gz && ./oximeal-<version>-x86_64-unknown-linux-gnu/oximeal
+
+# Imagen
+podman pull ghcr.io/atareao/oximeal:latest
+```
+
+Los `.sha256` permiten verificar la integridad; la provenance se comprueba con
+`gh attestation verify`.
