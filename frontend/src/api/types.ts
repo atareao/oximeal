@@ -64,6 +64,21 @@ export interface MealPlanEntryView {
   recipe: RecipeSummary;
 }
 
+/** Cuerpo de `POST /api/meal-plan` (espejo de `MealPlanInput` del backend). */
+export interface MealPlanInput {
+  date: string;
+  meal_type: MealType;
+  recipe_id: string;
+  role: MealRole;
+  /** Raciones (por defecto 2 en el backend). */
+  servings?: number;
+}
+
+/** Cuerpo de `PATCH /api/meal-plan/{id}`: solo se editan las raciones. */
+export interface MealPlanPatchInput {
+  servings: number;
+}
+
 export interface ShoppingItem {
   id: string;
   name: string;

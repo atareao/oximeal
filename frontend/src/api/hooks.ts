@@ -3,18 +3,23 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   clearCompletedShoppingItems,
   consolidateShoppingList,
+  createMealPlanEntry,
   createRecipe,
   createShoppingItem,
+  deleteMealPlanEntry,
   deleteRecipe,
   fetchMealPlan,
   fetchRecipe,
   fetchRecipes,
   fetchShoppingList,
   importRecipe,
+  patchMealPlanEntry,
   patchShoppingItem,
   updateRecipe,
 } from './client';
 import type {
+  MealPlanInput,
+  MealPlanPatchInput,
   RecipeImportInput,
   RecipeImportResult,
   RecipeInput,
@@ -127,6 +132,55 @@ export function useMealPlan(startDate: string, endDate: string) {
     queryKey: queryKeys.mealPlan.range(startDate, endDate),
     queryFn: ({ signal }) => fetchMealPlan(startDate, endDate, signal),
     enabled: Boolean(startDate && endDate),
+  });
+}
+
+/**
+ * Invalida el plan y la lista de la compra (que puede derivarse del menú).
+ */
+function invalidateMealPlanQueries(queryClient: ReturnType<typeof useQueryClient>): void {
+  void queryClient.invalidateQueries({ queryKey: queryKeys.mealPlan.all });
+  void queryClient.invalidateQueries({ queryKey: queryKeys.shoppingList.all });
+}
+
+/**
+ * Alta de una entrada del plan.
+ *
+ * Usa el `networkMode` por defecto (`'online'`): la planificación **requiere
+ * conexión** y no se encola en IndexedDB (a diferencia de la lista de la
+ * compra). Sin conexión la mutación queda pausada y la UI deshabilita los
+ * controles.
+ */
+export function useAddMealPlanEntry() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: MealPlanInput) => createMealPlanEntry(input),
+    onSuccess: () => {
+      invalidateMealPlanQueries(queryClient);
+    },
+  });
+}
+
+/** Baja de una entrada del plan. Requiere conexión (no se encola). */
+export function useRemoveMealPlanEntry() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteMealPlanEntry(id),
+    onSuccess: () => {
+      invalidateMealPlanQueries(queryClient);
+    },
+  });
+}
+
+/** Edición de las raciones de una entrada. Requiere conexión (no se encola). */
+export function useUpdateMealPlanEntry() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: MealPlanPatchInput }) =>
+      patchMealPlanEntry(id, input),
+    onSuccess: () => {
+      invalidateMealPlanQueries(queryClient);
+    },
   });
 }
 

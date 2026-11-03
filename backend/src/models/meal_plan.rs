@@ -38,6 +38,17 @@ pub struct MealPlanInput {
     pub servings: Option<i64>,
 }
 
+/// Cuerpo de edición de las raciones de una entrada del plan.
+///
+/// `servings` es opcional a nivel de deserialización para poder responder `400`
+/// (y no `422`) cuando el campo falta o trae un valor inválido.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct MealPlanPatchInput {
+    /// Nuevas raciones; debe ser `>= 1`.
+    #[serde(default)]
+    pub servings: Option<i64>,
+}
+
 /// Parámetros de consulta del plan por rango de fechas.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct MealPlanQuery {

@@ -98,6 +98,25 @@ pub async fn get(pool: &SqlitePool, id: &str) -> AppResult<MealPlanEntryView> {
     }
 }
 
+/// Actualiza las raciones de una entrada; 404 si no existe.
+pub async fn update_servings(
+    pool: &SqlitePool,
+    id: &str,
+    servings: i64,
+) -> AppResult<MealPlanEntryView> {
+    let result = sqlx::query("UPDATE meal_plan_entries SET servings = ? WHERE id = ?")
+        .bind(servings)
+        .bind(id)
+        .execute(pool)
+        .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound(format!("entrada del plan {id}")));
+    }
+
+    get(pool, id).await
+}
+
 /// Elimina una entrada del plan; 404 si no existía.
 pub async fn delete(pool: &SqlitePool, id: &str) -> AppResult<()> {
     let result = sqlx::query("DELETE FROM meal_plan_entries WHERE id = ?")

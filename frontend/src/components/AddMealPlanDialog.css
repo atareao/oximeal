@@ -1,0 +1,107 @@
+.add-meal-plan__offline,
+.add-meal-plan__error {
+  margin-bottom: 12px;
+}
+
+.add-meal-plan__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.add-meal-plan__label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.add-meal-plan__select {
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 12px;
+  border: 1px solid #d9d9d9;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #1a202c;
+  font-size: 16px;
+  font-family: inherit;
+}
+
+.add-meal-plan__select:focus-visible {
+  outline: 2px solid #2f855a;
+  outline-offset: 1px;
+}
+
+.add-meal-plan__search {
+  margin-bottom: 12px;
+}
+
+.add-meal-plan__recipes {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.add-meal-plan__recipe {
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 12px;
+  text-align: left;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #1a202c;
+  font-size: 15px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.add-meal-plan__recipe--selected {
+  border-color: #2f855a;
+  box-shadow: 0 0 0 1px #2f855a inset;
+  background: #f0fff4;
+}
+
+.add-meal-plan__row {
+  display: flex;
+  gap: 12px;
+}
+
+.add-meal-plan__row .add-meal-plan__field {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.add-meal-plan__validation {
+  margin: 0;
+  color: #c53030;
+  font-size: 13px;
+}
+
+.add-meal-plan__catalog-error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.add-meal-plan__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.add-meal-plan__confirm {
+  min-height: 48px;
+}
+
+.add-meal-plan__cancel {
+  min-height: 48px;
+}

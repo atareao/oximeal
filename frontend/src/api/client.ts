@@ -2,6 +2,8 @@ import type {
   ApiErrorBody,
   AuthMeResponse,
   MealPlanEntryView,
+  MealPlanInput,
+  MealPlanPatchInput,
   Recipe,
   RecipeImportInput,
   RecipeImportResult,
@@ -281,6 +283,27 @@ export function fetchMealPlan(
 ): Promise<MealPlanEntryView[]> {
   const query = buildQuery({ start_date: startDate, end_date: endDate });
   return apiRequest<MealPlanEntryView[]>(`/meal-plan${query}`, { signal });
+}
+
+/** `POST /api/meal-plan` — asigna una receta a un slot del plan. */
+export function createMealPlanEntry(input: MealPlanInput): Promise<MealPlanEntryView> {
+  return apiRequest<MealPlanEntryView>('/meal-plan', { method: 'POST', body: input });
+}
+
+/** `DELETE /api/meal-plan/{id}` — elimina una entrada del plan (204 sin cuerpo). */
+export function deleteMealPlanEntry(id: string): Promise<void> {
+  return apiRequest(`/meal-plan/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+/** `PATCH /api/meal-plan/{id}` — edita las raciones de una entrada existente. */
+export function patchMealPlanEntry(
+  id: string,
+  input: MealPlanPatchInput,
+): Promise<MealPlanEntryView> {
+  return apiRequest<MealPlanEntryView>(`/meal-plan/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: input,
+  });
 }
 
 export function fetchShoppingList(signal?: AbortSignal): Promise<ShoppingListGroup[]> {
