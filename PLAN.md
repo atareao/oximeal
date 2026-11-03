@@ -701,3 +701,154 @@ registrado en §10.
 - [x] Rendimiento: RSS del binario `--release --features embed-ui` medido y documentado; presupuestos web y táctiles verificados en `docs/performance.md`.
 - [x] `just ci`, `just ci-ui` y `openspec validate --all --strict` en verde (verificado: los tres en verde).
 - [x] Sin regresiones en el smoke E2E (37/37 + casos nuevos del recetario) — verificado: smoke de Fase 5 37/37 en esta rama; los smokes del recetario (23/23) e importación (18/18) se verificaron en sus PRs y este change no toca código de producto.
+
+## 20. Fase 7 — Entrega (Docker/release) y producto (recetario/menú)
+
+> Ejecutable ahora. Origen: issues #52–#56. La fase mezcla **entrega** (E1–E2:
+> Docker y releases) y **producto** (P1–P3: planificación en la UI, etiquetas y
+> volcado de receta a la compra). Cinco changes independientes, una rama/PR por
+> issue desde `development`. Metodología SDD + TDD estricto (RED → GREEN →
+> REFACTOR), con auditoría por bloque.
+
+### 20.1 Objetivo
+
+Cerrar la promesa de OxiMeal como **self-hosted de binario único desplegable**:
+hoy `just build-full` produce un ejecutable con la UI embebida, pero **no hay
+`Dockerfile` ni pipeline de release** —el despliegue depende de reproducir el
+toolchain a mano— y `deploy/compose.yaml` solo levanta Pocket ID. En paralelo,
+completar el **bucle del recetario/menú dentro de la propia app**: el menú
+semanal es de **solo lectura** y el estado vacío remite a Valet, no hay etiquetas
+libres para clasificar el recetario y no se pueden volcar los ingredientes de una
+receta concreta a la lista. Los changes E1–E2 materializan la entrega y los
+P1–P3 cierran el producto.
+
+### 20.2 Decisiones de diseño (ADR-32…36)
+
+| # | Decisión | Justificación |
+|---|----------|---------------|
+| ADR-32 | Imagen **Docker multi-stage** (frontend Node/pnpm → builder Rust → runtime `debian:bookworm-slim` con solo `ca-certificates`/`curl`), usuario **no root**, `VOLUME /app/data`, `HEALTHCHECK` contra `/api/health`, y compilación del binario con `--features embed-ui` | Reproduce el toolchain en un build declarativo y mínimo; el runtime slim mantiene la imagen pequeña y el healthcheck permite a compose esperar al arranque; `embed-ui` conserva el modelo de binario único |
+| ADR-33 | **Release por tag `v*`**: puertas de calidad reutilizadas de `ci.yml`, artefactos `x86_64`/`aarch64` (`--release --features embed-ui`, `.tar.gz`+`.sha256`), imagen en GHCR (`semver`+`latest`), notas con **`git-cliff`** desde Conventional Commits + gitmoji, y versionado verificado (tag == `Cargo.toml`/`package.json`), *bump* manual en PR de release | Automatiza la entrega hoy hecha a mano y garantiza coherencia tag↔versión↔imagen↔notas; reutilizar las puertas evita publicar código que no pasa CI; `git-cliff` no añade un servicio externo (se descarta `svu`/`vampus`) |
+| ADR-34 | **Planificación nativa en la UI que convive con Valet**; `PATCH /api/meal-plan/{id}` para editar **solo raciones** y endurecer la validación de `POST`; la planificación **requiere conexión** (no se encola en IndexedDB) | Permite crear/quitar/corregir entradas sin salir de la app sin retirar el asistente; el `PATCH` mínimo (sin reemplazo de receta/fecha/tipo/rol) evita conflictos; encolar prometería una persistencia que la validación server-side del `recipe_id` y la creación de `id` no permiten |
+| ADR-35 | **Etiquetas libres many-to-many** (`tags` + `recipe_tags`, `slug` normalizado y único, FKs `ON DELETE CASCADE`, migración `0007` aditiva), **fuera** del índice FTS; filtro `GET /api/recipes?tag=<id\|slug>` combinable con `q`/`category`/paginación | Las categorías y `diet_type` ya son ejes cerrados; un vocabulario abierto no obliga a decidir dimensiones de antemano; indexar etiquetas en FTS contaminaría las coincidencias por subcadena y tocaría los triggers `ai/ad/au` |
+| ADR-36 | **Volcado de receta a la lista** con `POST /api/shopping-list/from-recipe` (permiso `write:shopping`), **reconsolidación declarativa** de las fuentes de receta registradas (idempotente) y **escalado por raciones** (`solicitadas / receta`) antes de consolidar, **sin** modificar líneas del plan ni manuales ni sumar unidades no aditivas | Reutiliza el motor determinista de `ingredient-consolidation` (canonicalización, normalización, pasillos); reconstruir es idempotente y reescala al repetir, sin duplicar |
+
+### 20.3 Change E1 — `container-image` (issue #52)
+
+- **`Dockerfile` multi-stage** en la raíz (contexto = monorepo): stage
+  `frontend` (`pnpm install --frozen-lockfile` + `pnpm build`), stage `builder`
+  (imagen oficial `rust`, recibe `frontend/dist` y compila `oximeal-backend`
+  `--release --features embed-ui`) y stage `runtime` (`debian:bookworm-slim`,
+  usuario no root, `WORKDIR /app`, `EXPOSE 8080`, `VOLUME /app/data`, `ENV` por
+  defecto, `HEALTHCHECK` contra `/api/health`, `ENTRYPOINT`).
+- **`.dockerignore`** y caché de capas (manifiestos antes que el código).
+- **`deploy/compose.yaml`**: nuevo servicio `oximeal` (imagen local o GHCR,
+  `env_file`, volumen con nombre para SQLite, red y healthcheck) **manteniendo**
+  `pocket-id`; arranque conjunto y modo abierto documentados.
+- **Docs:** sección de despliegue en `README.md` (con refresco del estado a
+  Fase 6/7), `deploy/README.md` y `deploy/.env.example` actualizado.
+- **Specs:** capacidad nueva `deployment` (build reproducible, runtime no root,
+  persistencia, healthcheck, compose e instrucciones).
+- **Estado:** ⬜ pendiente (rama `feature/container-image`).
+
+### 20.4 Change E2 — `release-automation` (issue #53)
+
+- **`.github/workflows/release.yml`** disparado por tags `v*` (y opcionalmente
+  `workflow_dispatch` con input `tag`); **no** corre en `pull_request`.
+- **Puertas de calidad** antes de publicar (reutiliza `ci.yml` vía
+  `workflow_call` o repite sus jobs): si falla, no se publica nada.
+- **Artefactos binarios:** matriz `x86_64-unknown-linux-gnu` y
+  `aarch64-unknown-linux-gnu` (`--release --features embed-ui`), empaquetados en
+  `.tar.gz` + `.sha256`.
+- **Imagen GHCR:** `ghcr.io/<owner>/oximeal` con etiquetas `semver` y `latest`,
+  reutilizando la imagen de E1.
+- **GitHub Release:** notas generadas con `git-cliff` (`cliff.toml`) desde
+  Conventional Commits + gitmoji, adjuntando los binarios.
+- **Versionado:** coherencia tag ↔ `[workspace.package] version` ↔
+  `frontend/package.json` ↔ `CHANGELOG.md`; *bump* manual en PR de release.
+- **Specs:** capacidad nueva `release`.
+- **Estado:** ⬜ pendiente (rama `feature/release-automation`).
+
+### 20.5 Change P1 — `meal-planning-ui` (issue #54)
+
+- **Backend:** nuevo `PATCH /api/meal-plan/{id}` (permiso `write:plan`) para
+  editar **solo `servings`** (`200` con la vista actualizada, `400` si
+  `servings < 1`, `404` si no existe); endurecer y testear la validación de
+  `POST /api/meal-plan` (`meal_type`, `role`, `date` ISO, `recipe_id` existente,
+  `servings >= 1`, 401/403).
+- **UI:** alta por slot en `MenuPage`/`DayCard` con selector de receta con
+  búsqueda, tipo de comida, rol y raciones; baja con **confirmación**; edición de
+  raciones; Valet sigue disponible (convivencia).
+- **Offline:** la planificación **requiere conexión** y la UI deshabilita los
+  controles y muestra aviso degradado (no se encola).
+- **Accesibilidad:** objetivos táctiles ≥48px, gestión de foco, roles `aria`,
+  feedback de carga/error.
+- **Specs:** deltas en `meal-plan`, `weekly-menu`, `ui-shell` y `offline-writes`.
+- **Estado:** ⬜ pendiente (rama `feature/meal-planning-ui`).
+
+### 20.6 Change P2 — `recipe-tags` (issue #55)
+
+- **Migración `0007`** aditiva: `tags(id, name, slug UNIQUE, created_at)` y
+  `recipe_tags(recipe_id, tag_id)` con PK compuesta, FKs `ON DELETE CASCADE` e
+  índice `idx_recipe_tags_tag_id`; **no** toca `recipes` ni `recipes_fts`.
+- **API:** `GET /api/tags` (`read:recipes`, con conteo), `POST /api/tags`
+  (idempotente, `write:recipes`) y `DELETE /api/tags/{id}` (en cascada, sin
+  borrar recetas); `POST`/`PUT /api/recipes` aceptan `tags` (reemplazan el
+  conjunto) y `GET /api/recipes?tag=` filtra combinado con `q`/`category`.
+- **UI:** selector con creación al vuelo en `RecipeForm`, etiquetas en
+  `RecipeCard`/detalle y filtro por etiqueta reflejado en la URL.
+- **Specs:** capacidad nueva `recipe-tags` + deltas en `recipes`,
+  `recipe-catalog` y `recipe-search`.
+- **Estado:** ⬜ pendiente (rama `feature/recipe-tags`).
+
+### 20.7 Change P3 — `shopping-from-recipe` (issue #56)
+
+- **Backend:** `POST /api/shopping-list/from-recipe` (permiso `write:shopping`)
+  con `{ recipe_id, servings? }` (por defecto las raciones de la receta);
+  responde `200` con los grupos resultantes, `400` si `servings` es inválido y
+  `404` si la receta no existe.
+- **Semántica:** registro en `shopping_recipe_sources` + columna
+  `source_recipe_id`; **reconsolidación** idempotente de las recetas registradas
+  (repetir no duplica, reescala sin tocar líneas del plan ni manuales).
+- **Escalado:** factor `solicitadas/receta` a todas las cantidades antes de
+  consolidar; `al gusto` conserva cantidad 0 y no se suman familias
+  incompatibles.
+- **UI:** acción «Añadir a la lista» en `RecipeDetailPage` con selector de
+  raciones, feedback y enlace a `/shopping`; sin conexión se deshabilita.
+- **Specs:** deltas en `shopping-list`, `ingredient-consolidation`,
+  `recipe-catalog` y `offline-writes`.
+- **Estado:** ⬜ pendiente (rama `feature/shopping-from-recipe`).
+
+### 20.8 Orden de ejecución y ramas
+
+1. `feature/container-image` (issue #52) desde `development`.
+2. `feature/release-automation` (issue #53), sobre el anterior ya mergeado.
+3. `feature/meal-planning-ui` (issue #54).
+4. `feature/recipe-tags` (issue #55).
+5. `feature/shopping-from-recipe` (issue #56), el último (volcado sobre el
+   recetario y la compra ya completos).
+
+Nota: la **entrega va primero** (E1→E2) para poder publicar la **v0.5.0** con el
+recetario completo una vez cerrados los P1–P3. Una rama/PR por change desde
+`development`.
+
+### 20.9 Riesgos y mitigaciones
+
+| Riesgo | Mitigación |
+|--------|------------|
+| Build de la imagen y enlazado `glibc`/`rustls` (y healthcheck que necesita `curl`/shell) | Runtime `debian:bookworm-slim` coherente con el builder Rust; se instala `curl` explícitamente y el `HEALTHCHECK` apunta a `/api/health`; si se planteara distroless, el healthcheck pasaría a un probe del orquestador |
+| Cross-compile a `aarch64` frágil | Matriz de build con runner nativo ARM o `cross` (se decide y justifica); artefactos verificados con su `.sha256` |
+| Convivencia UI↔Valet y validación de planificación | `PATCH` mínimo (solo raciones) y validación server-side endurecida; la UI deshabilita los controles sin conexión en vez de encolar |
+| Escalado de recetas con unidades no aditivas | Reutilizar el motor de `ingredient-consolidation`; `al gusto` conserva cantidad 0 y no se suman familias incompatibles; tests de escalado |
+| Migración de etiquetas que contamine el FTS o reconstruya tablas | Migración **aditiva** (`0007`) que no toca `recipes` ni `recipes_fts`; etiquetas fuera del FTS y filtro por igualdad con `idx_recipe_tags_tag_id` |
+| Volumen SQLite con permisos no root | `VOLUME /app/data` con usuario no root y `DATABASE_URL` por defecto apuntando al volumen; permisos verificados al arrancar el contenedor |
+
+### 20.10 Criterios de aceptación (DoD de la Fase 7)
+
+- [ ] La imagen Docker construye y arranca con healthcheck OK y datos persistentes en el volumen.
+- [ ] Un tag `v*` publica binarios (x86_64/aarch64) + imagen GHCR + notas generadas, y **no** publica en PR.
+- [ ] Planificación desde la UI con tests (alta en slot, baja con confirmación, edición de raciones, validación y accesibilidad).
+- [ ] Etiquetas con migración + API (CRUD/filtro `tag`) y tests, fuera del FTS.
+- [ ] Volcado de receta con escalado por raciones, fusión/reconsolidación sin duplicados y respeto de no aditivos, con tests.
+- [ ] `just ci`, `just ci-ui` y `openspec validate --all --strict` en verde en las cinco ramas.
+- [ ] Sin regresiones en el smoke E2E.
+- [ ] Los cinco changes archivados y la Fase 7 marcada como cerrada en este plan.
