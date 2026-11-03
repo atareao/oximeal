@@ -6,20 +6,15 @@
 
 El repositorio SHALL incluir un `Dockerfile` en la raíz (contexto de build = raíz
 del monorepo) con **tres stages**: `frontend` (Node + pnpm), `builder` (Rust) y
-`runtime` (imagen mínima). El stage `frontend` SHALL instalar dependencias con
-`pnpm install --frozen-lockfile` desde `frontend/pnpm-lock.yaml` y construir
-`frontend/dist` con `pnpm build`. El stage `builder` SHALL compilar el binario
-release con la UI embebida mediante
-`cargo build --release -p oximeal-backend --features embed-ui`, copiando
-`frontend/dist` desde el stage `frontend`. La imagen se construye como
+`runtime` (imagen mínima). La imagen SHALL construirse como
 `ghcr.io/atareao/oximeal` (etiqueta por versión/commit).
 
 #### Scenario: Build completo de la imagen
 
 - GIVEN un checkout limpio del repositorio con `Cargo.lock` y `frontend/pnpm-lock.yaml`
 - WHEN se ejecuta `docker build -t ghcr.io/atareao/oximeal:local .`
-- THEN el stage `frontend` produce `frontend/dist`
-- AND el stage `builder` produce el binario `oximeal-backend` con la feature `embed-ui`
+- THEN el stage `frontend` instala con `pnpm install --frozen-lockfile` desde `frontend/pnpm-lock.yaml` y construye `frontend/dist` con `pnpm build`
+- AND el stage `builder` compila el binario release con la UI embebida mediante `cargo build --release -p oximeal-backend --features embed-ui`, copiando `frontend/dist` desde el stage `frontend`
 - AND el stage `runtime` contiene únicamente el binario y sus dependencias de sistema
 - AND el build termina con código 0
 
@@ -84,11 +79,9 @@ contexto de build los artefactos y secretos: `target/`, `frontend/node_modules/`
 
 El stage `runtime` SHALL basarse en `debian:bookworm-slim` e incluir únicamente
 `ca-certificates` (TLS hacia el IdP OIDC) y `curl` (healthcheck). SHALL crear un
-usuario/grupo no privilegiado `oximeal` (UID/GID 10001), SHALL fijar `WORKDIR
-/app`, SHALL declarar `EXPOSE 8080`, SHALL configurar
-`ENTRYPOINT ["/usr/local/bin/oximeal-backend"]` y SHALL NO ejecutar como `root`.
-Se descarta `distroless` porque no aporta shell ni cliente HTTP, lo que impediría
-el `HEALTHCHECK` contra `/api/health` sin un binario de sonda adicional.
+usuario/grupo no privilegiado `oximeal` (UID/GID 10001), fijar `WORKDIR /app`,
+declarar `EXPOSE 8080` y configurar
+`ENTRYPOINT ["/usr/local/bin/oximeal-backend"]`, sin ejecutar como `root`.
 
 #### Scenario: Ejecución como usuario no root
 
@@ -111,6 +104,13 @@ el `HEALTHCHECK` contra `/api/health` sin un binario de sonda adicional.
 - WHEN se solicita `/` y una ruta del SPA (p. ej. `/recipes`)
 - THEN el binario sirve la UI embebida con el fallback SPA
 - AND las rutas `/api/*` no caen al fallback
+
+#### Scenario: Se descarta distroless
+
+- GIVEN la elección de imagen base del stage `runtime`
+- WHEN se valora `distroless`
+- THEN se descarta porque no aporta shell ni cliente HTTP
+- AND el `HEALTHCHECK` contra `/api/health` requeriría un binario de sonda adicional
 
 ### Requirement: Persistencia de datos en volumen
 
@@ -172,12 +172,16 @@ periodo de arranque y reintentos definidos. El contenedor SHALL considerarse
 ### Requirement: Configuración por entorno
 
 La imagen SHALL ser configurable por variables de entorno sin recompilación,
-respetando `.env.example`: `DATABASE_URL`, `BIND_ADDR`, `RUST_LOG`, el bloque
-OIDC (`OIDC_ENABLED`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`,
-`OIDC_API_AUDIENCE`, `OIDC_REDIRECT_URI`, `OIDC_POST_LOGOUT_REDIRECT_URI`,
-`OIDC_ALLOWED_GROUPS`), `ALLOWED_ORIGINS`, `IMPORT_ALLOWED_HOSTS` y `SESSION_*`.
-SHALL documentarse el **modo abierto** (`OIDC_ENABLED=false`, solo desarrollo) y
-el **modo OIDC** (`OIDC_ENABLED=true` con configuración obligatoria).
+respetando `.env.example`. SHALL documentarse el **modo abierto**
+(`OIDC_ENABLED=false`, solo desarrollo) y el **modo OIDC** (`OIDC_ENABLED=true`
+con configuración obligatoria).
+
+#### Scenario: Variables de entorno reconocidas
+
+- GIVEN el fichero `.env.example`
+- WHEN se configura el contenedor
+- THEN se reconocen `DATABASE_URL`, `BIND_ADDR`, `RUST_LOG`, el bloque OIDC (`OIDC_ENABLED`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_API_AUDIENCE`, `OIDC_REDIRECT_URI`, `OIDC_POST_LOGOUT_REDIRECT_URI`, `OIDC_ALLOWED_GROUPS`), `ALLOWED_ORIGINS`, `IMPORT_ALLOWED_HOSTS` y `SESSION_*`
+- AND ninguna de ellas exige recompilar la imagen
 
 #### Scenario: Modo abierto
 

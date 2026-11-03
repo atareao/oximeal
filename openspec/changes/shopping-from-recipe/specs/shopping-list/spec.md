@@ -5,21 +5,24 @@
 ### Requirement: Volcado de una receta a la lista
 
 El sistema SHALL exponer `POST /api/shopping-list/from-recipe` con permiso
-`write:shopping` y cuerpo `{ "recipe_id": "<uuid>", "servings": <entero >= 1>,
-opcional }`. SHALL consolidar los ingredientes de la receta —escalados por
-raciones— con el motor de `ingredient-consolidation` y fusionarlos en la lista,
-registrar la receta como fuente y marcar las líneas resultantes con
-`source_recipe_id`. SHALL responder `200` con la lista agrupada resultante
-(`[ShoppingListGroup]`, mismo cuerpo que `consolidate`), `400` si `servings` es
-inválido y `404` si la receta no existe.
+`write:shopping` para volcar a la lista global los ingredientes de una receta.
+SHALL escalar las cantidades por raciones, consolidarlas con el motor de
+`ingredient-consolidation`, fusionarlas en la lista, registrar la receta como
+fuente y marcar las líneas resultantes con `source_recipe_id`.
 
 #### Scenario: Volcado feliz
 
 - GIVEN una receta con ingredientes y una lista vacía
 - WHEN se envía `POST /api/shopping-list/from-recipe` con `recipe_id` y `servings`
 - THEN se crean líneas con cantidades escaladas
-- AND la respuesta `200` contiene la lista agrupada con esas líneas
+- AND la respuesta `200` contiene la lista agrupada resultante (`[ShoppingListGroup]`, mismo cuerpo que `consolidate`) con esas líneas
 - AND las líneas quedan marcadas con el `source_recipe_id` de la receta
+
+#### Scenario: Contrato de la petición
+
+- GIVEN una receta existente
+- WHEN se envía `POST /api/shopping-list/from-recipe` con `{ "recipe_id": "<uuid>", "servings": <entero >= 1>, opcional }`
+- THEN se acepta la petición y se consolida el volcado
 
 #### Scenario: Raciones por defecto
 
@@ -61,8 +64,7 @@ inválido y `404` si la receta no existe.
 El sistema SHALL tratar el volcado como una fuente **declarativa**: registrar la
 receta y sus raciones en `shopping_recipe_sources` y reconstruir las líneas
 derivadas de recetas (`source_recipe_id` no nulo) reconsolidando **todas** las
-recetas registradas por nombre canónico y familia/unidad, respetando las reglas
-no aditivas del motor. Repetir la misma petición SHALL producir la misma lista
+recetas registradas. Repetir la misma petición SHALL producir la misma lista
 sin duplicar líneas. Las líneas derivadas del plan (`source_plan_id`) y los
 ítems manuales NO SHALL tocarse.
 
@@ -85,6 +87,8 @@ sin duplicar líneas. Las líneas derivadas del plan (`source_plan_id`) y los
 - GIVEN dos recetas volcadas que comparten "tomate" en la misma unidad
 - WHEN se reconstruyen las líneas derivadas de recetas
 - THEN el tomate aparece en una sola línea con las cantidades sumadas
+- AND la fusión agrupa por nombre canónico y familia/unidad
+- AND se respetan las reglas no aditivas del motor
 
 #### Scenario: No aditivos separados
 

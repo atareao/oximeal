@@ -5,13 +5,10 @@
 ### Requirement: Escalado por raciones en el volcado de receta
 
 Al volcar los ingredientes de una receta a la lista, el sistema SHALL escalar
-cada cantidad multiplicando por el factor `raciones_solicitadas /
-raciones_receta`, donde las raciones de la receta son `recipes.servings` (con
-valor por defecto `2` si es `NULL`) y las solicitadas son el `servings` de la
-petición (por defecto, las de la receta). El factor SHALL aplicarse a todas las
-cantidades numéricas antes de consolidar, de forma consistente con el escalado
-desde el plan. Las unidades no aditivas (`al gusto`) conservan cantidad `0` y
-las familias de unidad incompatibles NO SHALL sumarse entre sí.
+cada cantidad numérica multiplicando por el factor `raciones_solicitadas /
+raciones_receta` antes de consolidar, de forma consistente con el escalado
+desde el plan. Las raciones de la receta son `recipes.servings` y las
+solicitadas el `servings` de la petición.
 
 #### Scenario: Doble de raciones
 
@@ -42,3 +39,5 @@ las familias de unidad incompatibles NO SHALL sumarse entre sí.
 - GIVEN una receta con `servings = NULL` y una petición sin `servings`
 - WHEN se vuelca
 - THEN el factor es 1 y las cantidades no cambian
+- AND las raciones de la receta se asumen `2` cuando `servings` es `NULL`
+- AND la petición sin `servings` usa las raciones de la receta

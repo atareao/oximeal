@@ -5,21 +5,19 @@
 ### Requirement: Modelo de etiquetas libres
 
 El sistema SHALL modelar las etiquetas como **etiquetas libres** con relación
-many-to-many entre recetas y etiquetas: una tabla `tags` con identificador,
-`name` de presentación y una clave canónica `slug` con restricción `UNIQUE`, y
-una tabla de unión `recipe_tags(recipe_id, tag_id)` con clave primaria compuesta
-y sendas claves foráneas `ON DELETE CASCADE` a `recipes(id)` y `tags(id)`. El
-`slug` SHALL ser el nombre normalizado (recorte de espacios extremos, colapso de
-espacios internos y minúsculas Unicode; los diacríticos se conservan), de modo
-que la unicidad sea **insensible a mayúsculas y a espacios**. Las etiquetas SHALL
-quedar **fuera** del índice de búsqueda de texto completo `recipes_fts`.
+many-to-many entre recetas y etiquetas. El `slug` SHALL ser el nombre
+normalizado (espacios recortados y colapsados, minúsculas Unicode, diacríticos
+conservados), de modo que la unicidad sea **insensible a mayúsculas y a
+espacios**. Las etiquetas SHALL quedar **fuera** del índice de búsqueda de texto
+completo `recipes_fts`.
 
 #### Scenario: Migración 0007 crea el esquema de etiquetas
 
 - GIVEN una base migrada hasta `0006`
 - WHEN se aplica la migración `0007`
-- THEN existen las tablas `tags` y `recipe_tags` y el índice `idx_recipe_tags_tag_id` sobre `recipe_tags(tag_id)`
+- THEN existen las tablas `tags` (identificador, `name` y `slug`) y `recipe_tags(recipe_id, tag_id)` con clave primaria compuesta, y el índice `idx_recipe_tags_tag_id` sobre `recipe_tags(tag_id)`
 - AND `tags.slug` tiene una restricción `UNIQUE`
+- AND `recipe_tags` tiene claves foráneas `ON DELETE CASCADE` a `recipes(id)` y `tags(id)`
 
 #### Scenario: Unicidad insensible a mayúsculas y espacios
 
