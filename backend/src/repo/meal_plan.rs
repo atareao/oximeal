@@ -5,6 +5,7 @@ use sqlx::SqlitePool;
 use crate::domain::date::canonical_iso_date;
 use crate::error::{AppError, AppResult};
 use crate::models::meal_plan::{MealPlanEntryView, MealPlanInput, MealPlanRow};
+use crate::repo::tags;
 
 /// Orden lógico de los tipos de comida dentro de un día.
 const MEAL_TYPE_ORDER: &str = "CASE e.meal_type \
@@ -43,7 +44,17 @@ pub async fn list(
         .fetch_all(pool)
         .await?;
 
-    Ok(rows.into_iter().map(MealPlanRow::into_view).collect())
+    // Una sola consulta para las etiquetas de todas las recetas del rango.
+    let recipe_ids: Vec<String> = rows.iter().map(|row| row.recipe_id.clone()).collect();
+    let mut tags_by_recipe = tags::for_recipes(pool, &recipe_ids).await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let tags = tags_by_recipe.remove(&row.recipe_id).unwrap_or_default();
+            row.into_view(tags)
+        })
+        .collect())
 }
 
 /// Crea una entrada del plan, validando que la receta referenciada exista.
@@ -93,7 +104,10 @@ pub async fn get(pool: &SqlitePool, id: &str) -> AppResult<MealPlanEntryView> {
         .await?;
 
     match row {
-        Some(row) => Ok(row.into_view()),
+        Some(row) => {
+            let tags = tags::for_recipe(pool, &row.recipe_id).await?;
+            Ok(row.into_view(tags))
+        }
         None => Err(AppError::NotFound(format!("entrada del plan {id}"))),
     }
 }

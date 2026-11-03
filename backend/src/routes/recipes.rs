@@ -90,6 +90,7 @@ pub async fn import_recipe(
     params(
         ("q" = Option<String>, Query, description = "Texto de búsqueda (FTS5 si >= 3 caracteres)"),
         ("category" = Option<String>, Query, description = "Filtro por categoría"),
+        ("tag" = Option<String>, Query, description = "Filtro por etiqueta (id o slug)"),
         ("page" = Option<u32>, Query, description = "Página (1-indexada)"),
         ("page_size" = Option<u32>, Query, description = "Tamaño de página (máx 100)"),
     ),
@@ -111,6 +112,12 @@ pub async fn list_recipes(
         .map(str::trim)
         .filter(|value| !value.is_empty());
 
+    let tag = query
+        .tag
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+
     if let Some(category) = category
         && !validation::is_valid_category(category)
     {
@@ -119,8 +126,15 @@ pub async fn list_recipes(
         )));
     }
 
-    let response =
-        repo::recipes::list(&state.pool, query.q.as_deref(), category, page, page_size).await?;
+    let response = repo::recipes::list(
+        &state.pool,
+        query.q.as_deref(),
+        category,
+        tag,
+        page,
+        page_size,
+    )
+    .await?;
 
     Ok(Json(response))
 }

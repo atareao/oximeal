@@ -55,6 +55,48 @@ async fn openapi_json_is_served_with_expected_paths() {
     );
 }
 
+/// El documento OpenAPI expone los endpoints y esquemas de etiquetas.
+#[tokio::test]
+async fn openapi_json_includes_tags_endpoints_and_schemas() {
+    let state = common::test_state().await;
+
+    let (status, body) = common::request(state, "GET", "/api/openapi.json", None).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let paths = body["paths"].as_object().expect("objeto paths");
+    let tags = paths["/api/tags"]
+        .as_object()
+        .expect("/api/tags debe ser un objeto");
+    assert!(tags.contains_key("get"), "/api/tags debe exponer get");
+    assert!(tags.contains_key("post"), "/api/tags debe exponer post");
+
+    let tag_detail = paths["/api/tags/{id}"]
+        .as_object()
+        .expect("/api/tags/{id} debe ser un objeto");
+    assert!(
+        tag_detail.contains_key("delete"),
+        "/api/tags/{{id}} debe exponer delete"
+    );
+
+    let schemas = body["components"]["schemas"]
+        .as_object()
+        .expect("objeto components.schemas");
+    for name in ["Tag", "TagInput", "RecipeTag"] {
+        assert!(
+            schemas.contains_key(name),
+            "falta el esquema {name} en components.schemas"
+        );
+    }
+
+    // `Recipe` y `RecipeSummary` documentan el campo `tags`.
+    for name in ["Recipe", "RecipeSummary"] {
+        assert!(
+            schemas[name]["properties"].get("tags").is_some(),
+            "{name} debe documentar la propiedad tags"
+        );
+    }
+}
+
 #[tokio::test]
 async fn swagger_ui_is_served() {
     let state = common::test_state().await;

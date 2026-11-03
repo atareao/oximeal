@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::models::recipe::RecipeSummary;
+use crate::models::tag::RecipeTag;
 
 /// Vista completa de una entrada del plan, con su receta embebida.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
@@ -76,8 +77,9 @@ pub(crate) struct MealPlanRow {
 }
 
 impl MealPlanRow {
-    /// Convierte la fila en la vista de la entrada del plan.
-    pub(crate) fn into_view(self) -> MealPlanEntryView {
+    /// Convierte la fila en la vista de la entrada del plan, adjuntando las
+    /// etiquetas de la receta embebida.
+    pub(crate) fn into_view(self, tags: Vec<RecipeTag>) -> MealPlanEntryView {
         MealPlanEntryView {
             id: self.id,
             date: self.date,
@@ -92,6 +94,7 @@ impl MealPlanRow {
                 prep_time_minutes: self.recipe_prep_time_minutes,
                 servings: self.recipe_servings,
                 created_at: self.recipe_created_at,
+                tags,
             },
         }
     }

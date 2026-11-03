@@ -821,7 +821,7 @@ P1–P3 cierran el producto.
   `RecipeCard`/detalle y filtro por etiqueta reflejado en la URL.
 - **Specs:** capacidad nueva `recipe-tags` + deltas en `recipes`,
   `recipe-catalog` y `recipe-search`.
-- **Estado:** ⬜ pendiente (rama `feature/recipe-tags`).
+- **Estado:** ✅ implementado y auditado; PR pendiente (rama `feature/recipe-tags`).
 
 ### 20.7 Change P3 — `shopping-from-recipe` (issue #56)
 

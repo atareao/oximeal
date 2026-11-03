@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App as AntdApp } from 'antd';
 import recipesCss from './RecipesPage.css?raw';
@@ -11,7 +11,7 @@ import type {
   RecipeQueryParams,
   RecipeSummary,
 } from '../api/types';
-import { createRecipe, fetchRecipes, importRecipe } from '../api/client';
+import { createRecipe, fetchRecipes, fetchTags, importRecipe } from '../api/client';
 import { ApiError } from '../api/client';
 import { useOnline } from '../offline/connectivity';
 import { RecipesPage } from './RecipesPage';
@@ -28,6 +28,7 @@ vi.mock('../api/client', async (importOriginal) => {
     updateRecipe: vi.fn(),
     deleteRecipe: vi.fn(),
     importRecipe: vi.fn(),
+    fetchTags: vi.fn(),
   };
 });
 
@@ -39,6 +40,7 @@ vi.mock('../offline/connectivity', () => ({
 const mockedFetchRecipes = vi.mocked(fetchRecipes);
 const mockedCreateRecipe = vi.mocked(createRecipe);
 const mockedImportRecipe = vi.mocked(importRecipe);
+const mockedFetchTags = vi.mocked(fetchTags);
 const mockedUseOnline = vi.mocked(useOnline);
 
 function installMatchMedia(matches = true) {
@@ -63,6 +65,7 @@ function summary(
     prep_time_minutes: 20,
     servings: 2,
     created_at: '2026-11-01T10:00:00Z',
+    tags: [],
     ...overrides,
   };
 }
@@ -72,7 +75,12 @@ let recipes: RecipeSummary[] = [];
 
 function page(params?: RecipeQueryParams): RecipeListResponse {
   const q = (params?.q ?? '').toLowerCase();
-  const filtered = recipes.filter((recipe) => recipe.name.toLowerCase().includes(q));
+  const tag = params?.tag;
+  const filtered = recipes.filter(
+    (recipe) =>
+      recipe.name.toLowerCase().includes(q) &&
+      (!tag || recipe.tags.some((recipeTag) => recipeTag.slug === tag || recipeTag.id === tag)),
+  );
   const pageNumber = params?.page ?? 1;
   const pageSize = params?.page_size ?? 20;
   const start = (pageNumber - 1) * pageSize;
@@ -84,7 +92,13 @@ function page(params?: RecipeQueryParams): RecipeListResponse {
   };
 }
 
-function recipesTree() {
+/** Expone la query string actual para aseverar el filtro reflejado en la URL. */
+function LocationProbe() {
+  const location = useLocation();
+  return <span data-testid="location-search">{location.search}</span>;
+}
+
+function recipesTree(initialEntries: string[] = ['/recipes']) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false, gcTime: 0 },
@@ -94,7 +108,8 @@ function recipesTree() {
   return (
     <QueryClientProvider client={queryClient}>
       <AntdApp>
-        <MemoryRouter>
+        <MemoryRouter initialEntries={initialEntries}>
+          <LocationProbe />
           <RecipesPage />
         </MemoryRouter>
       </AntdApp>
@@ -102,8 +117,8 @@ function recipesTree() {
   );
 }
 
-function renderRecipes() {
-  return render(recipesTree());
+function renderRecipes(initialEntries: string[] = ['/recipes']) {
+  return render(recipesTree(initialEntries));
 }
 
 describe('RecipesPage', () => {
@@ -112,6 +127,7 @@ describe('RecipesPage', () => {
     installMatchMedia();
     recipes = [];
     mockedUseOnline.mockReturnValue(true);
+    mockedFetchTags.mockResolvedValue([]);
     mockedFetchRecipes.mockImplementation((params) => Promise.resolve(page(params)));
     mockedCreateRecipe.mockResolvedValue({
       id: 'new',
@@ -121,6 +137,7 @@ describe('RecipesPage', () => {
       prep_time_minutes: null,
       servings: 2,
       created_at: '2026-11-01T10:00:00Z',
+      tags: [],
       ingredients: [],
       instructions: null,
       source_url: null,
@@ -134,6 +151,7 @@ describe('RecipesPage', () => {
         prep_time_minutes: 30,
         servings: 2,
         created_at: '2026-11-01T10:00:00Z',
+        tags: [],
         ingredients: [],
         instructions: null,
         source_url: 'https://example.com/r',
@@ -278,6 +296,7 @@ describe('RecipesPage', () => {
         prep_time_minutes: 20,
         servings: 2,
         created_at: '2026-11-01T10:00:00Z',
+        tags: [],
         ingredients: [],
         instructions: null,
         source_url: 'https://example.com/r',
@@ -366,6 +385,7 @@ describe('RecipesPage', () => {
         prep_time_minutes: 20,
         servings: 2,
         created_at: '2026-11-01T10:00:00Z',
+        tags: [],
         ingredients: [],
         instructions: null,
         source_url: 'https://example.com/r',
@@ -431,5 +451,123 @@ describe('RecipesPage', () => {
     expect(await screen.findByTestId('recipes-offline')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /nueva receta/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /importar desde url/i })).toBeDisabled();
+  });
+
+  it('filtra por etiqueta al pulsar la etiqueta de una tarjeta y lo refleja en la URL', async () => {
+    recipes = [
+      summary({ id: 'r1', name: 'Tortilla', tags: [{ id: 't1', name: 'Vegano', slug: 'vegano' }] }),
+      summary({ id: 'r2', name: 'César' }),
+    ];
+    mockedFetchTags.mockResolvedValue([
+      { id: 't1', name: 'Vegano', slug: 'vegano', recipe_count: 1 },
+    ]);
+    const user = userEvent.setup();
+    renderRecipes();
+
+    await screen.findByText('Tortilla');
+    await user.click(screen.getByRole('button', { name: /filtrar por etiqueta vegano/i }));
+
+    await waitFor(() =>
+      expect(mockedFetchRecipes).toHaveBeenLastCalledWith(
+        expect.objectContaining({ tag: 'vegano' }),
+        expect.anything(),
+      ),
+    );
+    await waitFor(() => expect(screen.queryByText('César')).not.toBeInTheDocument());
+    expect(screen.getByText('Tortilla')).toBeInTheDocument();
+    expect(screen.getByTestId('location-search').textContent).toContain('tag=vegano');
+  });
+
+  it('reconstruye el filtro de etiqueta desde la URL', async () => {
+    recipes = [
+      summary({ id: 'r1', name: 'Tortilla', tags: [{ id: 't1', name: 'Vegano', slug: 'vegano' }] }),
+      summary({ id: 'r2', name: 'César' }),
+    ];
+    mockedFetchTags.mockResolvedValue([
+      { id: 't1', name: 'Vegano', slug: 'vegano', recipe_count: 1 },
+    ]);
+    renderRecipes(['/recipes?tag=vegano']);
+
+    await waitFor(() =>
+      expect(mockedFetchRecipes).toHaveBeenCalledWith(
+        expect.objectContaining({ tag: 'vegano' }),
+        expect.anything(),
+      ),
+    );
+    expect(await screen.findByText('Tortilla')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('César')).not.toBeInTheDocument());
+  });
+
+  it('combina el filtro de etiqueta con la búsqueda y permite quitarlo', async () => {
+    recipes = [
+      summary({ id: 'r1', name: 'Tortilla', tags: [{ id: 't1', name: 'Vegano', slug: 'vegano' }] }),
+      summary({
+        id: 'r2',
+        name: 'Tortilla de patata',
+        tags: [{ id: 't1', name: 'Vegano', slug: 'vegano' }],
+      }),
+      summary({ id: 'r3', name: 'César' }),
+    ];
+    mockedFetchTags.mockResolvedValue([
+      { id: 't1', name: 'Vegano', slug: 'vegano', recipe_count: 2 },
+    ]);
+    const user = userEvent.setup();
+    renderRecipes(['/recipes?tag=vegano']);
+
+    await screen.findByText('Tortilla');
+    await user.type(screen.getByLabelText(/buscar recetas/i), 'patata');
+
+    await waitFor(() =>
+      expect(mockedFetchRecipes).toHaveBeenLastCalledWith(
+        expect.objectContaining({ tag: 'vegano', q: 'patata' }),
+        expect.anything(),
+      ),
+    );
+
+    // Quitar el filtro con el botón de limpiar del control.
+    const clear = document.querySelector('.ant-select-clear');
+    expect(clear).not.toBeNull();
+    fireEvent.click(clear as HTMLElement);
+
+    await waitFor(() => {
+      const lastParams = mockedFetchRecipes.mock.calls.at(-1)?.[0];
+      expect(lastParams?.tag).toBeUndefined();
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('location-search').textContent).not.toContain('tag='),
+    );
+  });
+
+  it('mantiene el filtro de etiqueta al paginar', async () => {
+    const veganoTag = { id: 't1', name: 'Vegano', slug: 'vegano' };
+    recipes = Array.from({ length: 25 }, (_, index) =>
+      summary({ id: `r${index + 1}`, name: `Receta ${index + 1}`, tags: [veganoTag] }),
+    );
+    mockedFetchTags.mockResolvedValue([{ ...veganoTag, recipe_count: 25 }]);
+    const user = userEvent.setup();
+    renderRecipes(['/recipes?tag=vegano']);
+
+    await screen.findByText('Receta 1');
+    await user.click(screen.getByRole('button', { name: /siguiente/i }));
+
+    await waitFor(() =>
+      expect(mockedFetchRecipes).toHaveBeenLastCalledWith(
+        expect.objectContaining({ tag: 'vegano', page: 2 }),
+        expect.anything(),
+      ),
+    );
+    expect(await screen.findByText('Receta 21')).toBeInTheDocument();
+  });
+
+  it('en modo offline deshabilita el filtro por etiqueta y mantiene el aviso', async () => {
+    mockedUseOnline.mockReturnValue(false);
+    recipes = [summary({ id: 'r1', name: 'Tortilla' })];
+    mockedFetchTags.mockResolvedValue([
+      { id: 't1', name: 'Vegano', slug: 'vegano', recipe_count: 1 },
+    ]);
+    renderRecipes();
+
+    expect(await screen.findByTestId('recipes-offline')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: /filtrar por etiqueta/i })).toBeDisabled();
   });
 });

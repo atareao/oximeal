@@ -14,6 +14,7 @@ import type {
   ShoppingItemInput,
   ShoppingItemPatch,
   ShoppingListGroup,
+  TagWithCount,
 } from './types';
 
 const API_BASE = '/api';
@@ -234,6 +235,7 @@ export function fetchRecipes(
   const query = buildQuery({
     q: params.q,
     category: params.category,
+    tag: params.tag,
     page: params.page,
     page_size: params.page_size,
   });
@@ -274,6 +276,26 @@ export function updateRecipe(id: string, input: RecipeInput): Promise<Recipe> {
 /** `DELETE /api/recipes/{id}` — borrado de una receta (204 sin cuerpo). */
 export function deleteRecipe(id: string): Promise<void> {
   return apiRequest(`/recipes/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+/** `GET /api/tags` — catálogo de etiquetas con su recuento de recetas. */
+export function fetchTags(signal?: AbortSignal): Promise<TagWithCount[]> {
+  return apiRequest<TagWithCount[]>('/tags', { signal });
+}
+
+/**
+ * `POST /api/tags` — crea una etiqueta a partir de su nombre.
+ *
+ * El backend es idempotente por `slug`: responde `201` con la nueva etiqueta o
+ * `200` con la existente. En ambos casos devuelve la etiqueta con su conteo.
+ */
+export function createTag(name: string): Promise<TagWithCount> {
+  return apiRequest<TagWithCount>('/tags', { method: 'POST', body: { name } });
+}
+
+/** `DELETE /api/tags/{id}` — borra la etiqueta y sus asociaciones (204). */
+export function deleteTag(id: string): Promise<void> {
+  return apiRequest(`/tags/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
 export function fetchMealPlan(

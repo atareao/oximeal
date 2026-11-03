@@ -483,3 +483,90 @@ async fn create_with_non_padded_date_persists_canonical_date() {
     assert_eq!(entries.len(), 1, "la entrada debe aparecer en el rango");
     assert_eq!(entries[0]["date"], "2026-01-02");
 }
+
+/// Crea una receta con etiquetas vía API y devuelve su id.
+async fn create_recipe_with_tags(state: &AppState, name: &str, tags: &[&str]) -> String {
+    let (status, body) = common::request(
+        state.clone(),
+        "POST",
+        "/api/recipes",
+        Some(json!({
+            "name": name,
+            "category": "main",
+            "ingredients": [{"name": "Tomate", "amount": 1.0, "unit": "ud"}],
+            "tags": tags
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "seed: {body}");
+    body["id"].as_str().expect("id de receta").to_string()
+}
+
+/// El resumen de la receta embebida en una entrada del plan incluye sus
+/// etiquetas (`id`, `name`, `slug`) al listar el plan por rango de fechas.
+#[tokio::test]
+async fn list_entries_include_recipe_tags() {
+    let state = common::test_state().await;
+    let recipe_id = create_recipe_with_tags(&state, "Salteado", &["Vegano", "Rápido"]).await;
+
+    let (status, body) = common::request(
+        state.clone(),
+        "POST",
+        "/api/meal-plan",
+        Some(json!({
+            "date": "2026-02-05",
+            "meal_type": "lunch",
+            "recipe_id": recipe_id,
+            "role": "main"
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "body: {body}");
+
+    let (status, body) = common::request(
+        state,
+        "GET",
+        "/api/meal-plan?start_date=2026-02-01&end_date=2026-02-28",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let entries = body.as_array().expect("array de entradas");
+    assert_eq!(entries.len(), 1);
+
+    let recipe = &entries[0]["recipe"];
+    assert_eq!(recipe["id"], recipe_id);
+
+    let tags = recipe["tags"].as_array().expect("array de etiquetas");
+    assert_eq!(tags.len(), 2, "la receta embebida devuelve sus etiquetas");
+
+    // Cada etiqueta expone `id`, `name` y `slug`.
+    for tag in tags {
+        assert!(
+            tag["id"].as_str().is_some_and(|id| !id.is_empty()),
+            "id de etiqueta: {tag}"
+        );
+        assert!(tag["name"].is_string(), "name de etiqueta: {tag}");
+        assert!(tag["slug"].is_string(), "slug de etiqueta: {tag}");
+    }
+
+    // Comprobación por conjunto (orden por nombre): slugs y nombres esperados.
+    let mut got: Vec<(String, String)> = tags
+        .iter()
+        .map(|tag| {
+            (
+                tag["slug"].as_str().expect("slug").to_string(),
+                tag["name"].as_str().expect("name").to_string(),
+            )
+        })
+        .collect();
+    got.sort();
+    assert_eq!(
+        got,
+        vec![
+            ("rápido".to_string(), "Rápido".to_string()),
+            ("vegano".to_string(), "Vegano".to_string()),
+        ]
+    );
+}

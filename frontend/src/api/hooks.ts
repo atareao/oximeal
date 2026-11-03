@@ -6,12 +6,15 @@ import {
   createMealPlanEntry,
   createRecipe,
   createShoppingItem,
+  createTag,
   deleteMealPlanEntry,
   deleteRecipe,
+  deleteTag,
   fetchMealPlan,
   fetchRecipe,
   fetchRecipes,
   fetchShoppingList,
+  fetchTags,
   importRecipe,
   patchMealPlanEntry,
   patchShoppingItem,
@@ -49,6 +52,9 @@ export const queryKeys = {
   },
   shoppingList: {
     all: ['shopping-list'] as const,
+  },
+  tags: {
+    all: ['tags'] as const,
   },
 };
 
@@ -122,6 +128,50 @@ export function useDeleteRecipe() {
   return useMutation({
     mutationFn: (id: string) => deleteRecipe(id),
     onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.recipes.all });
+    },
+  });
+}
+
+/**
+ * Catálogo de etiquetas con su recuento de recetas. Sin conexión se sirven las
+ * etiquetas cacheadas (mismo patrón `offlineFirst` que el recetario).
+ */
+export function useTags() {
+  return useQuery({
+    queryKey: queryKeys.tags.all,
+    queryFn: ({ signal }) => fetchTags(signal),
+    networkMode: 'offlineFirst',
+  });
+}
+
+/**
+ * Alta de etiqueta (idempotente por `slug`). Invalida el catálogo de etiquetas.
+ *
+ * API preparada para la futura gestión de etiquetas; todavía sin UI.
+ */
+export function useCreateTag() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => createTag(name),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.tags.all });
+    },
+  });
+}
+
+/**
+ * Borrado de etiqueta. Invalida el catálogo de etiquetas y las recetas, cuyas
+ * tarjetas y detalles pueden mostrar la etiqueta eliminada.
+ *
+ * API preparada para la futura gestión de etiquetas; todavía sin UI.
+ */
+export function useDeleteTag() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteTag(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.tags.all });
       void queryClient.invalidateQueries({ queryKey: queryKeys.recipes.all });
     },
   });

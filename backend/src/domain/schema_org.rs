@@ -274,6 +274,7 @@ fn map_recipe(recipe: &Value) -> RecipeInput {
         ingredients,
         instructions,
         source_url,
+        tags: Vec::new(),
     }
 }
 

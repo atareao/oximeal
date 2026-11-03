@@ -26,6 +26,8 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 
 - **Planificación de comidas:** el menú semanal pasa a ser editable desde la propia interfaz: `PATCH /api/meal-plan/{id}` (permiso `write:plan`) para corregir las raciones sin recrear la entrada (`200` con la vista actualizada, `400` si `servings < 1`, `404` si no existe) y validación endurecida de `POST /api/meal-plan` (receta existente); alta por slot con selector de receta con búsqueda, tipo de comida, rol y raciones, baja con confirmación y edición de raciones, conviviendo con Valet. La planificación requiere conexión: sin red los controles se deshabilitan con aviso (no se encola) y el plan se refresca al recuperar la conexión. Objetivos táctiles ≥48px y gestión de foco (#54).
 
+- **Recetario:** etiquetas libres de recetas (many-to-many, migración `0007`): `GET /api/tags` (`read:recipes`, con `recipe_count`), `POST /api/tags` idempotente por `slug` normalizado (`write:recipes`, `201`/`200`/`400`) y `DELETE /api/tags/{id}` en cascada sin borrar recetas (`204`/`404`); `POST`/`PUT /api/recipes` aceptan `tags` por nombre (creación al vuelo, deduplicación por `slug` y reemplazo del conjunto en la misma transacción `BEGIN IMMEDIATE`) y `GET /api/recipes?tag=<id|slug>` filtra combinado con `q`/`category`/paginación. Las etiquetas quedan **fuera** del índice `recipes_fts`. En la web: selector de etiquetas con creación al vuelo en el formulario, etiquetas en la tarjeta y el detalle, y filtro por etiqueta reflejado en la URL (`?tag=`) — todo con degradado offline y objetivos táctiles ≥48px (#55).
+
 ### Cambiado
 
 ### Obsoleto

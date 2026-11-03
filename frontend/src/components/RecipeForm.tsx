@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
-import { Button, Form, Input, Modal } from 'antd';
+import { Button, Form, Input, Modal, Select } from 'antd';
+import { useTags } from '../api/hooks';
 import type { Recipe, RecipeInput } from '../api/types';
 import { RECIPE_CATEGORIES } from '../lib/recipes';
 import './RecipeForm.css';
@@ -28,6 +29,7 @@ interface RecipeFormValues {
   instructions?: string;
   source_url?: string;
   ingredients?: IngredientField[];
+  tags?: string[];
 }
 
 function toFormValues(recipe?: Recipe | null): RecipeFormValues {
@@ -38,6 +40,7 @@ function toFormValues(recipe?: Recipe | null): RecipeFormValues {
       diet_type: 'mediterranean',
       servings: 2,
       ingredients: [{ name: '', amount: '', unit: '' }],
+      tags: [],
     };
   }
 
@@ -54,6 +57,8 @@ function toFormValues(recipe?: Recipe | null): RecipeFormValues {
       amount: ingredient.amount,
       unit: ingredient.unit,
     })),
+    // El payload envía nombres; las etiquetas se reemplazan al guardar.
+    tags: recipe.tags.map((tag) => tag.name),
   };
 }
 
@@ -83,6 +88,8 @@ export function RecipeForm({
   onSubmit,
 }: RecipeFormProps) {
   const [form] = Form.useForm<RecipeFormValues>();
+  const { data: tagsData } = useTags();
+  const tagOptions = (tagsData ?? []).map((tag) => ({ value: tag.name, label: tag.name }));
 
   useEffect(() => {
     if (open) {
@@ -106,6 +113,7 @@ export function RecipeForm({
       })),
       instructions: toOptionalString(values.instructions),
       source_url: toOptionalString(values.source_url),
+      tags: (values.tags ?? []).map((tag) => tag.trim()).filter((tag) => tag.length > 0),
     };
     onSubmit(input);
   };
@@ -233,6 +241,17 @@ export function RecipeForm({
 
         <Form.Item name="source_url" label="URL de origen">
           <Input type="url" placeholder="https://…" />
+        </Form.Item>
+
+        <Form.Item name="tags" label="Etiquetas">
+          <Select
+            mode="tags"
+            className="recipe-form__tags"
+            aria-label="Etiquetas"
+            placeholder="Añade etiquetas…"
+            options={tagOptions}
+            tokenSeparators={[',']}
+          />
         </Form.Item>
 
         <div className="recipe-form__actions">

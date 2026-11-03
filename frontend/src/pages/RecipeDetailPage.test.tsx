@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App as AntdApp } from 'antd';
 import type { Recipe } from '../api/types';
-import { ApiError, deleteRecipe, fetchRecipe, updateRecipe } from '../api/client';
+import { ApiError, deleteRecipe, fetchRecipe, fetchTags, updateRecipe } from '../api/client';
 import { useOnline } from '../offline/connectivity';
 import { RecipeDetailPage } from './RecipeDetailPage';
 
@@ -16,6 +16,7 @@ vi.mock('../api/client', async (importOriginal) => {
     fetchRecipe: vi.fn(),
     updateRecipe: vi.fn(),
     deleteRecipe: vi.fn(),
+    fetchTags: vi.fn(),
   };
 });
 
@@ -27,6 +28,7 @@ vi.mock('../offline/connectivity', () => ({
 const mockedFetchRecipe = vi.mocked(fetchRecipe);
 const mockedUpdateRecipe = vi.mocked(updateRecipe);
 const mockedDeleteRecipe = vi.mocked(deleteRecipe);
+const mockedFetchTags = vi.mocked(fetchTags);
 const mockedUseOnline = vi.mocked(useOnline);
 
 function installMatchMedia(matches = true) {
@@ -51,6 +53,7 @@ function recipe(overrides: Partial<Recipe> = {}): Recipe {
     prep_time_minutes: 25,
     servings: 4,
     created_at: '2026-11-01T10:00:00Z',
+    tags: [],
     ingredients: [{ name: 'Patata', amount: 500, unit: 'g' }],
     instructions: 'Pelar y freír.',
     source_url: null,
@@ -86,6 +89,7 @@ describe('RecipeDetailPage', () => {
     mockedUseOnline.mockReturnValue(true);
     mockedFetchRecipe.mockResolvedValue(recipe());
     mockedDeleteRecipe.mockResolvedValue(undefined);
+    mockedFetchTags.mockResolvedValue([]);
   });
 
   it('muestra el detalle completo con ingredientes e instrucciones', async () => {
@@ -97,6 +101,25 @@ describe('RecipeDetailPage', () => {
     expect(screen.getByText('Pelar y freír.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /editar/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /borrar receta/i })).toBeInTheDocument();
+  });
+
+  it('muestra las etiquetas de la receta', async () => {
+    mockedFetchRecipe.mockResolvedValue(
+      recipe({ tags: [{ id: 't1', name: 'Vegano', slug: 'vegano' }] }),
+    );
+    renderDetail();
+
+    await screen.findByRole('heading', { name: 'Tortilla' });
+    expect(screen.getByText('Vegano')).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: /etiquetas/i })).toBeInTheDocument();
+  });
+
+  it('sin etiquetas no muestra ninguna etiqueta', async () => {
+    mockedFetchRecipe.mockResolvedValue(recipe({ tags: [] }));
+    renderDetail();
+
+    await screen.findByRole('heading', { name: 'Tortilla' });
+    expect(screen.queryByRole('list', { name: /etiquetas/i })).not.toBeInTheDocument();
   });
 
   it('muestra el estado "no encontrada" para un id inexistente', async () => {

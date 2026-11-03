@@ -3,6 +3,21 @@
  * Mantener sincronizados con `backend/src/models/*`.
  */
 
+/** Etiqueta libre asociada a recetas (espejo del DTO del backend). */
+export interface Tag {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+/** Etiqueta tal y como viaja dentro de `Recipe`/`RecipeSummary`. */
+export type RecipeTag = Tag;
+
+/** Etiqueta del catálogo con su recuento de recetas (`GET /api/tags`). */
+export interface TagWithCount extends Tag {
+  recipe_count: number;
+}
+
 export interface RecipeSummary {
   id: string;
   name: string;
@@ -11,6 +26,7 @@ export interface RecipeSummary {
   prep_time_minutes: number | null;
   servings: number;
   created_at: string;
+  tags: RecipeTag[];
 }
 
 export interface IngredientInput {
@@ -36,6 +52,8 @@ export interface RecipeInput {
   ingredients: IngredientInput[];
   instructions?: string | null;
   source_url?: string | null;
+  /** Nombres de las etiquetas; el backend crea al vuelo las que no existan. */
+  tags: string[];
 }
 
 /** Cuerpo de `POST /api/recipes/import` (espejo de `ImportRecipeRequest`). */
@@ -108,6 +126,8 @@ export interface RecipeListResponse {
 export interface RecipeQueryParams {
   q?: string;
   category?: string;
+  /** Filtro por etiqueta: `id` o `slug`. */
+  tag?: string;
   page?: number;
   page_size?: number;
 }

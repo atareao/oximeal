@@ -246,3 +246,139 @@ async fn migration_preserves_data_and_fts() {
         "el CHECK de amount debe estar activo tras migrar"
     );
 }
+
+/// Migración `0007`: crea `tags`, `recipe_tags`, el índice y la unicidad de `slug`.
+#[tokio::test]
+async fn migration_0007_creates_tags_schema() {
+    let state = common::test_state().await;
+
+    let tables: Vec<String> =
+        sqlx::query_scalar("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+            .fetch_all(&state.pool)
+            .await
+            .expect("sqlite_master: tablas");
+    assert!(tables.iter().any(|t| t == "tags"), "falta la tabla tags");
+    assert!(
+        tables.iter().any(|t| t == "recipe_tags"),
+        "falta la tabla recipe_tags"
+    );
+
+    let indexes: Vec<String> =
+        sqlx::query_scalar("SELECT name FROM sqlite_master WHERE type = 'index'")
+            .fetch_all(&state.pool)
+            .await
+            .expect("sqlite_master: índices");
+    assert!(
+        indexes.iter().any(|i| i == "idx_recipe_tags_tag_id"),
+        "falta idx_recipe_tags_tag_id: {indexes:?}"
+    );
+
+    // `tags.slug` tiene una restricción UNIQUE: un slug duplicado debe ser rechazado.
+    sqlx::query("INSERT INTO tags (id, name, slug) VALUES ('t1', 'Vegano', 'vegano')")
+        .execute(&state.pool)
+        .await
+        .expect("insert tag");
+    let duplicate =
+        sqlx::query("INSERT INTO tags (id, name, slug) VALUES ('t2', 'Otro', 'vegano')")
+            .execute(&state.pool)
+            .await;
+    assert!(
+        duplicate.is_err(),
+        "tags.slug debe ser UNIQUE (rechaza duplicados)"
+    );
+}
+
+/// `recipe_tags` declara FK `ON DELETE CASCADE` a `recipes(id)` y `tags(id)`.
+#[tokio::test]
+async fn recipe_tags_has_cascade_foreign_keys() {
+    let state = common::test_state().await;
+
+    let rows = sqlx::query("PRAGMA foreign_key_list('recipe_tags')")
+        .fetch_all(&state.pool)
+        .await
+        .expect("foreign_key_list recipe_tags");
+    assert!(!rows.is_empty(), "recipe_tags debe tener claves foráneas");
+
+    let on_delete = |table: &str| {
+        rows.iter().find_map(|row| {
+            let referenced: String = row.get("table");
+            (referenced == table).then(|| row.get::<String, _>("on_delete"))
+        })
+    };
+    assert_eq!(
+        on_delete("recipes").as_deref(),
+        Some("CASCADE"),
+        "FK recipe_tags.recipe_id debe ser ON DELETE CASCADE"
+    );
+    assert_eq!(
+        on_delete("tags").as_deref(),
+        Some("CASCADE"),
+        "FK recipe_tags.tag_id debe ser ON DELETE CASCADE"
+    );
+}
+
+/// La migración `0007` es aditiva: no toca `recipes` ni `recipes_fts`, y
+/// revertirla (DROP de sus tablas) no pierde recetas.
+#[tokio::test]
+async fn migration_0007_is_additive_and_reversible() {
+    let mut conn = sqlx::SqliteConnection::connect("sqlite::memory:")
+        .await
+        .expect("conectar memoria");
+
+    for sql in [
+        include_str!("../migrations/0001_init.sql"),
+        include_str!("../migrations/0002_fts_triggers.sql"),
+        include_str!("../migrations/0003_fts_diacritics_and_indexes.sql"),
+        include_str!("../migrations/0004_sessions.sql"),
+        include_str!("../migrations/0005_schema_constraints.sql"),
+        include_str!("../migrations/0006_shopping_item_client_id.sql"),
+    ] {
+        sqlx::raw_sql(sql)
+            .execute(&mut conn)
+            .await
+            .expect("migración previa");
+    }
+
+    sqlx::query("INSERT INTO recipes (id, name, category, ingredients, servings) VALUES ('r1', 'CafeteriaTest', 'main', '[]', 2)")
+        .execute(&mut conn)
+        .await
+        .expect("insert receta");
+
+    // Se lee en runtime (no `include_str!`) para que este test compile aunque la
+    // migración 0007 todavía no exista: así el RED falla por aserción, no por
+    // error de compilación.
+    let migration = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations/0007_recipe_tags.sql"),
+    )
+    .expect("leer migración 0007");
+
+    sqlx::raw_sql(sqlx::AssertSqlSafe(migration))
+        .execute(&mut conn)
+        .await
+        .expect("migración 0007");
+
+    let recipes: i64 = sqlx::query_scalar("SELECT count(*) FROM recipes")
+        .fetch_one(&mut conn)
+        .await
+        .expect("contar recetas");
+    assert_eq!(recipes, 1, "0007 no debe modificar filas de recipes");
+
+    let hits: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM recipes_fts WHERE recipes_fts MATCH 'Cafe'")
+            .fetch_one(&mut conn)
+            .await
+            .expect("fts");
+    assert_eq!(hits, 1, "0007 no debe tocar recipes_fts");
+
+    // Revertir 0007 no pierde recetas.
+    sqlx::raw_sql("DROP TABLE recipe_tags; DROP TABLE tags;")
+        .execute(&mut conn)
+        .await
+        .expect("revertir 0007");
+
+    let recipes: i64 = sqlx::query_scalar("SELECT count(*) FROM recipes")
+        .fetch_one(&mut conn)
+        .await
+        .expect("contar recetas tras revertir");
+    assert_eq!(recipes, 1, "revertir 0007 no pierde recetas");
+}

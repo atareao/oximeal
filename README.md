@@ -151,6 +151,8 @@ administración de instancia. Sin credencial válida → **401** con
 |---|---|
 | `GET /api/recipes`, `GET /api/recipes/{id}` | `read:recipes` |
 | `POST /api/recipes` | `write:recipes` |
+| `GET /api/tags` | `read:recipes` |
+| `POST /api/tags`, `DELETE /api/tags/{id}` | `write:recipes` |
 | `GET /api/meal-plan` | `read:plan` |
 | `POST /api/meal-plan`, `PATCH /api/meal-plan/{id}`, `DELETE /api/meal-plan/{id}` | `write:plan` |
 | `GET /api/shopping-list` | `read:shopping` |
