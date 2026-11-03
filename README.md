@@ -15,7 +15,7 @@ El asistente conversacional es **Valet** (proyecto hermano), que consume la
 **Agent API** de OxiMeal (`/api/agent`) mediante su patrón nativo
 `services/<svc>.rs` + `tools/<svc>.rs`.
 
-> Estado actual: **Fase 1 — núcleo backend**. Incluye el scaffold del workspace,
+> Estado actual: **Fases 6–7 — recetario completo y entrega**. Incluye el scaffold del workspace,
 > el dominio puro (canonicalización de unidades, normalización de nombres,
 > categorización por pasillo y consolidación de la lista de la compra), la API
 > REST y la Agent API para Valet.
@@ -36,7 +36,7 @@ oximeal/
 │       ├── models/        # DTOs (serde + utoipa)
 │       ├── repo/          # acceso a datos (sqlx)
 │       └── routes/        # handlers HTTP (axum)
-└── frontend/              # reservado para la Fase 2 (React)
+└── frontend/              # SPA React
 ```
 
 ## Requisitos
@@ -90,6 +90,26 @@ Las migraciones se aplican automáticamente al arrancar el backend.
 
 Las variables de autenticación (Fase 4) se documentan en la sección
 [🔐 Autenticación (OIDC con Pocket ID)](#-autenticación-oidc-con-pocket-id).
+
+
+
+## 🐳 Despliegue con contenedor
+
+OxiMeal se empaqueta en una **imagen multi-stage** con la UI embebida en el
+binario (Axum + SQLite), usuario no root y `HEALTHCHECK` contra `/api/health`:
+
+```bash
+podman build --format docker -t ghcr.io/atareao/oximeal:local .
+podman run --name oximeal -d -p 8080:8080 \
+  -v oximeal-data:/app/data -e OIDC_ENABLED=false \
+  ghcr.io/atareao/oximeal:local
+```
+
+La imagen escucha en el puerto **8080** y persiste la base SQLite en
+`/app/data`. `deploy/compose.yaml` levanta OxiMeal junto a Pocket ID. Consulta la
+guia completa en [`deploy/README.md`](deploy/README.md) (construccion,
+variables, volumenes y permisos, healthcheck, modo abierto vs OIDC y
+TLS/reverse-proxy).
 
 ## 🔐 Autenticación (OIDC con Pocket ID)
 

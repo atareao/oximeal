@@ -1,0 +1,10 @@
+target/
+frontend/node_modules/
+frontend/dist/
+frontend/tsconfig.tsbuildinfo
+.git/
+.github/
+openspec/
+data/
+.env
+deploy/.env

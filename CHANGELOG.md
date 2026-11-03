@@ -18,6 +18,8 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 
 - **Recetario:** importación de recetas desde una URL con `POST /api/recipes/import` (permiso `write:recipes`): descarga server-side con guardas SSRF (solo `http`/`https`, pin de IP frente a DNS rebinding, veto de loopback/RFC1918/link-local, redirecciones acotadas, timeout y tope de tamaño) y parseo del JSON-LD Schema.org `@type: Recipe` (incl. `@graph`), idempotente por `source_url`; diálogo «Importar desde URL» en la página de recetas y allowlist opcional `IMPORT_ALLOWED_HOSTS` para orígenes en LAN (#46).
 
+- **Entrega:** imagen de contenedor **multi-stage** reproducible (`podman build`/`docker build`) con la UI embebida (`--features embed-ui`), runtime mínimo `debian:bookworm-slim` como usuario no root (`oximeal`, UID/GID 10001), `HEALTHCHECK` contra `/api/health`, volumen persistente `/app/data` y `.dockerignore`; orquestación con `deploy/compose.yaml` junto a Pocket ID y guía de despliegue en `deploy/README.md` (#52).
+
 - **Rendimiento:** verificación en dispositivo real con la receta `just perf`, que mide el RSS estable/pico del binario release con la UI embebida (nuevo `[profile.release]`: `lto`, `codegen-units=1`, `panic="abort"` y `strip`) y audita la web por CDP (FCP, transferencia del grafo inicial declarado y objetivos táctiles ≥48px); presupuestos y resultados documentados en `docs/performance.md` — RSS estable ~11 MB, FCP ~40 ms y transferencia ~317 kB. Es una medición on-demand, no un *gate* de CI (ADR-31) (#47).
 
 ### Cambiado
@@ -95,7 +97,7 @@ autorización por permisos. Retira el API key estático del issue #5.
   con *refresh token* y puerta de entrada por grupos permitidos
   (`OIDC_ALLOWED_GROUPS`).
 - Agent API **M2M** con permisos dedicados `agent:read`, `agent:plan` y
-  `agent:shopping` (contrato sin cambios).
+  `agent:shopping` (contrato sin cambios). 
 - Migración `0004_sessions` para las sesiones server-side.
 
 #### Frontend
@@ -150,9 +152,7 @@ registrada como issues #2–#13.
 - Workspace Cargo (edition 2024), `rust-toolchain.toml` y configuración base del
   repositorio.
 - Persistencia SQLite con WAL, claves foráneas y `busy_timeout`.
-- Migraciones versionadas `0001_init`, `0002_fts_triggers` y
-  `0003_fts_diacritics_and_indexes`: búsqueda FTS5 *external-content* con
-  trigramas y plegado de diacríticos.
+- Migraciones versionadas `0001_init`, `0002_fts_triggers` y `0003_fts_diacritics_and_indexes`: búsqueda FTS5 *external-content* con trigramas y plegado de diacríticos.
 - Dominio puro (sin IO): canonicalización de unidades, normalización de
   nombres, categorización por pasillo, fechas canónicas y motor de consolidación
   de la lista de la compra.
@@ -198,11 +198,3 @@ registrada como issues #2–#13.
 
 - `README.md` con arquitectura, requisitos, desarrollo y configuración.
 - `GIT_FLOW.md` con el flujo de ramas y las convenciones del repositorio.
-- Especificaciones OpenSpec de las fases 1 y 2 archivadas y consolidadas.
-- Guía de la arquitectura *headless/API-first*: el asistente conversacional
-  **Valet** es un proyecto hermano que consume la Agent API por HTTP, sin
-  orquestador LLM, sin servidor MCP y sin chat dentro de OxiMeal.
-
-[No publicado]: https://github.com/atareao/oximeal/compare/v0.3.0...HEAD
-[0.3.0]: https://github.com/atareao/oximeal/compare/v0.2.0...v0.3.0
-[0.2.0]: https://github.com/atareao/oximeal/compare/04b8f6162fe54101a21ba4749641f4af610c6ca7...v0.2.0
