@@ -6,8 +6,11 @@ import {
   createMealPlanEntry,
   createRecipe,
   createShoppingItem,
+  createTag,
   deleteMealPlanEntry,
   deleteRecipe,
+  deleteTag,
+  fetchTags,
   importRecipe,
   patchMealPlanEntry,
   patchShoppingItem,
@@ -18,9 +21,12 @@ import {
   useAddMealPlanEntry,
   useAddShoppingItem,
   useCreateRecipe,
+  useCreateTag,
   useDeleteRecipe,
+  useDeleteTag,
   useImportRecipe,
   useRemoveMealPlanEntry,
+  useTags,
   useToggleShoppingItem,
   useUpdateMealPlanEntry,
   useUpdateRecipe,
@@ -33,6 +39,7 @@ import type {
   RecipeInput,
   ShoppingItem,
   ShoppingListGroup,
+  TagWithCount,
 } from './types';
 import { isOnline } from '../offline/connectivity';
 import {
@@ -55,6 +62,9 @@ vi.mock('./client', async (importOriginal) => {
     createMealPlanEntry: vi.fn(),
     deleteMealPlanEntry: vi.fn(),
     patchMealPlanEntry: vi.fn(),
+    fetchTags: vi.fn(),
+    createTag: vi.fn(),
+    deleteTag: vi.fn(),
   };
 });
 
@@ -212,6 +222,7 @@ describe('mutaciones de recetas', () => {
     name: 'Tortilla',
     category: 'main',
     ingredients: [{ name: 'Patata', amount: 500, unit: 'g' }],
+    tags: [],
   };
 
   const recipe: Recipe = {
@@ -222,6 +233,7 @@ describe('mutaciones de recetas', () => {
     prep_time_minutes: 25,
     servings: 4,
     created_at: '2026-11-01T10:00:00Z',
+    tags: [],
     ingredients: [{ name: 'Patata', amount: 500, unit: 'g' }],
     instructions: null,
     source_url: null,
@@ -294,6 +306,7 @@ describe('importación de recetas', () => {
     prep_time_minutes: 25,
     servings: 4,
     created_at: '2026-11-01T10:00:00Z',
+    tags: [],
     ingredients: [{ name: 'Patata', amount: 500, unit: 'g' }],
     instructions: null,
     source_url: 'https://example.com/r',
@@ -370,6 +383,7 @@ describe('mutaciones del plan de comidas', () => {
       prep_time_minutes: 30,
       servings: 2,
       created_at: '2026-10-01T10:00:00Z',
+      tags: [],
     },
   };
 
@@ -448,5 +462,66 @@ describe('mutaciones del plan de comidas', () => {
 
     await waitFor(() => expect(result.current.isPaused).toBe(true));
     expect(mockedCreateMealPlan).not.toHaveBeenCalled();
+  });
+});
+
+describe('etiquetas', () => {
+  const mockedFetchTags = vi.mocked(fetchTags);
+  const mockedCreateTag = vi.mocked(createTag);
+  const mockedDeleteTag = vi.mocked(deleteTag);
+
+  const tag: TagWithCount = { id: 't1', name: 'Vegano', slug: 'vegano', recipe_count: 3 };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    onlineManager.setOnline(true);
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+  });
+
+  it('useTags consume el catálogo de etiquetas', async () => {
+    mockedFetchTags.mockResolvedValue([tag]);
+    const { result } = renderHook(() => useTags(), { wrapper });
+
+    await waitFor(() => expect(result.current.data).toEqual([tag]));
+    expect(mockedFetchTags).toHaveBeenCalled();
+  });
+
+  it('useCreateTag crea una etiqueta e invalida el catálogo', async () => {
+    mockedCreateTag.mockResolvedValue(tag);
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useCreateTag(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync('Vegano');
+    });
+
+    expect(mockedCreateTag).toHaveBeenCalledWith('Vegano');
+    await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.tags.all }));
+  });
+
+  it('useDeleteTag borra una etiqueta e invalida catálogo y recetas', async () => {
+    mockedDeleteTag.mockResolvedValue(undefined);
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useDeleteTag(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync('t1');
+    });
+
+    expect(mockedDeleteTag).toHaveBeenCalledWith('t1');
+    await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.tags.all }));
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.recipes.all }),
+    );
+  });
+
+  it('la clave del listado incluye el filtro por etiqueta', () => {
+    expect(queryKeys.recipes.list({ tag: 'vegano' })).toEqual([
+      'recipes',
+      'list',
+      { tag: 'vegano' },
+    ]);
   });
 });

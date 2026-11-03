@@ -58,12 +58,36 @@ El sistema SHALL validar cada ingrediente de `POST /api/recipes`: el nombre SHAL
 - THEN se devuelve 400 y no se persiste la receta
 
 ### Requirement: Índices de rendimiento
-El sistema SHALL definir los índices `idx_recipes_created_at` sobre `recipes(created_at)`, `idx_shopping_source_plan_id` sobre `shopping_list_items(source_plan_id)` e `idx_shopping_checked` sobre `shopping_list_items(checked)` para acelerar las consultas frecuentes.
+
+El sistema SHALL definir los índices `idx_recipes_created_at` sobre
+`recipes(created_at)`, `idx_shopping_source_plan_id` sobre
+`shopping_list_items(source_plan_id)` e `idx_shopping_checked` sobre
+`shopping_list_items(checked)` para acelerar las consultas frecuentes.
 
 #### Scenario: Existencia de índices
+
 - GIVEN una base migrada
 - WHEN se consulta `sqlite_master` para el tipo índice
 - THEN existen `idx_recipes_created_at`, `idx_shopping_source_plan_id` e `idx_shopping_checked`
+
+### Requirement: Identidad canónica de las etiquetas
+
+El sistema SHALL definir el índice `idx_recipe_tags_tag_id` sobre
+`recipe_tags(tag_id)` y la restricción de unicidad sobre `tags(slug)`, que fija
+la identidad canónica de las etiquetas. Las etiquetas NO SHALL incorporarse al
+índice de texto completo `recipes_fts`.
+
+#### Scenario: Índices de etiquetas
+
+- GIVEN una base migrada hasta `0007`
+- WHEN se consulta `sqlite_master`
+- THEN existen `idx_recipe_tags_tag_id` y la restricción `UNIQUE` sobre `tags(slug)`
+
+#### Scenario: Las etiquetas no contaminan la búsqueda de texto
+
+- GIVEN una receta etiquetada con un término que no aparece en su nombre ni en sus instrucciones
+- WHEN se busca ese término con `GET /api/recipes?q=<término>`
+- THEN la receta no aparece por coincidencia de texto completo
 
 ### Requirement: Semántica de coincidencia de la búsqueda
 El sistema SHALL coincidir con `q` como **subcadena contigua** (insensible a mayúsculas y a diacríticos) de `recipes.name` o `recipes.instructions` cuando `q` tenga 3 o más caracteres, y SHALL caer a `LIKE '%q%'` sobre `recipes.name` cuando tenga menos de 3. La expectativa de precisión SHALL quedar documentada (`docs/search.md` y docstring de `repo::recipes::list`).

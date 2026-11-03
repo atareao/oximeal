@@ -105,7 +105,8 @@ pub async fn search_recipes(
         )));
     }
 
-    let response = repo::recipes::list(&state.pool, search, category, 1, SEARCH_LIMIT).await?;
+    let response =
+        repo::recipes::list(&state.pool, search, category, None, 1, SEARCH_LIMIT).await?;
     Ok(Json(SearchRecipesResponse {
         recipes: response.items,
     }))

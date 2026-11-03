@@ -7,10 +7,12 @@ import {
   Input,
   Modal,
   Result,
+  Select,
   Skeleton,
   Typography,
 } from 'antd';
-import { useCreateRecipe, useImportRecipe, useRecipes } from '../api/hooks';
+import { useSearchParams } from 'react-router-dom';
+import { useCreateRecipe, useImportRecipe, useRecipes, useTags } from '../api/hooks';
 import { ApiError } from '../api/client';
 import type { RecipeInput, RecipeQueryParams } from '../api/types';
 import { RecipeCard } from '../components/RecipeCard';
@@ -57,6 +59,8 @@ function describeImportError(error: unknown): string {
 export function RecipesPage() {
   const { message } = AntdApp.useApp();
   const online = useOnline();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tag = searchParams.get('tag') ?? undefined;
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -71,13 +75,19 @@ export function RecipesPage() {
   }, [search]);
 
   const params = useMemo<RecipeQueryParams>(
-    () => ({ q: debouncedSearch.trim() || undefined, page, page_size: PAGE_SIZE }),
-    [debouncedSearch, page],
+    () => ({ q: debouncedSearch.trim() || undefined, tag, page, page_size: PAGE_SIZE }),
+    [debouncedSearch, tag, page],
   );
 
   const { data, isLoading, isError, error, refetch } = useRecipes(params);
+  const tagsQuery = useTags();
   const createRecipe = useCreateRecipe();
   const importRecipe = useImportRecipe();
+
+  const tagOptions = (tagsQuery.data ?? []).map((item) => ({
+    value: item.slug,
+    label: item.name,
+  }));
 
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
@@ -88,6 +98,20 @@ export function RecipesPage() {
 
   const handleSearch = (value: string) => {
     setSearch(value);
+    setPage(1);
+  };
+
+  /** Aplica/quita el filtro por etiqueta reflejándolo en la URL (`?tag=`). */
+  const applyTag = (slug: string | undefined) => {
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous);
+      if (slug) {
+        next.set('tag', slug);
+      } else {
+        next.delete('tag');
+      }
+      return next;
+    });
     setPage(1);
   };
 
@@ -160,6 +184,16 @@ export function RecipesPage() {
             Nueva receta
           </Button>
         </div>
+        <Select
+          className="recipes-page__tag-filter"
+          aria-label="Filtrar por etiqueta"
+          placeholder="Filtrar por etiqueta"
+          allowClear
+          disabled={!online}
+          value={tag}
+          options={tagOptions}
+          onChange={(value) => applyTag(value ? String(value) : undefined)}
+        />
       </header>
 
       {!online && (
@@ -207,7 +241,7 @@ export function RecipesPage() {
       {!isLoading && items.length > 0 && (
         <ul className="recipes-page__list">
           {items.map((recipe) => (
-            <RecipeCard key={recipe.id} recipe={recipe} />
+            <RecipeCard key={recipe.id} recipe={recipe} onSelectTag={applyTag} />
           ))}
         </ul>
       )}

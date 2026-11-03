@@ -81,6 +81,7 @@ function summary(overrides: Partial<RecipeSummary> & Pick<RecipeSummary, 'id' | 
     prep_time_minutes: 20,
     servings: 2,
     created_at: '2026-10-01T10:00:00Z',
+    tags: [],
     ...overrides,
   } satisfies RecipeSummary;
 }

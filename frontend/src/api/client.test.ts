@@ -295,6 +295,7 @@ describe('mutaciones de recetas', () => {
     name: 'Tortilla',
     category: 'main',
     ingredients: [{ name: 'Patata', amount: 500, unit: 'g' }],
+    tags: [],
   };
 
   beforeEach(() => {

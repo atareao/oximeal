@@ -70,6 +70,15 @@
   min-height: 48px;
 }
 
+.recipe-form__tags {
+  min-height: 48px;
+  width: 100%;
+}
+
+.recipe-form__tags .ant-select-selector {
+  min-height: 48px;
+}
+
 .recipe-form__actions {
   display: flex;
   justify-content: flex-end;

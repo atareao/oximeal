@@ -6,6 +6,7 @@ use utoipa::ToSchema;
 
 use crate::domain::ingredient::IngredientInput;
 use crate::error::{AppError, AppResult};
+use crate::models::tag::RecipeTag;
 
 /// Campos de resumen de una receta (listados).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
@@ -24,6 +25,8 @@ pub struct RecipeSummary {
     pub servings: i64,
     /// Fecha de creación (texto tal cual lo produce SQLite).
     pub created_at: String,
+    /// Etiquetas asociadas a la receta.
+    pub tags: Vec<RecipeTag>,
 }
 
 /// Receta completa con ingredientes e instrucciones.
@@ -49,6 +52,8 @@ pub struct Recipe {
     pub instructions: Option<String>,
     /// URL de origen (opcional).
     pub source_url: Option<String>,
+    /// Etiquetas asociadas a la receta.
+    pub tags: Vec<RecipeTag>,
 }
 
 /// Cuerpo de creación de receta.
@@ -75,6 +80,10 @@ pub struct RecipeInput {
     /// URL de origen.
     #[serde(default)]
     pub source_url: Option<String>,
+    /// Nombres de las etiquetas de la receta (se crean al vuelo por `slug` y
+    /// reemplazan el conjunto anterior; por defecto, vacío).
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 /// Parámetros de consulta del listado de recetas.
@@ -86,6 +95,9 @@ pub struct RecipeQuery {
     /// Filtro por categoría.
     #[serde(default)]
     pub category: Option<String>,
+    /// Filtro por etiqueta (`id` o `slug`).
+    #[serde(default)]
+    pub tag: Option<String>,
     /// Página (1-indexada).
     #[serde(default)]
     pub page: Option<u32>,
@@ -120,8 +132,8 @@ pub(crate) struct RecipeSummaryRow {
 }
 
 impl RecipeSummaryRow {
-    /// Convierte la fila en el DTO de resumen.
-    pub(crate) fn into_summary(self) -> RecipeSummary {
+    /// Convierte la fila en el DTO de resumen, adjuntando sus etiquetas.
+    pub(crate) fn into_summary(self, tags: Vec<RecipeTag>) -> RecipeSummary {
         RecipeSummary {
             id: self.id,
             name: self.name,
@@ -130,6 +142,7 @@ impl RecipeSummaryRow {
             prep_time_minutes: self.prep_time_minutes,
             servings: self.servings,
             created_at: self.created_at,
+            tags,
         }
     }
 }
@@ -150,11 +163,11 @@ pub(crate) struct RecipeDetailRow {
 }
 
 impl RecipeDetailRow {
-    /// Convierte la fila en el DTO de receta completa.
+    /// Convierte la fila en el DTO de receta completa, adjuntando sus etiquetas.
     ///
     /// Deserializa la columna JSON de ingredientes; si el contenido almacenado
     /// está corrupto, se trata como error interno.
-    pub(crate) fn into_recipe(self) -> AppResult<Recipe> {
+    pub(crate) fn into_recipe(self, tags: Vec<RecipeTag>) -> AppResult<Recipe> {
         let ingredients: Vec<IngredientInput> = serde_json::from_str(&self.ingredients)
             .map_err(|error| AppError::Internal(anyhow!("ingredientes JSON inválidos: {error}")))?;
 
@@ -169,6 +182,7 @@ impl RecipeDetailRow {
             ingredients,
             instructions: self.instructions,
             source_url: self.source_url,
+            tags,
         })
     }
 }

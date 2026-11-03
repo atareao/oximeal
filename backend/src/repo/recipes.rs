@@ -7,11 +7,12 @@ use crate::error::{AppError, AppResult};
 use crate::models::recipe::{
     Recipe, RecipeDetailRow, RecipeInput, RecipeListResponse, RecipeSummaryRow,
 };
+use crate::repo::tags;
 
 /// Longitud mínima de `q` para usar FTS5 (el tokenizer `trigram` exige 3).
 const FTS_MIN_CHARS: usize = 3;
 
-/// Lista recetas aplicando búsqueda, filtro de categoría y paginación.
+/// Lista recetas aplicando búsqueda, filtros de categoría y etiqueta y paginación.
 ///
 /// # Semántica de la búsqueda
 ///
@@ -26,11 +27,19 @@ const FTS_MIN_CHARS: usize = 3;
 /// Con menos de 3 caracteres (mínimo que exige el tokenizer `trigram`) se cae a
 /// `LIKE '%q%'` sobre el nombre. Ver `docs/search.md`.
 ///
+/// # Filtro por etiqueta
+///
+/// `tag` acepta el `id` **o** el `slug` de una etiqueta y restringe el resultado
+/// a las recetas asociadas a ella. Las etiquetas **no** participan en la
+/// búsqueda de texto: `q` solo mira `name` e `instructions`. El `total` refleja
+/// el conjunto que cumple todos los filtros.
+///
 /// La validación de `category` corresponde a la capa de rutas.
 pub async fn list(
     pool: &SqlitePool,
     q: Option<&str>,
     category: Option<&str>,
+    tag: Option<&str>,
     page: u32,
     page_size: u32,
 ) -> AppResult<RecipeListResponse> {
@@ -76,6 +85,26 @@ pub async fn list(
             .push_bind(category.to_string());
     }
 
+    if let Some(tag) = tag {
+        // Resolución por id o slug; un tag inexistente no aporta filas (200 vacío).
+        // Los marcadores se añaden con `push_bind` (no como literales `?`) porque
+        // el constructor de consultas no admite `?` embebidos en texto.
+        let head = " AND r.id IN (SELECT rt.recipe_id FROM recipe_tags rt \
+                    JOIN tags t ON t.id = rt.tag_id WHERE t.id = ";
+        let tail = " OR t.slug = ";
+        data.push(head)
+            .push_bind(tag.to_string())
+            .push(tail)
+            .push_bind(tag.to_string())
+            .push(")");
+        count
+            .push(head)
+            .push_bind(tag.to_string())
+            .push(tail)
+            .push_bind(tag.to_string())
+            .push(")");
+    }
+
     let total: i64 = count.build_query_scalar().fetch_one(pool).await?;
 
     let offset = i64::from(page.saturating_sub(1)) * i64::from(page_size);
@@ -86,9 +115,17 @@ pub async fn list(
         .push_bind(offset);
 
     let rows: Vec<RecipeSummaryRow> = data.build_query_as().fetch_all(pool).await?;
+
+    // Una sola consulta para las etiquetas de toda la página (sin N+1).
+    let ids: Vec<String> = rows.iter().map(|row| row.id.clone()).collect();
+    let mut tags_by_recipe = tags::for_recipes(pool, &ids).await?;
+
     let items = rows
         .into_iter()
-        .map(RecipeSummaryRow::into_summary)
+        .map(|row| {
+            let tags = tags_by_recipe.remove(&row.id).unwrap_or_default();
+            row.into_summary(tags)
+        })
         .collect();
 
     Ok(RecipeListResponse {
@@ -99,9 +136,15 @@ pub async fn list(
     })
 }
 
-/// Inserta una receta y devuelve su representación completa.
+/// Inserta una receta y sus etiquetas y devuelve su representación completa.
+///
+/// La receta y su conjunto de etiquetas se persisten en la misma transacción
+/// `BEGIN IMMEDIATE`.
 pub async fn create(pool: &SqlitePool, id: &str, input: &RecipeInput) -> AppResult<Recipe> {
-    insert(pool, id, input).await?;
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+    insert(&mut *tx, id, input).await?;
+    tags::replace_for_recipe(&mut tx, id, &input.tags).await?;
+    tx.commit().await?;
     get(pool, id).await
 }
 
@@ -130,27 +173,24 @@ pub async fn create_or_get_by_source_url(
     let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
 
     if let Some(source_url) = input.source_url.as_deref() {
-        let existing: Option<RecipeDetailRow> = sqlx::query_as(
-            "SELECT id, name, category, diet_type, prep_time_minutes, \
-             COALESCE(servings, 2) AS servings, CAST(created_at AS TEXT) AS created_at, \
-             CAST(ingredients AS TEXT) AS ingredients, instructions, source_url \
-             FROM recipes WHERE source_url = ? LIMIT 1",
-        )
-        .bind(source_url)
-        .fetch_optional(&mut *tx)
-        .await?;
+        let existing: Option<String> =
+            sqlx::query_scalar("SELECT id FROM recipes WHERE source_url = ? LIMIT 1")
+                .bind(source_url)
+                .fetch_optional(&mut *tx)
+                .await?;
 
-        if let Some(row) = existing {
-            let recipe = row.into_recipe()?;
+        if let Some(existing_id) = existing {
             tx.commit().await?;
+            let recipe = get(pool, &existing_id).await?;
             return Ok((recipe, false));
         }
     }
 
     insert(&mut *tx, id, input).await?;
-    let recipe = get_with(&mut *tx, id).await?;
+    tags::replace_for_recipe(&mut tx, id, &input.tags).await?;
     tx.commit().await?;
 
+    let recipe = get(pool, id).await?;
     Ok((recipe, true))
 }
 
@@ -187,16 +227,8 @@ where
     Ok(())
 }
 
-/// Obtiene una receta completa por id; devuelve 404 si no existe.
+/// Obtiene una receta completa por id (con sus etiquetas); 404 si no existe.
 pub async fn get(pool: &SqlitePool, id: &str) -> AppResult<Recipe> {
-    get_with(pool, id).await
-}
-
-/// Obtiene una receta completa por id usando el ejecutor dado.
-async fn get_with<'e, E>(executor: E, id: &str) -> AppResult<Recipe>
-where
-    E: sqlx::Executor<'e, Database = Sqlite>,
-{
     let row: Option<RecipeDetailRow> = sqlx::query_as(
         "SELECT id, name, category, diet_type, prep_time_minutes, \
          COALESCE(servings, 2) AS servings, CAST(created_at AS TEXT) AS created_at, \
@@ -204,13 +236,12 @@ where
          FROM recipes WHERE id = ?",
     )
     .bind(id)
-    .fetch_optional(executor)
+    .fetch_optional(pool)
     .await?;
 
-    match row {
-        Some(row) => row.into_recipe(),
-        None => Err(AppError::NotFound(format!("receta {id}"))),
-    }
+    let row = row.ok_or_else(|| AppError::NotFound(format!("receta {id}")))?;
+    let tags = tags::for_recipe(pool, id).await?;
+    row.into_recipe(tags)
 }
 
 /// Reemplaza una receta existente y devuelve su estado final.
@@ -254,6 +285,9 @@ pub async fn update(pool: &SqlitePool, id: &str, input: &RecipeInput) -> AppResu
     .bind(id)
     .execute(&mut *tx)
     .await?;
+
+    // Reemplaza el conjunto de etiquetas dentro de la misma transacción.
+    tags::replace_for_recipe(&mut tx, id, &input.tags).await?;
 
     tx.commit().await?;
 

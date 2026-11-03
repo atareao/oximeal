@@ -58,6 +58,15 @@
   min-height: 48px;
 }
 
+.recipes-page__tag-filter {
+  min-height: 48px;
+  min-width: 200px;
+}
+
+.recipes-page__tag-filter .ant-select-selector {
+  min-height: 48px;
+}
+
 .recipes-page__loading {
   padding: 8px 0;
 }

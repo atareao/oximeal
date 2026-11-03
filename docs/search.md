@@ -37,3 +37,10 @@ Si se quiere ofrecer búsqueda "por palabras" (p. ej. `lentejas zanahoria`),
 habría que dividir el término en tokens y combinarlos (por ejemplo uniendo por
 `AND` varias frases FTS), o cambiar la estrategia de indexado. Mientras tanto,
 la UI debe presentar el buscador como búsqueda de texto contiguo.
+
+## Filtro por etiqueta
+
+Las etiquetas quedan **fuera** de `recipes_fts`: buscar su término con `q` no
+encuentra las recetas etiquetadas con él. Para localizarlas hay que usar el
+filtro dedicado `GET /api/recipes?tag=<id|slug>`, que se combina con `q`,
+`category` y la paginación, y cuyo `total` refleja el conjunto filtrado.

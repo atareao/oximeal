@@ -148,6 +148,16 @@ export function RecipeDetailPage() {
         <Paragraph className="recipe-detail__diet">Dieta: {data.diet_type}</Paragraph>
       )}
 
+      {data.tags.length > 0 && (
+        <ul className="recipe-detail__tags" aria-label="Etiquetas">
+          {data.tags.map((tag) => (
+            <li key={tag.id} className="recipe-detail__tag">
+              {tag.name}
+            </li>
+          ))}
+        </ul>
+      )}
+
       <section aria-labelledby="recipe-ingredients-title" className="recipe-detail__section">
         <h3 id="recipe-ingredients-title" className="recipe-detail__section-title">
           Ingredientes
