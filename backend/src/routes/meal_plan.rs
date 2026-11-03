@@ -2,14 +2,17 @@
 
 use axum::Json;
 use axum::Router;
+use axum::extract::rejection::JsonRejection;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::routing::get;
+use axum::routing::{get, patch};
 use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
-use crate::models::meal_plan::{MealPlanEntryView, MealPlanInput, MealPlanQuery};
+use crate::models::meal_plan::{
+    MealPlanEntryView, MealPlanInput, MealPlanPatchInput, MealPlanQuery,
+};
 use crate::repo;
 use crate::routes::validation;
 use crate::state::AppState;
@@ -25,7 +28,7 @@ pub fn write_router() -> Router<AppState> {
         .route("/api/meal-plan", axum::routing::post(create_meal_plan))
         .route(
             "/api/meal-plan/{id}",
-            axum::routing::delete(delete_meal_plan),
+            patch(patch_meal_plan).delete(delete_meal_plan),
         )
 }
 
@@ -85,6 +88,43 @@ pub async fn create_meal_plan(
     let entry = repo::meal_plan::create(&state.pool, &id, &input).await?;
 
     Ok((StatusCode::CREATED, Json(entry)))
+}
+
+/// `PATCH /api/meal-plan/{id}` — actualiza las raciones de una entrada.
+///
+/// El cuerpo debe incluir `servings >= 1`; se responde `400` si falta o es
+/// inválido y `404` si la entrada no existe. No se puede cambiar `recipe_id`,
+/// `date`, `meal_type` ni `role`: para eso se elimina y se vuelve a crear.
+#[utoipa::path(
+    patch,
+    path = "/api/meal-plan/{id}",
+    tag = "meal-plan",
+    params(("id" = String, Path, description = "Identificador de la entrada")),
+    request_body = MealPlanPatchInput,
+    responses(
+        (status = 200, description = "Raciones actualizadas", body = MealPlanEntryView),
+        (status = 400, description = "servings ausente o inválido"),
+        (status = 404, description = "Entrada no encontrada"),
+    )
+)]
+pub async fn patch_meal_plan(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    payload: Result<Json<MealPlanPatchInput>, JsonRejection>,
+) -> AppResult<Json<MealPlanEntryView>> {
+    // Un cuerpo JSON ausente o malformado se traduce al sobre de error estándar
+    // de la app (400) en lugar del rechazo por defecto de axum.
+    let Json(input) = payload.map_err(|rejection| {
+        AppError::Validation(format!("cuerpo JSON inválido: {}", rejection.body_text()))
+    })?;
+
+    let servings = input
+        .servings
+        .filter(|servings| *servings >= 1)
+        .ok_or_else(|| AppError::Validation("servings debe ser >= 1".into()))?;
+
+    let entry = repo::meal_plan::update_servings(&state.pool, &id, servings).await?;
+    Ok(Json(entry))
 }
 
 /// `DELETE /api/meal-plan/{id}` — elimina una entrada del plan.

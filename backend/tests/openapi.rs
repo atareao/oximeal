@@ -38,6 +38,13 @@ async fn openapi_json_is_served_with_expected_paths() {
         paths.contains_key("/api/meal-plan"),
         "falta /api/meal-plan en paths"
     );
+    let meal_plan_detail = paths["/api/meal-plan/{id}"]
+        .as_object()
+        .expect("/api/meal-plan/{id} debe ser un objeto");
+    assert!(
+        meal_plan_detail.contains_key("patch"),
+        "/api/meal-plan/{{id}} debe exponer patch"
+    );
     assert!(
         paths.contains_key("/api/shopping-list"),
         "falta /api/shopping-list en paths"

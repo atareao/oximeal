@@ -74,6 +74,32 @@
   font-weight: 500;
 }
 
+.day-card__meal-servings {
+  font-size: 12px;
+  color: #718096;
+}
+
+.day-card__meal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.day-card__add {
+  min-height: 48px;
+  align-self: flex-start;
+  margin-top: 2px;
+}
+
+.day-card__remove {
+  min-height: 48px;
+}
+
+.day-card__edit {
+  min-height: 48px;
+}
+
 .day-card__salad {
   font-size: 11px;
   font-weight: 600;

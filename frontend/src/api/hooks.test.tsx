@@ -3,23 +3,37 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query';
 import {
+  createMealPlanEntry,
   createRecipe,
   createShoppingItem,
+  deleteMealPlanEntry,
   deleteRecipe,
   importRecipe,
+  patchMealPlanEntry,
   patchShoppingItem,
   updateRecipe,
 } from './client';
 import {
   queryKeys,
+  useAddMealPlanEntry,
   useAddShoppingItem,
   useCreateRecipe,
   useDeleteRecipe,
   useImportRecipe,
+  useRemoveMealPlanEntry,
   useToggleShoppingItem,
+  useUpdateMealPlanEntry,
   useUpdateRecipe,
 } from './hooks';
-import type { Recipe, RecipeInput, ShoppingItem, ShoppingListGroup } from './types';
+import type {
+  MealPlanEntryView,
+  MealPlanInput,
+  MealPlanPatchInput,
+  Recipe,
+  RecipeInput,
+  ShoppingItem,
+  ShoppingListGroup,
+} from './types';
 import { isOnline } from '../offline/connectivity';
 import {
   configureMutationQueue,
@@ -38,6 +52,9 @@ vi.mock('./client', async (importOriginal) => {
     updateRecipe: vi.fn(),
     deleteRecipe: vi.fn(),
     importRecipe: vi.fn(),
+    createMealPlanEntry: vi.fn(),
+    deleteMealPlanEntry: vi.fn(),
+    patchMealPlanEntry: vi.fn(),
   };
 });
 
@@ -323,5 +340,113 @@ describe('importación de recetas', () => {
     await waitFor(() => expect(result.current.isPaused).toBe(true));
     expect(mockedImportRecipe).not.toHaveBeenCalled();
     expect(result.current.data).toBeUndefined();
+  });
+});
+
+describe('mutaciones del plan de comidas', () => {
+  const mockedCreateMealPlan = vi.mocked(createMealPlanEntry);
+  const mockedDeleteMealPlan = vi.mocked(deleteMealPlanEntry);
+  const mockedPatchMealPlan = vi.mocked(patchMealPlanEntry);
+
+  const input: MealPlanInput = {
+    date: '2026-11-02',
+    meal_type: 'lunch',
+    recipe_id: 'r1',
+    role: 'main',
+    servings: 2,
+  };
+
+  const entry: MealPlanEntryView = {
+    id: 'e1',
+    date: '2026-11-02',
+    meal_type: 'lunch',
+    role: 'main',
+    servings: 2,
+    recipe: {
+      id: 'r1',
+      name: 'Lentejas',
+      category: 'main',
+      diet_type: 'omnivora',
+      prep_time_minutes: 30,
+      servings: 2,
+      created_at: '2026-10-01T10:00:00Z',
+    },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    onlineManager.setOnline(true);
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+  });
+
+  it('useAddMealPlanEntry crea e invalida plan y compra', async () => {
+    mockedCreateMealPlan.mockResolvedValue(entry);
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useAddMealPlanEntry(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync(input);
+    });
+
+    expect(mockedCreateMealPlan).toHaveBeenCalledWith(input);
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.mealPlan.all }),
+    );
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.shoppingList.all }),
+    );
+  });
+
+  it('useRemoveMealPlanEntry borra e invalida plan y compra', async () => {
+    mockedDeleteMealPlan.mockResolvedValue(undefined);
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useRemoveMealPlanEntry(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync('e1');
+    });
+
+    expect(mockedDeleteMealPlan).toHaveBeenCalledWith('e1');
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.mealPlan.all }),
+    );
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.shoppingList.all }),
+    );
+  });
+
+  it('useUpdateMealPlanEntry actualiza raciones e invalida plan y compra', async () => {
+    const patch: MealPlanPatchInput = { servings: 4 };
+    mockedPatchMealPlan.mockResolvedValue({ ...entry, servings: 4 });
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useUpdateMealPlanEntry(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({ id: 'e1', input: patch });
+    });
+
+    expect(mockedPatchMealPlan).toHaveBeenCalledWith('e1', patch);
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.mealPlan.all }),
+    );
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.shoppingList.all }),
+    );
+  });
+
+  it('sin conexión el alta del plan no llama al servidor ni se encola', async () => {
+    // A diferencia de la lista de la compra, la planificación requiere conexión:
+    // la mutación se pausa (networkMode 'online') y no se encola en IndexedDB.
+    onlineManager.setOnline(false);
+    const { result } = renderHook(() => useAddMealPlanEntry(), { wrapper });
+
+    act(() => {
+      result.current.mutate(input);
+    });
+
+    await waitFor(() => expect(result.current.isPaused).toBe(true));
+    expect(mockedCreateMealPlan).not.toHaveBeenCalled();
   });
 });

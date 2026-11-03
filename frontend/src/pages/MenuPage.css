@@ -54,3 +54,7 @@
   margin: 0 !important;
   max-width: 320px;
 }
+
+.menu-page__empty-plan {
+  min-height: 48px;
+}

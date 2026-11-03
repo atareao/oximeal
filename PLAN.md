@@ -753,7 +753,7 @@ P1–P3 cierran el producto.
 
 ### 20.4 Change E2 — `release-automation` (issue #53)
 
-> Estado: 🚧 en curso (rama `feature/release-automation`). Implementa el ADR-33.
+> Estado: ✅ cerrado (PR #59, squash `e729455` a `development`). Implementa el ADR-33.
 
 - **`.github/workflows/release.yml`** (nuevo): disparo `push: tags: ['v*']` +
   `workflow_dispatch` (input `tag`); **nunca** en `pull_request`.
@@ -806,7 +806,7 @@ P1–P3 cierran el producto.
 - **Accesibilidad:** objetivos táctiles ≥48px, gestión de foco, roles `aria`,
   feedback de carga/error.
 - **Specs:** deltas en `meal-plan`, `weekly-menu`, `ui-shell` y `offline-writes`.
-- **Estado:** ⬜ pendiente (rama `feature/meal-planning-ui`).
+- **Estado:** ✅ implementado y auditado (rama `feature/meal-planning-ui`, PR pendiente). Incluye el refresco del plan al recuperar la conexión (scenario «Recuperación de la conexión»).
 
 ### 20.6 Change P2 — `recipe-tags` (issue #55)
 

@@ -1,0 +1,35 @@
+.edit-servings__error {
+  margin-bottom: 12px;
+}
+
+.edit-servings__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.edit-servings__label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.edit-servings__validation {
+  margin: 8px 0 0;
+  color: #c53030;
+  font-size: 13px;
+}
+
+.edit-servings__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.edit-servings__confirm {
+  min-height: 48px;
+}
+
+.edit-servings__cancel {
+  min-height: 48px;
+}

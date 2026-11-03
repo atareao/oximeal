@@ -20,13 +20,21 @@ vi.mock('./api/client', async (importOriginal) => {
 
 vi.mock('./api/hooks', () => ({
   useMealPlan: vi.fn(),
-  useRecipes: vi.fn(),
+  useRecipes: vi.fn(() => ({
+    data: { items: [], total: 0, page: 1, page_size: 20 },
+    isLoading: false,
+    isError: false,
+    refetch: vi.fn(),
+  })),
   useRecipe: vi.fn(),
   useShoppingList: vi.fn(),
   useToggleShoppingItem: vi.fn(),
   useAddShoppingItem: vi.fn(),
   useConsolidateShopping: vi.fn(),
   useClearCompleted: vi.fn(),
+  useAddMealPlanEntry: vi.fn(() => ({ mutate: vi.fn(), isPending: false, variables: null })),
+  useRemoveMealPlanEntry: vi.fn(() => ({ mutate: vi.fn(), isPending: false, variables: null })),
+  useUpdateMealPlanEntry: vi.fn(() => ({ mutate: vi.fn(), isPending: false, variables: null })),
 }));
 
 const mockedFetchAuthMe = vi.mocked(fetchAuthMe);

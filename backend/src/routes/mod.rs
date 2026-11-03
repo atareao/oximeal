@@ -10,7 +10,7 @@
 //! | `GET /api/recipes`, `GET /api/recipes/{id}` | `read:recipes` |
 //! | `POST /api/recipes`, `PUT /api/recipes/{id}`, `DELETE /api/recipes/{id}` | `write:recipes` |
 //! | `GET /api/meal-plan` | `read:plan` |
-//! | `POST /api/meal-plan`, `DELETE /api/meal-plan/{id}` | `write:plan` |
+//! | `POST /api/meal-plan`, `PATCH /api/meal-plan/{id}`, `DELETE /api/meal-plan/{id}` | `write:plan` |
 //! | `GET /api/shopping-list` | `read:shopping` |
 //! | `POST/PATCH/DELETE /api/shopping-list*` | `write:shopping` |
 //! | `GET /api/agent/recent-recipes`, `GET /api/agent/search-recipes` | `agent:read` |

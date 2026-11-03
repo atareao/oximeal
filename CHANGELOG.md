@@ -24,6 +24,8 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 
 - **Entrega:** automatización de releases con el workflow `release.yml` disparado por tags `v*` (`workflow_dispatch` opcional): puertas de calidad reutilizadas de `ci.yml` (`workflow_call`), artefactos binarios `x86_64`/`aarch64` (`.tar.gz` + `.sha256`), imagen en GHCR (`<version>` y `latest`) y GitHub Release con notas generadas por `git-cliff` (`cliff.toml`) desde Conventional Commits + gitmoji; verificación de coherencia tag ↔ `Cargo.toml` ↔ `frontend/package.json` ↔ `CHANGELOG.md` (#53).
 
+- **Planificación de comidas:** el menú semanal pasa a ser editable desde la propia interfaz: `PATCH /api/meal-plan/{id}` (permiso `write:plan`) para corregir las raciones sin recrear la entrada (`200` con la vista actualizada, `400` si `servings < 1`, `404` si no existe) y validación endurecida de `POST /api/meal-plan` (receta existente); alta por slot con selector de receta con búsqueda, tipo de comida, rol y raciones, baja con confirmación y edición de raciones, conviviendo con Valet. La planificación requiere conexión: sin red los controles se deshabilitan con aviso (no se encola) y el plan se refresca al recuperar la conexión. Objetivos táctiles ≥48px y gestión de foco (#54).
+
 ### Cambiado
 
 ### Obsoleto
