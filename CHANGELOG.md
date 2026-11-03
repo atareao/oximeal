@@ -22,6 +22,8 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 
 - **Rendimiento:** verificación en dispositivo real con la receta `just perf`, que mide el RSS estable/pico del binario release con la UI embebida (nuevo `[profile.release]`: `lto`, `codegen-units=1`, `panic="abort"` y `strip`) y audita la web por CDP (FCP, transferencia del grafo inicial declarado y objetivos táctiles ≥48px); presupuestos y resultados documentados en `docs/performance.md` — RSS estable ~11 MB, FCP ~40 ms y transferencia ~317 kB. Es una medición on-demand, no un *gate* de CI (ADR-31) (#47).
 
+- **Entrega:** automatización de releases con el workflow `release.yml` disparado por tags `v*` (`workflow_dispatch` opcional): puertas de calidad reutilizadas de `ci.yml` (`workflow_call`), artefactos binarios `x86_64`/`aarch64` (`.tar.gz` + `.sha256`), imagen en GHCR (`<version>` y `latest`) y GitHub Release con notas generadas por `git-cliff` (`cliff.toml`) desde Conventional Commits + gitmoji; verificación de coherencia tag ↔ `Cargo.toml` ↔ `frontend/package.json` ↔ `CHANGELOG.md` (#53).
+
 ### Cambiado
 
 ### Obsoleto

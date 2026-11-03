@@ -753,21 +753,43 @@ P1–P3 cierran el producto.
 
 ### 20.4 Change E2 — `release-automation` (issue #53)
 
-- **`.github/workflows/release.yml`** disparado por tags `v*` (y opcionalmente
-  `workflow_dispatch` con input `tag`); **no** corre en `pull_request`.
-- **Puertas de calidad** antes de publicar (reutiliza `ci.yml` vía
-  `workflow_call` o repite sus jobs): si falla, no se publica nada.
-- **Artefactos binarios:** matriz `x86_64-unknown-linux-gnu` y
-  `aarch64-unknown-linux-gnu` (`--release --features embed-ui`), empaquetados en
-  `.tar.gz` + `.sha256`.
-- **Imagen GHCR:** `ghcr.io/<owner>/oximeal` con etiquetas `semver` y `latest`,
-  reutilizando la imagen de E1.
-- **GitHub Release:** notas generadas con `git-cliff` (`cliff.toml`) desde
-  Conventional Commits + gitmoji, adjuntando los binarios.
-- **Versionado:** coherencia tag ↔ `[workspace.package] version` ↔
-  `frontend/package.json` ↔ `CHANGELOG.md`; *bump* manual en PR de release.
+> Estado: 🚧 en curso (rama `feature/release-automation`). Implementa el ADR-33.
+
+- **`.github/workflows/release.yml`** (nuevo): disparo `push: tags: ['v*']` +
+  `workflow_dispatch` (input `tag`); **nunca** en `pull_request`.
+- **Puertas de calidad**: job `quality` que reutiliza `ci.yml` vía
+  `workflow_call` (se añade `workflow_call:` a `on:` de `ci.yml`, sin alterar su
+  comportamiento en `push`/`pull_request`).
+- **Coherencia de versionado**: job `version` ejecuta
+  `.github/scripts/check-version.sh <tag>` y falla si el tag no es `v<semver>` o
+  no coincide con `[workspace.package] version`, `frontend/package.json` y la
+  última versión de `CHANGELOG.md`.
+- **Artefactos binarios**: matriz `x86_64-unknown-linux-gnu` (`ubuntu-latest`) y
+  `aarch64-unknown-linux-gnu` (`ubuntu-24.04-arm`, runner nativo ARM — repo
+  público); se construye el frontend (`pnpm build`) y luego
+  `cargo build --release -p oximeal-backend --features embed-ui --target …`; se
+  empaqueta `oximeal-<version>-<target>.tar.gz` + `.sha256`.
+- **Imagen GHCR**: `ghcr.io/<owner>/oximeal:<version>` y `:latest` mediante
+  `docker/build-push-action` (login con `GITHUB_TOKEN`); `latest` solo se publica cuando el tag es el
+  más reciente y no es *pre-release*. Plataforma `linux/amd64`.
+- **GitHub Release**: job `release` descarga artefactos, genera notas con
+  `git-cliff` (`cliff.toml`, `--current` del tag que dispara) y crea/edita la
+  release con `gh release` (`--prerelease` si procede); adjunta
+  provenance con `actions/attest-build-provenance` (`id-token: write`,
+  `attestations: write`).
+- **Notas (`cliff.toml`)**: agrupación por tipo Conventional Commits **con
+  gitmoji** (regex `^[^a-zA-Z]*<tipo>`, necesaria porque el *variation selector*
+  del emoji cuenta como `\w`), grupos en español coherentes con `CHANGELOG.md` y
+  enlaces a issues.
+- **Documentación**: sección «Releases / Publicación» en `README.md`.
+- **Decisiones (ADR-33)**: runner **ARM nativo** (no `cross`); imagen de release
+  **linux/amd64**; `bump` de versión **manual** en PR de release a `main`; tag
+  `v<version>` dispara el pipeline. El e2e real es la release **v0.5.0** al
+  cerrar P3.
+- **Verificación**: `actionlint` sobre los workflows, `git-cliff` local,
+  RED→GREEN del script de coherencia, `just ci`/`just ci-ui` y OpenSpec
+  `--all --strict`.
 - **Specs:** capacidad nueva `release`.
-- **Estado:** ⬜ pendiente (rama `feature/release-automation`).
 
 ### 20.5 Change P1 — `meal-planning-ui` (issue #54)
 

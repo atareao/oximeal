@@ -1,0 +1,38 @@
+[changelog]
+header = ""
+body = """
+{% if version %}## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}{% else %}## [No publicado]{% endif %}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group }}
+{% for commit in commits %}
+- {{ commit.message | split(pat="\n") | first | upper_first }} ({{ commit.id | truncate(length=7, end="") }})
+{%- endfor %}
+{% endfor %}
+"""
+footer = ""
+trim = true
+
+[git]
+conventional_commits = false
+filter_unconventional = false
+protect_breaking_commits = true
+commit_parsers = [
+  { message = "^[^a-zA-Z]*feat", group = "✨ Añadido" },
+  { message = "^[^a-zA-Z]*fix", group = "🐛 Corregido" },
+  { message = "^[^a-zA-Z]*hotfix", group = "🐛 Corregido" },
+  { message = "^[^a-zA-Z]*perf", group = "⚡ Rendimiento" },
+  { message = "^[^a-zA-Z]*refactor", group = "♻️ Refactor" },
+  { message = "^[^a-zA-Z]*docs", group = "📝 Documentación" },
+  { message = "^[^a-zA-Z]*test", group = "✅ Tests" },
+  { message = "^[^a-zA-Z]*ci", group = "👷 CI" },
+  { message = "^[^a-zA-Z]*chore", group = "🔧 Tareas" },
+  { message = "^[^a-zA-Z]*style", group = "💄 Estilo" },
+  { message = "^[^a-zA-Z]*revert", group = "⏪️ Reverts" },
+  { message = "^[^a-zA-Z]*deps", group = "⬆️ Dependencias" },
+  { message = ".*", group = "🔧 Otros" },
+]
+sort_commits = "oldest"
+tag_pattern = "v[0-9]*"
+link_parsers = [
+  { pattern = "#(\\d+)", href = "https://github.com/atareao/oximeal/issues/$1" },
+]
