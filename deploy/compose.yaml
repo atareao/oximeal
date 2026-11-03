@@ -36,10 +36,36 @@ services:
     networks:
       - devnet
 
+  # New OxiMeal service
+  oximeal:
+    image: ghcr.io/atareao/oximeal:local
+    ports: ["8080:8080"]
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: oximeal
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Deja que `deploy/.env` gobierne OIDC; por defecto, modo abierto (dev).
+      OIDC_ENABLED: "${OIDC_ENABLED:-false}"
+    volumes:
+      - oximeal-data:/app/data
+    networks:
+      - devnet
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
 networks:
   devnet:
     driver: bridge
 
 volumes:
   pocket-id-data:
+    driver: local
+  oximeal-data:
     driver: local

@@ -2,14 +2,15 @@
 
 > Plan maestro de implementación. Generado por el Project Director.
 > Spec de origen: «Especificación Técnica y Funcional: OxiMeal v1.0».
-> **Alcance ejecutable en esta ronda: Fase 1 (Core Backend + SQLite).**
+> **Alcance ejecutable en esta ronda: Fase 7 — entrega (Docker/release) y producto (recetario/menú).**
 
 ## 1. Visión y alcance
 
 OxiMeal es un gestor self-hosted de menús semanales, recetas y listas de la compra, mobile-first, offline-capable y desplegable como **binario único** (Axum + `rust-embed`), con un orquestador LLM interno (OpenRouter) conectado a un **servidor MCP** que ejecuta acciones reales sobre SQLite.
 
-**En esta ronda:** construir y dejar en verde el núcleo backend (Fase 1).
-**Fuera de alcance ahora:** UI React (F2), MCP+Chat (F3), PWA/Offline (F5).
+**En esta ronda:** cerrar la entrega (imagen de contenedor + automatización de
+release) y completar el bucle del recetario/menú en la app. Las fases anteriores
+(F1–F6) están cerradas; ver §19 y §20.
 
 ## 2. Decisiones de arquitectura (ADR resumen)
 
@@ -748,7 +749,7 @@ P1–P3 cierran el producto.
   Fase 6/7), `deploy/README.md` y `deploy/.env.example` actualizado.
 - **Specs:** capacidad nueva `deployment` (build reproducible, runtime no root,
   persistencia, healthcheck, compose e instrucciones).
-- **Estado:** ⬜ pendiente (rama `feature/container-image`).
+- **Estado:** ✅ implementado y verificado (rama `feature/container-image`; `deploy/verify-image.sh` con 20/20 checks).
 
 ### 20.4 Change E2 — `release-automation` (issue #53)
 
