@@ -10,6 +10,13 @@ El formato de este fichero sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y este proyecto se
 adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 
+## [No publicado]
+
+### Corregido
+
+- **CI/Release:** el job `release` de `release.yml` descargaba **todos** los artefactos del run (incluido el caché de Docker Buildx, que rompía la descarga con «Unable to download and extract artifact»); ahora sube/baja los binarios con nombre explícito y `pattern: oximeal-*` (#64).
+- **CI/Release:** las notas de la release fallaban en dos frentes —`orhun/git-cliff-action@v4` no admite la entrada `output` y no escribía `RELEASE_NOTES.md`, y con `main` integrado por *squash-merge* `git-cliff --current` solo veía un commit—; ahora se generan desde la sección curada del `CHANGELOG.md` con `.github/scripts/release-notes.sh` (`git-cliff` de *fallback*) (#65, #66).
+
 ## [0.5.0] - 2026-11-04
 
 ### Añadido
