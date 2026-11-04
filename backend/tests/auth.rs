@@ -43,11 +43,11 @@ fn location(headers: &axum::http::HeaderMap) -> String {
         .to_string()
 }
 
-/// Ejecuta `GET /auth/login` y devuelve (cookie de sesión, state, nonce, location).
-async fn start_login(state: &AppState) -> (String, String, String, String) {
+/// Ejecuta `GET /auth/login{query}` y devuelve (cookie, state, nonce, location).
+async fn start_login_with(state: &AppState, query: &str) -> (String, String, String, String) {
     let request = Request::builder()
         .method("GET")
-        .uri("/auth/login")
+        .uri(format!("/auth/login{query}"))
         .body(Body::empty())
         .expect("request login");
     let (status, headers, _) = send(state.clone(), request).await;
@@ -74,6 +74,11 @@ async fn start_login(state: &AppState) -> (String, String, String, String) {
     let state_param = param("state");
     let nonce = param("nonce");
     (cookie_pair(&cookie), state_param, nonce, location)
+}
+
+/// Ejecuta `GET /auth/login` y devuelve (cookie de sesión, state, nonce, location).
+async fn start_login(state: &AppState) -> (String, String, String, String) {
+    start_login_with(state, "").await
 }
 
 /// Completa el flujo login+callback y devuelve la cookie de sesión autenticada.
@@ -180,6 +185,59 @@ async fn callback_with_valid_state_creates_session() {
     assert_eq!(location(&headers), "/");
     let cookie = set_cookie(&headers);
     assert!(cookie.contains("HttpOnly"));
+}
+
+#[tokio::test]
+async fn callback_rejects_control_characters_in_return_to() {
+    // #80: un `return_to` con TAB/CR se normaliza en el navegador a "//evil.com".
+    // El login debe descartarlo y volver a "/" en lugar de emitir un open redirect.
+    for query in ["?return_to=/%09/evil.com", "?return_to=/%0d/evil.com"] {
+        let idp = MockIdp::start().await;
+        let state = test_state_oidc(&idp.issuer, USER_GROUPS).await;
+
+        let (login_cookie, state_param, nonce, _) = start_login_with(&state, query).await;
+        let uri = format!(
+            "/auth/callback?code={nonce}&state={}",
+            urlencode(&state_param)
+        );
+        let request = Request::builder()
+            .method("GET")
+            .uri(uri)
+            .header("cookie", login_cookie)
+            .body(Body::empty())
+            .unwrap();
+        let (status, headers, _) = send(state, request).await;
+
+        assert_eq!(status, StatusCode::FOUND);
+        assert_eq!(
+            location(&headers),
+            "/",
+            "un return_to con caracteres de control no puede escapar del origen ({query})"
+        );
+    }
+}
+
+#[tokio::test]
+async fn callback_keeps_internal_return_to() {
+    let idp = MockIdp::start().await;
+    let state = test_state_oidc(&idp.issuer, USER_GROUPS).await;
+
+    let (login_cookie, state_param, nonce, _) =
+        start_login_with(&state, "?return_to=/shopping").await;
+    let uri = format!(
+        "/auth/callback?code={nonce}&state={}",
+        urlencode(&state_param)
+    );
+    let request = Request::builder()
+        .method("GET")
+        .uri(uri)
+        .header("cookie", login_cookie)
+        .body(Body::empty())
+        .unwrap();
+    let (status, headers, _) = send(state, request).await;
+
+    assert_eq!(status, StatusCode::FOUND);
+    assert_eq!(location(&headers), "/shopping");
 }
 
 #[tokio::test]
