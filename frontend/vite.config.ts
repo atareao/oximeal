@@ -49,7 +49,10 @@ export default defineConfig({
     environment: 'jsdom',
     globals: false,
     setupFiles: ['./src/test/setup.ts'],
-    css: false,
+    // Con `css: false`, vitest stubbea todo id que case CSS_LANGS_RE —incluido
+    // `*.css?raw`— devolviendo "". Se habilitan *solo* los ids `?raw` para poder
+    // leer el CSS en los tests de accesibilidad sin tocar el sistema de ficheros.
+    css: { include: [/\.css\?raw$/] },
     restoreMocks: true,
   },
 });

@@ -246,3 +246,244 @@ async fn migration_preserves_data_and_fts() {
         "el CHECK de amount debe estar activo tras migrar"
     );
 }
+
+/// Migración `0007`: crea `tags`, `recipe_tags`, el índice y la unicidad de `slug`.
+#[tokio::test]
+async fn migration_0007_creates_tags_schema() {
+    let state = common::test_state().await;
+
+    let tables: Vec<String> =
+        sqlx::query_scalar("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+            .fetch_all(&state.pool)
+            .await
+            .expect("sqlite_master: tablas");
+    assert!(tables.iter().any(|t| t == "tags"), "falta la tabla tags");
+    assert!(
+        tables.iter().any(|t| t == "recipe_tags"),
+        "falta la tabla recipe_tags"
+    );
+
+    let indexes: Vec<String> =
+        sqlx::query_scalar("SELECT name FROM sqlite_master WHERE type = 'index'")
+            .fetch_all(&state.pool)
+            .await
+            .expect("sqlite_master: índices");
+    assert!(
+        indexes.iter().any(|i| i == "idx_recipe_tags_tag_id"),
+        "falta idx_recipe_tags_tag_id: {indexes:?}"
+    );
+
+    // `tags.slug` tiene una restricción UNIQUE: un slug duplicado debe ser rechazado.
+    sqlx::query("INSERT INTO tags (id, name, slug) VALUES ('t1', 'Vegano', 'vegano')")
+        .execute(&state.pool)
+        .await
+        .expect("insert tag");
+    let duplicate =
+        sqlx::query("INSERT INTO tags (id, name, slug) VALUES ('t2', 'Otro', 'vegano')")
+            .execute(&state.pool)
+            .await;
+    assert!(
+        duplicate.is_err(),
+        "tags.slug debe ser UNIQUE (rechaza duplicados)"
+    );
+}
+
+/// `recipe_tags` declara FK `ON DELETE CASCADE` a `recipes(id)` y `tags(id)`.
+#[tokio::test]
+async fn recipe_tags_has_cascade_foreign_keys() {
+    let state = common::test_state().await;
+
+    let rows = sqlx::query("PRAGMA foreign_key_list('recipe_tags')")
+        .fetch_all(&state.pool)
+        .await
+        .expect("foreign_key_list recipe_tags");
+    assert!(!rows.is_empty(), "recipe_tags debe tener claves foráneas");
+
+    let on_delete = |table: &str| {
+        rows.iter().find_map(|row| {
+            let referenced: String = row.get("table");
+            (referenced == table).then(|| row.get::<String, _>("on_delete"))
+        })
+    };
+    assert_eq!(
+        on_delete("recipes").as_deref(),
+        Some("CASCADE"),
+        "FK recipe_tags.recipe_id debe ser ON DELETE CASCADE"
+    );
+    assert_eq!(
+        on_delete("tags").as_deref(),
+        Some("CASCADE"),
+        "FK recipe_tags.tag_id debe ser ON DELETE CASCADE"
+    );
+}
+
+/// La migración `0007` es aditiva: no toca `recipes` ni `recipes_fts`, y
+/// revertirla (DROP de sus tablas) no pierde recetas.
+#[tokio::test]
+async fn migration_0007_is_additive_and_reversible() {
+    let mut conn = sqlx::SqliteConnection::connect("sqlite::memory:")
+        .await
+        .expect("conectar memoria");
+
+    for sql in [
+        include_str!("../migrations/0001_init.sql"),
+        include_str!("../migrations/0002_fts_triggers.sql"),
+        include_str!("../migrations/0003_fts_diacritics_and_indexes.sql"),
+        include_str!("../migrations/0004_sessions.sql"),
+        include_str!("../migrations/0005_schema_constraints.sql"),
+        include_str!("../migrations/0006_shopping_item_client_id.sql"),
+    ] {
+        sqlx::raw_sql(sql)
+            .execute(&mut conn)
+            .await
+            .expect("migración previa");
+    }
+
+    sqlx::query("INSERT INTO recipes (id, name, category, ingredients, servings) VALUES ('r1', 'CafeteriaTest', 'main', '[]', 2)")
+        .execute(&mut conn)
+        .await
+        .expect("insert receta");
+
+    // Se lee en runtime (no `include_str!`) para que este test compile aunque la
+    // migración 0007 todavía no exista: así el RED falla por aserción, no por
+    // error de compilación.
+    let migration = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations/0007_recipe_tags.sql"),
+    )
+    .expect("leer migración 0007");
+
+    sqlx::raw_sql(sqlx::AssertSqlSafe(migration))
+        .execute(&mut conn)
+        .await
+        .expect("migración 0007");
+
+    let recipes: i64 = sqlx::query_scalar("SELECT count(*) FROM recipes")
+        .fetch_one(&mut conn)
+        .await
+        .expect("contar recetas");
+    assert_eq!(recipes, 1, "0007 no debe modificar filas de recipes");
+
+    let hits: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM recipes_fts WHERE recipes_fts MATCH 'Cafe'")
+            .fetch_one(&mut conn)
+            .await
+            .expect("fts");
+    assert_eq!(hits, 1, "0007 no debe tocar recipes_fts");
+
+    // Revertir 0007 no pierde recetas.
+    sqlx::raw_sql("DROP TABLE recipe_tags; DROP TABLE tags;")
+        .execute(&mut conn)
+        .await
+        .expect("revertir 0007");
+
+    let recipes: i64 = sqlx::query_scalar("SELECT count(*) FROM recipes")
+        .fetch_one(&mut conn)
+        .await
+        .expect("contar recetas tras revertir");
+    assert_eq!(recipes, 1, "revertir 0007 no pierde recetas");
+}
+
+/// Migración `0008`: columna `source_recipe_id`, su índice y la tabla
+/// `shopping_recipe_sources` (PK, FK en cascada y CHECK de raciones).
+#[tokio::test]
+async fn migration_0008_adds_recipe_source_column_index_and_table() {
+    let state = common::test_state().await;
+
+    let columns = sqlx::query("PRAGMA table_info('shopping_list_items')")
+        .fetch_all(&state.pool)
+        .await
+        .expect("table_info shopping_list_items");
+    assert!(
+        columns
+            .iter()
+            .any(|row| row.get::<String, _>("name") == "source_recipe_id"),
+        "falta la columna shopping_list_items.source_recipe_id"
+    );
+
+    let indexes: Vec<String> =
+        sqlx::query_scalar("SELECT name FROM sqlite_master WHERE type = 'index'")
+            .fetch_all(&state.pool)
+            .await
+            .expect("sqlite_master: índices");
+    assert!(
+        indexes
+            .iter()
+            .any(|name| name == "idx_shopping_source_recipe_id"),
+        "falta idx_shopping_source_recipe_id: {indexes:?}"
+    );
+
+    let tables: Vec<String> =
+        sqlx::query_scalar("SELECT name FROM sqlite_master WHERE type = 'table'")
+            .fetch_all(&state.pool)
+            .await
+            .expect("sqlite_master: tablas");
+    assert!(
+        tables.iter().any(|name| name == "shopping_recipe_sources"),
+        "falta la tabla shopping_recipe_sources: {tables:?}"
+    );
+
+    let pk: Vec<String> = sqlx::query("PRAGMA table_info('shopping_recipe_sources')")
+        .fetch_all(&state.pool)
+        .await
+        .expect("table_info shopping_recipe_sources")
+        .iter()
+        .filter(|row| row.get::<i64, _>("pk") > 0)
+        .map(|row| row.get::<String, _>("name"))
+        .collect();
+    assert_eq!(pk, vec!["recipe_id".to_string()], "recipe_id debe ser PK");
+
+    let rows = sqlx::query("PRAGMA foreign_key_list('shopping_recipe_sources')")
+        .fetch_all(&state.pool)
+        .await
+        .expect("foreign_key_list shopping_recipe_sources");
+    let on_delete = rows.iter().find_map(|row| {
+        let referenced: String = row.get("table");
+        (referenced == "recipes").then(|| row.get::<String, _>("on_delete"))
+    });
+    assert_eq!(
+        on_delete.as_deref(),
+        Some("CASCADE"),
+        "FK shopping_recipe_sources.recipe_id debe ser ON DELETE CASCADE"
+    );
+}
+
+/// `shopping_recipe_sources` aplica el CHECK `servings >= 1` y desregistra la
+/// fuente en cascada al borrar la receta.
+#[tokio::test]
+async fn shopping_recipe_sources_enforces_servings_check_and_cascade() {
+    let state = common::test_state().await;
+
+    sqlx::query(
+        "INSERT INTO recipes (id, name, category, ingredients, servings) \
+         VALUES ('rs', 'Fuente', 'main', '[]', 2)",
+    )
+    .execute(&state.pool)
+    .await
+    .expect("insert receta");
+
+    let below_one =
+        sqlx::query("INSERT INTO shopping_recipe_sources (recipe_id, servings) VALUES ('rs', 0)")
+            .execute(&state.pool)
+            .await;
+    assert!(
+        below_one.is_err(),
+        "servings < 1 debe ser rechazado por el CHECK"
+    );
+
+    sqlx::query("INSERT INTO shopping_recipe_sources (recipe_id, servings) VALUES ('rs', 2)")
+        .execute(&state.pool)
+        .await
+        .expect("insert fuente válida");
+
+    // Borrar la receta desregistra su fuente (cascade).
+    sqlx::query("DELETE FROM recipes WHERE id = 'rs'")
+        .execute(&state.pool)
+        .await
+        .expect("borrar receta");
+    let remaining: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM shopping_recipe_sources WHERE recipe_id = 'rs'")
+            .fetch_one(&state.pool)
+            .await
+            .expect("contar fuentes");
+    assert_eq!(remaining, 0, "la fuente se elimina en cascada");
+}

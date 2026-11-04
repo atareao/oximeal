@@ -71,3 +71,15 @@ pub struct ConsolidateInput {
     #[serde(default)]
     pub end_date: Option<String>,
 }
+
+/// Cuerpo de `POST /api/shopping-list/from-recipe`: volcado de una receta.
+///
+/// Espejo del contrato del frontend: `{ recipe_id, servings? }`.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct RecipeToShoppingListInput {
+    /// Identificador de la receta a volcar.
+    pub recipe_id: String,
+    /// Raciones solicitadas (`>= 1`); si falta se usan las de la receta.
+    #[serde(default)]
+    pub servings: Option<i64>,
+}

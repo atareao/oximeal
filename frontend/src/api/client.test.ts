@@ -4,11 +4,15 @@ import {
   ApiError,
   apiRequest,
   clearCompletedShoppingItems,
+  createRecipe,
   createShoppingItem,
+  deleteRecipe,
   fetchAuthMe,
+  importRecipe,
   logoutAuth,
   patchShoppingItem,
   setCsrfToken,
+  updateRecipe,
   setForbiddenHandler,
   setUnauthorizedHandler,
 } from './client';
@@ -282,6 +286,117 @@ describe('CSRF y manejo de sesión en el cliente', () => {
     expect(fetchMock).toHaveBeenCalledWith(
       '/auth/logout',
       expect.objectContaining({ method: 'POST' }),
+    );
+  });
+});
+
+describe('mutaciones de recetas', () => {
+  const input = {
+    name: 'Tortilla',
+    category: 'main',
+    ingredients: [{ name: 'Patata', amount: 500, unit: 'g' }],
+    tags: [],
+  };
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+    setCsrfToken(null);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    setCsrfToken(null);
+  });
+
+  it('createRecipe hace POST /api/recipes', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'r1', ...input }, 201));
+
+    await createRecipe(input);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/recipes',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify(input) }),
+    );
+  });
+
+  it('updateRecipe hace PUT /api/recipes/{id} con CSRF', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'r1', ...input }));
+    setCsrfToken('token-123');
+
+    await updateRecipe('r1', input);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/recipes/r1',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify(input),
+        headers: expect.objectContaining({ 'X-CSRF-Token': 'token-123' }),
+      }),
+    );
+  });
+
+  it('importRecipe hace POST /api/recipes/import con el cuerpo y CSRF', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ id: 'r1', name: 'Tortilla', source_url: 'https://example.com/r' }, 201),
+    );
+    setCsrfToken('token-123');
+
+    const result = await importRecipe({ url: 'https://example.com/r' });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/recipes/import',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ url: 'https://example.com/r' }),
+        headers: expect.objectContaining({ 'X-CSRF-Token': 'token-123' }),
+      }),
+    );
+    expect(result.recipe).toMatchObject({ id: 'r1', source_url: 'https://example.com/r' });
+    expect(result.created).toBe(true);
+  });
+
+  it('importRecipe marca created=false cuando el origen responde 200 (idempotente)', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'r1', name: 'Tortilla' }, 200));
+
+    const result = await importRecipe({ url: 'https://example.com/r' });
+
+    expect(result.created).toBe(false);
+    expect(result.recipe.id).toBe('r1');
+  });
+
+  it('importRecipe propaga el ApiError del backend (422 sin receta)', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        { error: 'unprocessable_entity', message: 'la página no contiene una receta' },
+        422,
+      ),
+    );
+
+    await expect(importRecipe({ url: 'https://example.com/r' })).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 422,
+      message: 'la página no contiene una receta',
+    });
+  });
+
+  it('deleteRecipe hace DELETE /api/recipes/{id} y resuelve undefined en 204', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+    setCsrfToken('token-123');
+
+    await expect(deleteRecipe('r1')).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/recipes/r1',
+      expect.objectContaining({
+        method: 'DELETE',
+        headers: expect.objectContaining({ 'X-CSRF-Token': 'token-123' }),
+      }),
     );
   });
 });

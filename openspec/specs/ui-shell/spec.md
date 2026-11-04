@@ -1,7 +1,7 @@
 # ui-shell Specification
 
 ## Purpose
-Define el shell responsive mobile-first de la PWA de OxiMeal: en desktop muestra un panel lateral (`Layout.Sider`) y en móvil una navegación inferior con las pestañas Menú, Compra y Asistente, con objetivos táctiles de al menos 48px, tema de Ant Design vía `ConfigProvider` y respeto de los safe-area insets. La pestaña Asistente abre o embebe Valet mediante `VITE_VALET_URL`, sin chat nativo.
+Define el shell responsive mobile-first de la PWA de OxiMeal: en desktop muestra un panel lateral (`Layout.Sider`) y en móvil una navegación inferior con las pestañas Menú, Recetas, Compra y Asistente, con objetivos táctiles de al menos 48px, tema de Ant Design vía `ConfigProvider` y respeto de los safe-area insets. La pestaña Asistente abre o embebe Valet mediante `VITE_VALET_URL`, sin chat nativo.
 
 ## Requirements
 
@@ -21,11 +21,20 @@ La aplicación SHALL adaptar su navegación al tamaño de pantalla: en desktop S
 - AND el panel lateral permanece oculto
 
 ### Requirement: Objetivos táctiles
-En móvil, las filas y controles interactivos SHALL tener una altura mínima de 48px para garantizar una interacción táctil cómoda.
+
+En móvil, las filas y controles interactivos SHALL tener una altura mínima de
+48px para garantizar una interacción táctil cómoda. Esta regla SHALL aplicar
+también a los controles de planificación del menú semanal (añadir receta, quitar
+entrada, editar raciones y selector de recetas).
 
 #### Scenario: Control interactivo en móvil
 - GIVEN la vista de lista de la compra en un viewport móvil
 - WHEN se inspecciona una fila o control interactivo
+- THEN su altura es de al menos 48px
+
+#### Scenario: Controles de planificación en móvil
+- GIVEN la vista de menú semanal en un viewport móvil
+- WHEN se inspeccionan los controles de añadir receta, quitar entrada y editar raciones
 - THEN su altura es de al menos 48px
 
 ### Requirement: Tema Antd y safe-area
@@ -64,3 +73,30 @@ El shell inicial SHALL renderizarse sin cargar antd de forma estática. Los prov
 - GIVEN una respuesta 403 sin handler registrado
 - WHEN el cliente procesa la respuesta
 - THEN el aviso se muestra cargando antd de forma dinámica
+
+### Requirement: Pestaña Recetas
+
+El shell de navegación SHALL incluir una entrada Recetas en `AppLayout` (Sider)
+y en `BottomNav` (🍳 Recetas) que navega a `/recipes` y refleja el estado activo
+cuando la ruta está seleccionada.
+
+#### Scenario: Entrada en el Sider
+
+- GIVEN un viewport desktop
+- WHEN se carga la aplicación
+- THEN el panel lateral muestra la sección Recetas
+- AND al pulsarla se navega a `/recipes`
+
+#### Scenario: Pestaña en la navegación inferior
+
+- GIVEN un viewport móvil
+- WHEN se carga la aplicación
+- THEN la navegación inferior incluye la pestaña 🍳 Recetas
+- AND al pulsarla se navega a `/recipes`
+
+#### Scenario: Estado activo
+
+- GIVEN la ruta `/recipes` activa
+- WHEN se renderiza la navegación
+- THEN la entrada Recetas aparece marcada como activa
+- AND el resto de entradas no lo está

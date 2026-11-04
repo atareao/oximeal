@@ -13,6 +13,7 @@ const DESKTOP_QUERY = '(min-width: 768px)';
 
 const NAV_ITEMS = [
   { key: '/', label: '📅 Menú' },
+  { key: '/recipes', label: '🍳 Recetas' },
   { key: '/shopping', label: '🛒 Compra' },
 ];
 

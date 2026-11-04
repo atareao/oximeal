@@ -17,9 +17,21 @@ pub enum AppError {
     /// Datos de entrada inválidos (400).
     #[error("datos inválidos: {0}")]
     Validation(String),
+    /// Conflicto con el estado actual del recurso (409).
+    #[error("conflicto: {0}")]
+    Conflict(String),
     /// Método HTTP no permitido en la ruta (405).
     #[error("método no permitido: {0}")]
     MethodNotAllowed(String),
+    /// El cuerpo es sintácticamente válido pero no procesable (422).
+    ///
+    /// Se usa, p. ej., cuando la página descargada no contiene una receta
+    /// estructurada (`@type: Recipe`).
+    #[error("no procesable: {0}")]
+    UnprocessableEntity(String),
+    /// El origen remoto falló al ser consultado (502).
+    #[error("fallo del origen remoto: {0}")]
+    BadGateway(String),
     /// Error de base de datos (500, detalle no expuesto al cliente).
     #[error("error de base de datos: {0}")]
     Database(#[from] sqlx::Error),
@@ -41,11 +53,20 @@ impl IntoResponse for AppError {
             AppError::Validation(message) => {
                 (StatusCode::BAD_REQUEST, "validation", message.clone())
             }
+            AppError::Conflict(message) => (StatusCode::CONFLICT, "conflict", message.clone()),
             AppError::MethodNotAllowed(message) => (
                 StatusCode::METHOD_NOT_ALLOWED,
                 "method_not_allowed",
                 message.clone(),
             ),
+            AppError::UnprocessableEntity(message) => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "unprocessable_entity",
+                message.clone(),
+            ),
+            AppError::BadGateway(message) => {
+                (StatusCode::BAD_GATEWAY, "bad_gateway", message.clone())
+            }
             AppError::Database(error) => {
                 tracing::error!(error = %error, "error de base de datos");
                 (
@@ -93,6 +114,24 @@ mod tests {
     fn method_not_allowed_maps_to_405() {
         let response = AppError::MethodNotAllowed("POST".into()).into_response();
         assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+    }
+
+    #[test]
+    fn conflict_maps_to_409() {
+        let response = AppError::Conflict("receta en uso".into()).into_response();
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+    }
+
+    #[test]
+    fn unprocessable_entity_maps_to_422() {
+        let response = AppError::UnprocessableEntity("HTML sin receta".into()).into_response();
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[test]
+    fn bad_gateway_maps_to_502() {
+        let response = AppError::BadGateway("origen no responde".into()).into_response();
+        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
     }
 
     #[tokio::test]

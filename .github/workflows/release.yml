@@ -1,0 +1,202 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag a publicar (p. ej. v0.5.0)"
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  quality:
+    name: Puertas de calidad
+    uses: ./.github/workflows/ci.yml
+
+  version:
+    name: Coherencia de versionado
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      is_latest: ${{ steps.latest.outputs.is_latest }}
+      is_prerelease: ${{ steps.latest.outputs.is_prerelease }}
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+          ref: ${{ inputs.tag || github.ref }}
+      - name: Verificar coherencia tag <-> versiones <-> CHANGELOG
+        id: check
+        run: bash .github/scripts/check-version.sh "$RELEASE_TAG"
+      - name: Determinar si es el tag mas reciente y si es pre-release
+        id: latest
+        run: |
+          set -euo pipefail
+          if [[ "$RELEASE_TAG" == *-* ]]; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "is_latest=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+            HIGHEST="$(git tag --list 'v[0-9]*' --sort=-v:refname | sed -n '1p')"
+            if [ "$RELEASE_TAG" = "$HIGHEST" ]; then
+              echo "is_latest=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "is_latest=false" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+  artifacts:
+    name: Binario ${{ matrix.target }}
+    needs: [quality, version]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.tag || github.ref }}
+      - name: Instalar pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12
+      - name: Instalar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Construir frontend
+        working-directory: frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+      - name: Instalar toolchain (rust-toolchain.toml)
+        run: rustup show
+      - name: Cache de Cargo
+        uses: Swatinem/rust-cache@v2
+      - name: Construir binario (release + embed-ui)
+        run: cargo build --release -p oximeal-backend --features embed-ui --target ${{ matrix.target }}
+      - name: Empaquetar y calcular sha256
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.version.outputs.version }}"
+          TARGET="${{ matrix.target }}"
+          STAGE="oximeal-${VERSION}-${TARGET}"
+          mkdir -p "dist/${STAGE}"
+          cp "target/${TARGET}/release/oximeal-backend" "dist/${STAGE}/oximeal"
+          for f in README.md LICENSE LICENSE.md CHANGELOG.md; do
+            if [ -f "$f" ]; then cp "$f" "dist/${STAGE}/"; fi
+          done
+          tar -C dist -czf "dist/${STAGE}.tar.gz" "${STAGE}"
+          (cd dist && sha256sum "${STAGE}.tar.gz" > "${STAGE}.tar.gz.sha256")
+          ls -l dist
+      - name: Subir artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: dist/*.tar.gz*
+          if-no-files-found: error
+
+  image:
+    name: Imagen GHCR
+    needs: [quality, version]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.tag || github.ref }}
+      - name: Configurar Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login en GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Metadatos de la imagen
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/oximeal
+          tags: |
+            type=raw,value=${{ needs.version.outputs.version }}
+            type=raw,value=latest,enable=${{ needs.version.outputs.is_latest == 'true' }}
+      - name: Construir y publicar imagen
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  release:
+    name: GitHub Release
+    needs: [version, artifacts, image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ inputs.tag || github.ref }}
+      - name: Descargar artefactos
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Generar notas con git-cliff
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --current --strip header
+          output: RELEASE_NOTES.md
+      - name: Atestación de provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: 'dist/*.tar.gz'
+      - name: Crear o actualizar la GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+          IS_PRERELEASE: ${{ needs.version.outputs.is_prerelease }}
+        run: |
+          set -euo pipefail
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            args=(--prerelease)
+          else
+            args=()
+          fi
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" --notes-file RELEASE_NOTES.md "${args[@]}"
+            gh release upload "$RELEASE_TAG" dist/*.tar.gz* --clobber
+          else
+            gh release create "$RELEASE_TAG" dist/*.tar.gz* \
+              --title "$RELEASE_TAG" --notes-file RELEASE_NOTES.md --verify-tag "${args[@]}"
+          fi

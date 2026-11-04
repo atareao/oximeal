@@ -74,6 +74,7 @@ pub fn oidc_state(
         database_url: database_url.to_string(),
         bind_addr: "127.0.0.1:0".to_string(),
         allowed_origins: allowed_origins.iter().map(|s| s.to_string()).collect(),
+        import_allowed_hosts: Vec::new(),
         session: SessionConfig {
             secret: Some("integration-tests-session-secret-value".to_string()),
             ttl: Duration::from_secs(259_200),

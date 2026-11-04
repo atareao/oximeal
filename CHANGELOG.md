@@ -10,9 +10,24 @@ El formato de este fichero sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y este proyecto se
 adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 
-## [No publicado]
+## [0.5.0] - 2026-11-04
 
 ### Añadido
+
+- **Recetario:** gestión completa de recetas con `PUT /api/recipes/{id}` (reemplazo total en una transacción `BEGIN IMMEDIATE`; devuelve `409` si la receta está referenciada por una entrada del plan) y `DELETE /api/recipes/{id}` (borrado duro), bajo el permiso `write:recipes`; nueva página de recetas en el frontend (`/recipes` y `/recipes/:id`) con listado, búsqueda con debounce, paginación, alta, edición y borrado con confirmación, accesible desde el Sider y la barra inferior, con degradado offline y objetivos táctiles ≥48px (#45).
+
+- **Recetario:** importación de recetas desde una URL con `POST /api/recipes/import` (permiso `write:recipes`): descarga server-side con guardas SSRF (solo `http`/`https`, pin de IP frente a DNS rebinding, veto de loopback/RFC1918/link-local, redirecciones acotadas, timeout y tope de tamaño) y parseo del JSON-LD Schema.org `@type: Recipe` (incl. `@graph`), idempotente por `source_url`; diálogo «Importar desde URL» en la página de recetas y allowlist opcional `IMPORT_ALLOWED_HOSTS` para orígenes en LAN (#46).
+
+- **Entrega:** imagen de contenedor **multi-stage** reproducible (`podman build`/`docker build`) con la UI embebida (`--features embed-ui`), runtime mínimo `debian:bookworm-slim` como usuario no root (`oximeal`, UID/GID 10001), `HEALTHCHECK` contra `/api/health`, volumen persistente `/app/data` y `.dockerignore`; orquestación con `deploy/compose.yaml` junto a Pocket ID y guía de despliegue en `deploy/README.md` (#52).
+
+- **Rendimiento:** verificación en dispositivo real con la receta `just perf`, que mide el RSS estable/pico del binario release con la UI embebida (nuevo `[profile.release]`: `lto`, `codegen-units=1`, `panic="abort"` y `strip`) y audita la web por CDP (FCP, transferencia del grafo inicial declarado y objetivos táctiles ≥48px); presupuestos y resultados documentados en `docs/performance.md` — RSS estable ~11 MB, FCP ~40 ms y transferencia ~317 kB. Es una medición on-demand, no un *gate* de CI (ADR-31) (#47).
+
+- **Entrega:** automatización de releases con el workflow `release.yml` disparado por tags `v*` (`workflow_dispatch` opcional): puertas de calidad reutilizadas de `ci.yml` (`workflow_call`), artefactos binarios `x86_64`/`aarch64` (`.tar.gz` + `.sha256`), imagen en GHCR (`<version>` y `latest`) y GitHub Release con notas generadas por `git-cliff` (`cliff.toml`) desde Conventional Commits + gitmoji; verificación de coherencia tag ↔ `Cargo.toml` ↔ `frontend/package.json` ↔ `CHANGELOG.md` (#53).
+
+- **Planificación de comidas:** el menú semanal pasa a ser editable desde la propia interfaz: `PATCH /api/meal-plan/{id}` (permiso `write:plan`) para corregir las raciones sin recrear la entrada (`200` con la vista actualizada, `400` si `servings < 1`, `404` si no existe) y validación endurecida de `POST /api/meal-plan` (receta existente); alta por slot con selector de receta con búsqueda, tipo de comida, rol y raciones, baja con confirmación y edición de raciones, conviviendo con Valet. La planificación requiere conexión: sin red los controles se deshabilitan con aviso (no se encola) y el plan se refresca al recuperar la conexión. Objetivos táctiles ≥48px y gestión de foco (#54).
+
+- **Recetario:** etiquetas libres de recetas (many-to-many, migración `0007`): `GET /api/tags` (`read:recipes`, con `recipe_count`), `POST /api/tags` idempotente por `slug` normalizado (`write:recipes`, `201`/`200`/`400`) y `DELETE /api/tags/{id}` en cascada sin borrar recetas (`204`/`404`); `POST`/`PUT /api/recipes` aceptan `tags` por nombre (creación al vuelo, deduplicación por `slug` y reemplazo del conjunto en la misma transacción `BEGIN IMMEDIATE`) y `GET /api/recipes?tag=<id|slug>` filtra combinado con `q`/`category`/paginación. Las etiquetas quedan **fuera** del índice `recipes_fts`. En la web: selector de etiquetas con creación al vuelo en el formulario, etiquetas en la tarjeta y el detalle, y filtro por etiqueta reflejado en la URL (`?tag=`) — todo con degradado offline y objetivos táctiles ≥48px (#55).
+- **Lista de la compra:** volcado de una receta a la lista con `POST /api/shopping-list/from-recipe` (permiso `write:shopping`, migración `0008`): registra las recetas volcadas y sus raciones y **reconsolida** todas las fuentes de receta de forma declarativa e idempotente —repetir no duplica, cambiar las raciones reescala sin acumular y las líneas del plan y los ítems manuales se conservan intactos—, escalando cada cantidad por `raciones_solicitadas / raciones_receta` antes de consolidar, respetando las unidades no aditivas (`al gusto`, familias incompatibles) y desregistrando la fuente en cascada al borrar la receta. En la web: acción «Añadir a la lista» con selector de raciones (por defecto las de la receta) y enlace a `/shopping` en el detalle, deshabilitada sin conexión (no se encola) y con objetivos táctiles ≥48px (#56).
 
 ### Cambiado
 
@@ -89,7 +104,7 @@ autorización por permisos. Retira el API key estático del issue #5.
   con *refresh token* y puerta de entrada por grupos permitidos
   (`OIDC_ALLOWED_GROUPS`).
 - Agent API **M2M** con permisos dedicados `agent:read`, `agent:plan` y
-  `agent:shopping` (contrato sin cambios).
+  `agent:shopping` (contrato sin cambios). 
 - Migración `0004_sessions` para las sesiones server-side.
 
 #### Frontend
@@ -144,9 +159,7 @@ registrada como issues #2–#13.
 - Workspace Cargo (edition 2024), `rust-toolchain.toml` y configuración base del
   repositorio.
 - Persistencia SQLite con WAL, claves foráneas y `busy_timeout`.
-- Migraciones versionadas `0001_init`, `0002_fts_triggers` y
-  `0003_fts_diacritics_and_indexes`: búsqueda FTS5 *external-content* con
-  trigramas y plegado de diacríticos.
+- Migraciones versionadas `0001_init`, `0002_fts_triggers` y `0003_fts_diacritics_and_indexes`: búsqueda FTS5 *external-content* con trigramas y plegado de diacríticos.
 - Dominio puro (sin IO): canonicalización de unidades, normalización de
   nombres, categorización por pasillo, fechas canónicas y motor de consolidación
   de la lista de la compra.
@@ -192,11 +205,3 @@ registrada como issues #2–#13.
 
 - `README.md` con arquitectura, requisitos, desarrollo y configuración.
 - `GIT_FLOW.md` con el flujo de ramas y las convenciones del repositorio.
-- Especificaciones OpenSpec de las fases 1 y 2 archivadas y consolidadas.
-- Guía de la arquitectura *headless/API-first*: el asistente conversacional
-  **Valet** es un proyecto hermano que consume la Agent API por HTTP, sin
-  orquestador LLM, sin servidor MCP y sin chat dentro de OxiMeal.
-
-[No publicado]: https://github.com/atareao/oximeal/compare/v0.3.0...HEAD
-[0.3.0]: https://github.com/atareao/oximeal/compare/v0.2.0...v0.3.0
-[0.2.0]: https://github.com/atareao/oximeal/compare/04b8f6162fe54101a21ba4749641f4af610c6ca7...v0.2.0

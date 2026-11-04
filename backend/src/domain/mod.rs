@@ -10,4 +10,5 @@ pub mod consolidate;
 pub mod date;
 pub mod ingredient;
 pub mod normalize;
+pub mod schema_org;
 pub mod units;

@@ -2,7 +2,25 @@
 resolver = "3"
 members = ["backend"]
 
+# Perfil de release optimizado para tamaño y consumo de memoria del binario
+# monolítico con la UI embebida (ver docs/performance.md y el change
+# `perf-device-verification`, issue #47). Solo afecta a `--release`: `cargo
+# test` sigue usando el perfil `dev` (sin `panic = "abort"`), de modo que la
+# suite conserva el unwinding normal.
+[profile.release]
+# Nivel máximo de optimización (implícito en release; se documenta por claridad).
+opt-level = 3
+# Link-Time Optimization: elimina código muerto entre crates y aplana llamadas.
+lto = true
+# Una única unidad de codegen: máxima optimización cruzada (compilación más lenta).
+codegen-units = 1
+# Aborta en pánico en vez de desenrollar: menos tablas y código de unwinding.
+panic = "abort"
+# Elimina los símbolos del binario final: reduce su tamaño en disco.
+# Nota: los backtraces de pánico quedarán sin nombres de función/línea.
+strip = true
+
 [workspace.package]
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 license = "MIT"

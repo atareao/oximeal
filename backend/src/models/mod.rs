@@ -4,3 +4,4 @@ pub mod agent;
 pub mod meal_plan;
 pub mod recipe;
 pub mod shopping_list;
+pub mod tag;

@@ -2,14 +2,15 @@
 
 > Plan maestro de implementación. Generado por el Project Director.
 > Spec de origen: «Especificación Técnica y Funcional: OxiMeal v1.0».
-> **Alcance ejecutable en esta ronda: Fase 1 (Core Backend + SQLite).**
+> **Alcance ejecutable en esta ronda: Fase 7 — entrega (Docker/release) y producto (recetario/menú).**
 
 ## 1. Visión y alcance
 
 OxiMeal es un gestor self-hosted de menús semanales, recetas y listas de la compra, mobile-first, offline-capable y desplegable como **binario único** (Axum + `rust-embed`), con un orquestador LLM interno (OpenRouter) conectado a un **servidor MCP** que ejecuta acciones reales sobre SQLite.
 
-**En esta ronda:** construir y dejar en verde el núcleo backend (Fase 1).
-**Fuera de alcance ahora:** UI React (F2), MCP+Chat (F3), PWA/Offline (F5).
+**En esta ronda:** cerrar la entrega (imagen de contenedor + automatización de
+release) y completar el bucle del recetario/menú en la app. Las fases anteriores
+(F1–F6) están cerradas; ver §19 y §20.
 
 ## 2. Decisiones de arquitectura (ADR resumen)
 
@@ -177,8 +178,8 @@ oximeal/
 | FTS5/trigram no disponible en el build de `libsqlite3-sys` | Task T3 verifica en runtime; fallback a `LIKE` para `q.len()<3`. |
 | Query trigram insensible a acentos limitada | `normalize.rs` aplica folding de acentos antes de indexar/buscar. |
 | Edición 2024 requiere toolchain reciente | `rust-toolchain.toml` fija stable ≥1.97 (presente en el entorno). |
-| Ambigüedad Schema.org en import | Fase 1 acepta solo JSON validado; el parser Schema.org se completa en F2/F3. |
-| Consumo de RAM <20 MB (objetivo global) | Fase 1 no añade runtime LLM; la medición real se hará sobre el binario monolítico (feature `embed-ui`), **pendiente** de ejecutar; no se fijan cifras aún. |
+| Ambigüedad Schema.org en import | Resuelto en la Fase 6 (change B): parser JSON-LD `Recipe` propio, con guardas SSRF, mapeo documentado e idempotencia por `source_url`. |
+| Consumo de RAM <20 MB (objetivo global) | Medido sobre el binario monolítico (feature `embed-ui`, change `perf-device-verification`): RSS estable 11 MB / pico 11 MB con `[profile.release]` optimizado (baseline 12/12 MB), ~5 MB bajo el techo de 16 MB. Ver `docs/performance.md`. |
 | Offline vs access token de 60 min | La Fase 5 debe tolerar la sesión caducada sirviendo datos cacheados; el refresh dura 30 días de inactividad. |
 | Pocket ID exige HTTPS en los redirect URIs fuera de localhost | Reverse proxy HTTPS documentado para los despliegues; localhost queda exento para desarrollo. |
 | Fuga de tokens por logs | Prohibir loguear las cabeceras `Cookie` y `Authorization` en tracing/middleware. |
@@ -609,3 +610,268 @@ Cada PR: `just ci` + `just ci-ui` + `openspec validate --all --strict` en verde,
 > offline se encola, sobrevive a la recarga y se sincroniza sola al recuperar la
 > conexión con **un único POST** y sin duplicados; reenviar el mismo `client_id`
 > responde 200 sin duplicar.
+
+## 19. Fase 6 — Recetario completo y verificación en dispositivo real
+
+> Ejecutable ahora. Origen: issues #45, #46 y #47. Tres changes independientes,
+> una rama/PR por issue desde `development`. Metodología SDD + TDD estricto
+> (RED → GREEN → REFACTOR), con auditoría por bloque.
+
+### 19.1 Objetivo
+
+Completar el **recetario** (hoy la API de recetas es solo listar/buscar/ver y
+crear, y el frontend **no tiene página de recetas**: solo `MenuPage` y
+`ShoppingPage`), permitir **importar una receta desde una URL**, y cerrar la
+**verificación de rendimiento y consumo de RAM** en dispositivo real pendiente
+de la Fase 5 (pruebas táctiles y de rendimiento) y del objetivo global `<20 MB`
+registrado en §10.
+
+### 19.2 Decisiones de diseño (ADR-28…31)
+
+| # | Decisión | Justificación |
+|---|----------|---------------|
+| ADR-28 | Actualización de receta por **reemplazo total** (`PUT /api/recipes/{id}`) en una transacción `BEGIN IMMEDIATE`, reescribiendo ingredientes y confiando en los triggers `ai/ad/au` para refrescar el índice FTS | Atomicidad y coherencia con la consolidación; sin parches incrementales frágiles sobre ingredientes |
+| ADR-29 | Borrado **duro** de receta (`DELETE /api/recipes/{id}`) con borrado en cascada de ingredientes (FKs `ON DELETE`) y limpieza del índice FTS por trigger | Sin estado «borrado lógico» que complicaría la búsqueda; el borrado físico es lo esperado en self-hosted |
+| ADR-30 | Importación **server-side** con `reqwest` (ya presente para OIDC) y guardas **SSRF**: solo `http`/`https`, bloqueo de rangos privados/loopback/link-local tras resolución DNS, límite de redirecciones, *timeout* y tope de tamaño; parseo de JSON-LD `Recipe` de Schema.org; deduplicación por `source_url` | El navegador no puede leer el HTML de terceros (CORS) y centralizar la descarga permite validar y proteger |
+| ADR-31 | Verificación de rendimiento como **medición reproducible on-demand** (receta `just`), no como *gate* de CI; presupuestos web documentados | Las métricas de rendimiento en CI son ruidosas y frágiles; se miden y documentan bajo demanda |
+
+### 19.3 Change A — `recipes-management` (issue #45)
+
+- **Backend:** `PUT /api/recipes/{id}` y `DELETE /api/recipes/{id}` (permiso
+  `write:recipes`), con validación reutilizada y `404` cuando no existe;
+  transacción `BEGIN IMMEDIATE` para el reemplazo total; OpenAPI actualizado.
+- **Frontend:** nueva `RecipesPage` (`/recipes`) + detalle (`/recipes/:id`) con
+  lista, búsqueda (hooks `useRecipes`/`useRecipe` ya existentes), alta, edición y
+  borrado con confirmación; entrada de navegación en `AppLayout` (Sider) y
+  `BottomNav` (🍳 Recetas); objetivos táctiles ≥48px.
+- **Specs:** delta en `recipes` (ADDED *Actualización* y *Borrado*), capacidad
+  nueva `recipe-catalog` (UI) y delta en `ui-shell` (ADDED *Pestaña Recetas*).
+- **Estado:** ✅ completado e integrado en el PR #49 (smoke E2E 23/23, `just ci`/`just ci-ui` y `openspec validate --all --strict` en verde).
+
+### 19.4 Change B — `recipe-import-schema-org` (issue #46)
+
+- **Backend:** `POST /api/recipes/import` con cuerpo `{ "url": "..." }` (permiso
+  `write:recipes`): descarga con guardas SSRF (ADR-30), extracción del bloque
+  JSON-LD `application/ld+json` con `@type: Recipe`, mapeo a `RecipeInput`
+  (nombre, ingredientes, `recipeYield`→`servings`, `totalTime`/`prepTime`→minutos,
+  `recipeInstructions`, `source_url`), alta **idempotente** por `source_url`.
+  Errores tipados: `400` (URL inválida/prohibida), `422` (sin receta reconocible),
+  `502` (fallo de origen), `409` (ya importada) o `200` con la existente.
+- **Frontend:** diálogo «Importar desde URL» en `RecipesPage` con previsualización
+  antes de guardar y manejo de errores.
+- **Specs:** delta en `recipes` (ADDED *Importación de receta desde URL*), con
+  escenarios de SSRF, contenido sin receta y fallo de red.
+- **Estado:** ✅ completado e integrado en el PR #50 (smoke E2E 18/18, `just ci`/`just ci-ui` y `openspec validate --all --strict` en verde).
+
+### 19.5 Change C — `perf-device-verification` (issue #47)
+
+- **Medición de RAM:** receta `just` que arranca `cargo build --release -p
+  oximeal-backend --features embed-ui`, lanza el binario con una base temporal y
+  mide RSS **pico y estable** (varias muestras), dejando el número documentado.
+- **Rendimiento web:** auditoría por **CDP de Chrome headless, sin
+  dependencias** (FCP y transferencia del grafo inicial declarado; no se miden
+  LCP ni TTI) con presupuestos explícitos; comprobación táctil de objetivos
+  ≥48px, trazada en `docs/performance.md` junto con los escenarios de
+  interacción con/sin conexión del smoke E2E de Fase 5.
+- **Entregable:** `docs/performance.md` con metodología, presupuestos y
+  resultados, y la receta `just` reproducible.
+- **Specs:** capacidad nueva `performance` (ADDED *Presupuesto de memoria*,
+  *Presupuesto de rendimiento web*, *Verificación táctil*).
+
+### 19.6 Orden de ejecución y ramas
+
+1. `feature/recipes-management` (issue #45) desde `development`.
+2. `feature/recipe-import-schema-org` (issue #46), sobre el anterior ya mergeado.
+3. `feature/perf-device-verification` (issue #47), el último (mide con la UI ya
+   completa).
+
+### 19.7 Riesgos y mitigaciones
+
+| Riesgo | Mitigación |
+|--------|------------|
+| Import vulnerable a SSRF | Guardas en ADR-30 + tests con `wiremock` y URLs a `127.0.0.1`/`localhost`/rangos privados |
+| `PUT` desincroniza el índice FTS | Triggers `ai/ad/au` existentes + test de búsqueda tras editar |
+| Medición de RAM ruidosa | Medir varias muestras, reportar pico y estable, documentar el método |
+| Web scraping de terceros frágil | Se documenta que el import depende de JSON-LD estándar; fallo → `422` claro |
+
+### 19.8 Criterios de aceptación (DoD de la Fase 6)
+
+- [x] API: `PUT` y `DELETE /api/recipes/{id}` con autorización y tests (200/404/400, `401/403`).
+- [x] UI: página de recetas (lista, búsqueda, detalle, alta, edición, borrado) accesible desde la navegación, con tests de componente.
+- [x] Import: `POST /api/recipes/import` con guardas SSRF y parseo Schema.org, con tests (URL interna, HTML sin JSON-LD, fallo de red, idempotencia).
+- [x] Rendimiento: RSS del binario `--release --features embed-ui` medido y documentado; presupuestos web y táctiles verificados en `docs/performance.md`.
+- [x] `just ci`, `just ci-ui` y `openspec validate --all --strict` en verde (verificado: los tres en verde).
+- [x] Sin regresiones en el smoke E2E (37/37 + casos nuevos del recetario) — verificado: smoke de Fase 5 37/37 en esta rama; los smokes del recetario (23/23) e importación (18/18) se verificaron en sus PRs y este change no toca código de producto.
+
+## 20. Fase 7 — Entrega (Docker/release) y producto (recetario/menú)
+
+> Ejecutable ahora. Origen: issues #52–#56. La fase mezcla **entrega** (E1–E2:
+> Docker y releases) y **producto** (P1–P3: planificación en la UI, etiquetas y
+> volcado de receta a la compra). Cinco changes independientes, una rama/PR por
+> issue desde `development`. Metodología SDD + TDD estricto (RED → GREEN →
+> REFACTOR), con auditoría por bloque.
+
+### 20.1 Objetivo
+
+Cerrar la promesa de OxiMeal como **self-hosted de binario único desplegable**:
+hoy `just build-full` produce un ejecutable con la UI embebida, pero **no hay
+`Dockerfile` ni pipeline de release** —el despliegue depende de reproducir el
+toolchain a mano— y `deploy/compose.yaml` solo levanta Pocket ID. En paralelo,
+completar el **bucle del recetario/menú dentro de la propia app**: el menú
+semanal es de **solo lectura** y el estado vacío remite a Valet, no hay etiquetas
+libres para clasificar el recetario y no se pueden volcar los ingredientes de una
+receta concreta a la lista. Los changes E1–E2 materializan la entrega y los
+P1–P3 cierran el producto.
+
+### 20.2 Decisiones de diseño (ADR-32…36)
+
+| # | Decisión | Justificación |
+|---|----------|---------------|
+| ADR-32 | Imagen **Docker multi-stage** (frontend Node/pnpm → builder Rust → runtime `debian:bookworm-slim` con solo `ca-certificates`/`curl`), usuario **no root**, `VOLUME /app/data`, `HEALTHCHECK` contra `/api/health`, y compilación del binario con `--features embed-ui` | Reproduce el toolchain en un build declarativo y mínimo; el runtime slim mantiene la imagen pequeña y el healthcheck permite a compose esperar al arranque; `embed-ui` conserva el modelo de binario único |
+| ADR-33 | **Release por tag `v*`**: puertas de calidad reutilizadas de `ci.yml`, artefactos `x86_64`/`aarch64` (`--release --features embed-ui`, `.tar.gz`+`.sha256`), imagen en GHCR (`semver`+`latest`), notas con **`git-cliff`** desde Conventional Commits + gitmoji, y versionado verificado (tag == `Cargo.toml`/`package.json`), *bump* manual en PR de release | Automatiza la entrega hoy hecha a mano y garantiza coherencia tag↔versión↔imagen↔notas; reutilizar las puertas evita publicar código que no pasa CI; `git-cliff` no añade un servicio externo (se descarta `svu`/`vampus`) |
+| ADR-34 | **Planificación nativa en la UI que convive con Valet**; `PATCH /api/meal-plan/{id}` para editar **solo raciones** y endurecer la validación de `POST`; la planificación **requiere conexión** (no se encola en IndexedDB) | Permite crear/quitar/corregir entradas sin salir de la app sin retirar el asistente; el `PATCH` mínimo (sin reemplazo de receta/fecha/tipo/rol) evita conflictos; encolar prometería una persistencia que la validación server-side del `recipe_id` y la creación de `id` no permiten |
+| ADR-35 | **Etiquetas libres many-to-many** (`tags` + `recipe_tags`, `slug` normalizado y único, FKs `ON DELETE CASCADE`, migración `0007` aditiva), **fuera** del índice FTS; filtro `GET /api/recipes?tag=<id\|slug>` combinable con `q`/`category`/paginación | Las categorías y `diet_type` ya son ejes cerrados; un vocabulario abierto no obliga a decidir dimensiones de antemano; indexar etiquetas en FTS contaminaría las coincidencias por subcadena y tocaría los triggers `ai/ad/au` |
+| ADR-36 | **Volcado de receta a la lista** con `POST /api/shopping-list/from-recipe` (permiso `write:shopping`), **reconsolidación declarativa** de las fuentes de receta registradas (idempotente) y **escalado por raciones** (`solicitadas / receta`) antes de consolidar, **sin** modificar líneas del plan ni manuales ni sumar unidades no aditivas | Reutiliza el motor determinista de `ingredient-consolidation` (canonicalización, normalización, pasillos); reconstruir es idempotente y reescala al repetir, sin duplicar |
+
+### 20.3 Change E1 — `container-image` (issue #52)
+
+- **`Dockerfile` multi-stage** en la raíz (contexto = monorepo): stage
+  `frontend` (`pnpm install --frozen-lockfile` + `pnpm build`), stage `builder`
+  (imagen oficial `rust`, recibe `frontend/dist` y compila `oximeal-backend`
+  `--release --features embed-ui`) y stage `runtime` (`debian:bookworm-slim`,
+  usuario no root, `WORKDIR /app`, `EXPOSE 8080`, `VOLUME /app/data`, `ENV` por
+  defecto, `HEALTHCHECK` contra `/api/health`, `ENTRYPOINT`).
+- **`.dockerignore`** y caché de capas (manifiestos antes que el código).
+- **`deploy/compose.yaml`**: nuevo servicio `oximeal` (imagen local o GHCR,
+  `env_file`, volumen con nombre para SQLite, red y healthcheck) **manteniendo**
+  `pocket-id`; arranque conjunto y modo abierto documentados.
+- **Docs:** sección de despliegue en `README.md` (con refresco del estado a
+  Fase 6/7), `deploy/README.md` y `deploy/.env.example` actualizado.
+- **Specs:** capacidad nueva `deployment` (build reproducible, runtime no root,
+  persistencia, healthcheck, compose e instrucciones).
+- **Estado:** ✅ implementado y verificado (rama `feature/container-image`; `deploy/verify-image.sh` con 20/20 checks).
+
+### 20.4 Change E2 — `release-automation` (issue #53)
+
+> Estado: ✅ cerrado (PR #59, squash `e729455` a `development`). Implementa el ADR-33.
+
+- **`.github/workflows/release.yml`** (nuevo): disparo `push: tags: ['v*']` +
+  `workflow_dispatch` (input `tag`); **nunca** en `pull_request`.
+- **Puertas de calidad**: job `quality` que reutiliza `ci.yml` vía
+  `workflow_call` (se añade `workflow_call:` a `on:` de `ci.yml`, sin alterar su
+  comportamiento en `push`/`pull_request`).
+- **Coherencia de versionado**: job `version` ejecuta
+  `.github/scripts/check-version.sh <tag>` y falla si el tag no es `v<semver>` o
+  no coincide con `[workspace.package] version`, `frontend/package.json` y la
+  última versión de `CHANGELOG.md`.
+- **Artefactos binarios**: matriz `x86_64-unknown-linux-gnu` (`ubuntu-latest`) y
+  `aarch64-unknown-linux-gnu` (`ubuntu-24.04-arm`, runner nativo ARM — repo
+  público); se construye el frontend (`pnpm build`) y luego
+  `cargo build --release -p oximeal-backend --features embed-ui --target …`; se
+  empaqueta `oximeal-<version>-<target>.tar.gz` + `.sha256`.
+- **Imagen GHCR**: `ghcr.io/<owner>/oximeal:<version>` y `:latest` mediante
+  `docker/build-push-action` (login con `GITHUB_TOKEN`); `latest` solo se publica cuando el tag es el
+  más reciente y no es *pre-release*. Plataforma `linux/amd64`.
+- **GitHub Release**: job `release` descarga artefactos, genera notas con
+  `git-cliff` (`cliff.toml`, `--current` del tag que dispara) y crea/edita la
+  release con `gh release` (`--prerelease` si procede); adjunta
+  provenance con `actions/attest-build-provenance` (`id-token: write`,
+  `attestations: write`).
+- **Notas (`cliff.toml`)**: agrupación por tipo Conventional Commits **con
+  gitmoji** (regex `^[^a-zA-Z]*<tipo>`, necesaria porque el *variation selector*
+  del emoji cuenta como `\w`), grupos en español coherentes con `CHANGELOG.md` y
+  enlaces a issues.
+- **Documentación**: sección «Releases / Publicación» en `README.md`.
+- **Decisiones (ADR-33)**: runner **ARM nativo** (no `cross`); imagen de release
+  **linux/amd64**; `bump` de versión **manual** en PR de release a `main`; tag
+  `v<version>` dispara el pipeline. El e2e real es la release **v0.5.0** al
+  cerrar P3.
+- **Verificación**: `actionlint` sobre los workflows, `git-cliff` local,
+  RED→GREEN del script de coherencia, `just ci`/`just ci-ui` y OpenSpec
+  `--all --strict`.
+- **Specs:** capacidad nueva `release`.
+
+### 20.5 Change P1 — `meal-planning-ui` (issue #54)
+
+- **Backend:** nuevo `PATCH /api/meal-plan/{id}` (permiso `write:plan`) para
+  editar **solo `servings`** (`200` con la vista actualizada, `400` si
+  `servings < 1`, `404` si no existe); endurecer y testear la validación de
+  `POST /api/meal-plan` (`meal_type`, `role`, `date` ISO, `recipe_id` existente,
+  `servings >= 1`, 401/403).
+- **UI:** alta por slot en `MenuPage`/`DayCard` con selector de receta con
+  búsqueda, tipo de comida, rol y raciones; baja con **confirmación**; edición de
+  raciones; Valet sigue disponible (convivencia).
+- **Offline:** la planificación **requiere conexión** y la UI deshabilita los
+  controles y muestra aviso degradado (no se encola).
+- **Accesibilidad:** objetivos táctiles ≥48px, gestión de foco, roles `aria`,
+  feedback de carga/error.
+- **Specs:** deltas en `meal-plan`, `weekly-menu`, `ui-shell` y `offline-writes`.
+- **Estado:** ✅ implementado y auditado (rama `feature/meal-planning-ui`, PR pendiente). Incluye el refresco del plan al recuperar la conexión (scenario «Recuperación de la conexión»).
+
+### 20.6 Change P2 — `recipe-tags` (issue #55)
+
+- **Migración `0007`** aditiva: `tags(id, name, slug UNIQUE, created_at)` y
+  `recipe_tags(recipe_id, tag_id)` con PK compuesta, FKs `ON DELETE CASCADE` e
+  índice `idx_recipe_tags_tag_id`; **no** toca `recipes` ni `recipes_fts`.
+- **API:** `GET /api/tags` (`read:recipes`, con conteo), `POST /api/tags`
+  (idempotente, `write:recipes`) y `DELETE /api/tags/{id}` (en cascada, sin
+  borrar recetas); `POST`/`PUT /api/recipes` aceptan `tags` (reemplazan el
+  conjunto) y `GET /api/recipes?tag=` filtra combinado con `q`/`category`.
+- **UI:** selector con creación al vuelo en `RecipeForm`, etiquetas en
+  `RecipeCard`/detalle y filtro por etiqueta reflejado en la URL.
+- **Specs:** capacidad nueva `recipe-tags` + deltas en `recipes`,
+  `recipe-catalog` y `recipe-search`.
+- **Estado:** ✅ cerrado (PR #61, `a98dbe0`); issue #55 cerrado.
+
+### 20.7 Change P3 — `shopping-from-recipe` (issue #56)
+
+- **Backend:** `POST /api/shopping-list/from-recipe` (permiso `write:shopping`)
+  con `{ recipe_id, servings? }` (por defecto las raciones de la receta);
+  responde `200` con los grupos resultantes, `400` si `servings` es inválido y
+  `404` si la receta no existe.
+- **Semántica:** registro en `shopping_recipe_sources` + columna
+  `source_recipe_id`; **reconsolidación** idempotente de las recetas registradas
+  (repetir no duplica, reescala sin tocar líneas del plan ni manuales).
+- **Escalado:** factor `solicitadas/receta` a todas las cantidades antes de
+  consolidar; `al gusto` conserva cantidad 0 y no se suman familias
+  incompatibles.
+- **UI:** acción «Añadir a la lista» en `RecipeDetailPage` con selector de
+  raciones, feedback y enlace a `/shopping`; sin conexión se deshabilita.
+- **Specs:** deltas en `shopping-list`, `ingredient-consolidation`,
+  `recipe-catalog` y `offline-writes`.
+- **Estado:** ✅ cerrado (PR #62, `6b23b2b`); issue #56 cerrado.
+
+### 20.8 Orden de ejecución y ramas
+
+1. `feature/container-image` (issue #52) desde `development`.
+2. `feature/release-automation` (issue #53), sobre el anterior ya mergeado.
+3. `feature/meal-planning-ui` (issue #54).
+4. `feature/recipe-tags` (issue #55).
+5. `feature/shopping-from-recipe` (issue #56), el último (volcado sobre el
+   recetario y la compra ya completos).
+
+Nota: la **entrega va primero** (E1→E2) para poder publicar la **v0.5.0** con el
+recetario completo una vez cerrados los P1–P3. Una rama/PR por change desde
+`development`.
+
+### 20.9 Riesgos y mitigaciones
+
+| Riesgo | Mitigación |
+|--------|------------|
+| Build de la imagen y enlazado `glibc`/`rustls` (y healthcheck que necesita `curl`/shell) | Runtime `debian:bookworm-slim` coherente con el builder Rust; se instala `curl` explícitamente y el `HEALTHCHECK` apunta a `/api/health`; si se planteara distroless, el healthcheck pasaría a un probe del orquestador |
+| Cross-compile a `aarch64` frágil | Matriz de build con runner nativo ARM o `cross` (se decide y justifica); artefactos verificados con su `.sha256` |
+| Convivencia UI↔Valet y validación de planificación | `PATCH` mínimo (solo raciones) y validación server-side endurecida; la UI deshabilita los controles sin conexión en vez de encolar |
+| Escalado de recetas con unidades no aditivas | Reutilizar el motor de `ingredient-consolidation`; `al gusto` conserva cantidad 0 y no se suman familias incompatibles; tests de escalado |
+| Migración de etiquetas que contamine el FTS o reconstruya tablas | Migración **aditiva** (`0007`) que no toca `recipes` ni `recipes_fts`; etiquetas fuera del FTS y filtro por igualdad con `idx_recipe_tags_tag_id` |
+| Volumen SQLite con permisos no root | `VOLUME /app/data` con usuario no root y `DATABASE_URL` por defecto apuntando al volumen; permisos verificados al arrancar el contenedor |
+
+### 20.10 Criterios de aceptación (DoD de la Fase 7)
+
+- [x] La imagen Docker construye y arranca con healthcheck OK y datos persistentes en el volumen.
+- [x] Un tag `v*` publica binarios (x86_64/aarch64) + imagen GHCR + notas generadas, y **no** publica en PR.
+- [x] Planificación desde la UI con tests (alta en slot, baja con confirmación, edición de raciones, validación y accesibilidad).
+- [x] Etiquetas con migración + API (CRUD/filtro `tag`) y tests, fuera del FTS.
+- [x] Volcado de receta con escalado por raciones, fusión/reconsolidación sin duplicados y respeto de no aditivos, con tests.
+- [x] `just ci`, `just ci-ui` y `openspec validate --all --strict` en verde en las cinco ramas.
+- [x] Sin regresiones en el smoke E2E.
+- [x] Los cinco changes archivados y la Fase 7 marcada como cerrada en este plan.

@@ -10,6 +10,12 @@ const MenuPage = lazy(() =>
 const ShoppingPage = lazy(() =>
   import('./pages/ShoppingPage').then((module) => ({ default: module.ShoppingPage })),
 );
+const RecipesPage = lazy(() =>
+  import('./pages/RecipesPage').then((module) => ({ default: module.RecipesPage })),
+);
+const RecipeDetailPage = lazy(() =>
+  import('./pages/RecipeDetailPage').then((module) => ({ default: module.RecipeDetailPage })),
+);
 
 function PageFallback() {
   return (
@@ -27,6 +33,8 @@ export function App() {
           <Route element={<AuthGuard />}>
             <Route index element={<MenuPage />} />
             <Route path="shopping" element={<ShoppingPage />} />
+            <Route path="recipes" element={<RecipesPage />} />
+            <Route path="recipes/:id" element={<RecipeDetailPage />} />
           </Route>
           <Route
             path="*"

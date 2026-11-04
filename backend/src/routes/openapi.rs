@@ -14,7 +14,7 @@ use utoipa_swagger_ui::{Config, Url, serve};
 
 use crate::state::AppState;
 
-use super::{agent, health, meal_plan, recipes, shopping_list};
+use super::{agent, health, meal_plan, recipes, shopping_list, tags};
 
 /// Ruta pública del documento OpenAPI.
 const OPENAPI_PATH: &str = "/api/openapi.json";
@@ -33,14 +33,22 @@ const DOCS_PATH: &str = "/api/docs";
         health::health,
         recipes::list_recipes,
         recipes::create_recipe,
+        recipes::import_recipe,
         recipes::get_recipe,
+        recipes::update_recipe,
+        recipes::delete_recipe,
+        tags::list_tags,
+        tags::create_tag,
+        tags::delete_tag,
         meal_plan::list_meal_plan,
         meal_plan::create_meal_plan,
+        meal_plan::patch_meal_plan,
         meal_plan::delete_meal_plan,
         shopping_list::list_shopping_list,
         shopping_list::create_item,
         shopping_list::patch_item,
         shopping_list::consolidate,
+        shopping_list::from_recipe,
         shopping_list::delete_completed,
         agent::recent_recipes,
         agent::search_recipes,
@@ -57,16 +65,22 @@ const DOCS_PATH: &str = "/api/docs";
         crate::models::recipe::RecipeSummary,
         crate::models::recipe::Recipe,
         crate::models::recipe::RecipeInput,
+        crate::routes::recipes::ImportRecipeRequest,
         crate::models::recipe::RecipeQuery,
         crate::models::recipe::RecipeListResponse,
+        crate::models::tag::Tag,
+        crate::models::tag::TagInput,
+        crate::models::tag::RecipeTag,
         crate::models::meal_plan::MealPlanEntryView,
         crate::models::meal_plan::MealPlanInput,
+        crate::models::meal_plan::MealPlanPatchInput,
         crate::models::meal_plan::MealPlanQuery,
         crate::models::shopping_list::ShoppingItem,
         crate::models::shopping_list::ShoppingListGroup,
         crate::models::shopping_list::ShoppingItemInput,
         crate::models::shopping_list::ShoppingItemPatch,
         crate::models::shopping_list::ConsolidateInput,
+        crate::models::shopping_list::RecipeToShoppingListInput,
         crate::models::agent::RecentRecipe,
         crate::models::agent::RecentRecipesResponse,
         crate::models::agent::RecentRecipesQuery,

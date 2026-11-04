@@ -15,7 +15,7 @@ El asistente conversacional es **Valet** (proyecto hermano), que consume la
 **Agent API** de OxiMeal (`/api/agent`) mediante su patrón nativo
 `services/<svc>.rs` + `tools/<svc>.rs`.
 
-> Estado actual: **Fase 1 — núcleo backend**. Incluye el scaffold del workspace,
+> Estado actual: **Fases 6–7 — recetario completo y entrega**. Incluye el scaffold del workspace,
 > el dominio puro (canonicalización de unidades, normalización de nombres,
 > categorización por pasillo y consolidación de la lista de la compra), la API
 > REST y la Agent API para Valet.
@@ -36,7 +36,7 @@ oximeal/
 │       ├── models/        # DTOs (serde + utoipa)
 │       ├── repo/          # acceso a datos (sqlx)
 │       └── routes/        # handlers HTTP (axum)
-└── frontend/              # reservado para la Fase 2 (React)
+└── frontend/              # SPA React
 ```
 
 ## Requisitos
@@ -91,6 +91,26 @@ Las migraciones se aplican automáticamente al arrancar el backend.
 Las variables de autenticación (Fase 4) se documentan en la sección
 [🔐 Autenticación (OIDC con Pocket ID)](#-autenticación-oidc-con-pocket-id).
 
+
+
+## 🐳 Despliegue con contenedor
+
+OxiMeal se empaqueta en una **imagen multi-stage** con la UI embebida en el
+binario (Axum + SQLite), usuario no root y `HEALTHCHECK` contra `/api/health`:
+
+```bash
+podman build --format docker -t ghcr.io/atareao/oximeal:local .
+podman run --name oximeal -d -p 8080:8080 \
+  -v oximeal-data:/app/data -e OIDC_ENABLED=false \
+  ghcr.io/atareao/oximeal:local
+```
+
+La imagen escucha en el puerto **8080** y persiste la base SQLite en
+`/app/data`. `deploy/compose.yaml` levanta OxiMeal junto a Pocket ID. Consulta la
+guia completa en [`deploy/README.md`](deploy/README.md) (construccion,
+variables, volumenes y permisos, healthcheck, modo abierto vs OIDC y
+TLS/reverse-proxy).
+
 ## 🔐 Autenticación (OIDC con Pocket ID)
 
 OxiMeal usa el backend como **BFF (Backend For Frontend)**: el flujo
@@ -114,8 +134,12 @@ sesión caducará, pero el proceso no muere).
 
 Variables opcionales con sus valores por defecto: `SESSION_TTL_SECS`
 (`2592000` = 30 días), `SESSION_REFRESH_MARGIN_SECS` (`300` = 5 min),
-`SESSION_COOKIE_NAME` (`oximeal_session`), `SESSION_COOKIE_SECURE` (`true`) y
-`ALLOWED_ORIGINS` (CSV; vacío ⇒ ningún origen CORS permitido).
+`SESSION_COOKIE_NAME` (`oximeal_session`), `SESSION_COOKIE_SECURE` (`true`),
+`ALLOWED_ORIGINS` (CSV; vacío ⇒ ningún origen CORS permitido) e
+`IMPORT_ALLOWED_HOSTS` (CSV; vacío ⇒ estricto). Los hosts de
+`IMPORT_ALLOWED_HOSTS` omiten **solo** la guarda de rango privado al importar
+recetas desde URL (pensado para pruebas locales; nunca añadas hosts internos en
+producción).
 
 ### Permisos por endpoint
 
@@ -127,10 +151,12 @@ administración de instancia. Sin credencial válida → **401** con
 |---|---|
 | `GET /api/recipes`, `GET /api/recipes/{id}` | `read:recipes` |
 | `POST /api/recipes` | `write:recipes` |
+| `GET /api/tags` | `read:recipes` |
+| `POST /api/tags`, `DELETE /api/tags/{id}` | `write:recipes` |
 | `GET /api/meal-plan` | `read:plan` |
-| `POST /api/meal-plan`, `DELETE /api/meal-plan/{id}` | `write:plan` |
+| `POST /api/meal-plan`, `PATCH /api/meal-plan/{id}`, `DELETE /api/meal-plan/{id}` | `write:plan` |
 | `GET /api/shopping-list` | `read:shopping` |
-| `POST /api/shopping-list`, `PATCH /api/shopping-list/{id}`, `POST /api/shopping-list/consolidate`, `DELETE /api/shopping-list/completed` | `write:shopping` |
+| `POST /api/shopping-list`, `PATCH /api/shopping-list/{id}`, `POST /api/shopping-list/consolidate`, `POST /api/shopping-list/from-recipe`, `DELETE /api/shopping-list/completed` | `write:shopping` |
 | `GET /api/agent/recent-recipes`, `GET /api/agent/search-recipes` | `agent:read` |
 | `POST /api/agent/weekly-plan` | `agent:plan` |
 | `POST /api/agent/shopping-items`, `DELETE /api/agent/shopping/completed` | `agent:shopping` |
@@ -216,3 +242,33 @@ fallar o vaciar la interfaz.
 ## Licencia
 
 MIT.
+
+## 📦 Releases / Publicación
+
+Las releases se generan automáticamente con el workflow `release.yml` al crear y
+publicar un tag `v<version>` (desde `main`); los tags *pre-release* (`-rc.N`) se
+marcan como tales y no mueven `latest`:
+
+1. **PR de release** de `development` a `main` con el *bump* manual de versión en
+   `Cargo.toml` (`[workspace.package] version`), `frontend/package.json` y la
+   nueva sección en `CHANGELOG.md` (las tres deben coincidir).
+2. Al fusionar, **crear el tag**: `git tag v0.5.0 && git push origin v0.5.0`.
+3. El tag dispara el pipeline: **puertas de calidad** (reutiliza `ci.yml`),
+   **artefactos** (`x86_64` y `aarch64`, `.tar.gz` + `.sha256`), **imagen** en
+   GHCR (`ghcr.io/atareao/oximeal:<version>` y `:latest`) y la **GitHub Release**
+   con notas generadas por `git-cliff` desde los commits.
+
+**Consumir los artefactos:**
+
+```bash
+# Binario (x86_64)
+curl -L -o oximeal.tar.gz \
+  https://github.com/atareao/oximeal/releases/latest/download/oximeal-<version>-x86_64-unknown-linux-gnu.tar.gz
+tar -xzf oximeal.tar.gz && ./oximeal-<version>-x86_64-unknown-linux-gnu/oximeal
+
+# Imagen
+podman pull ghcr.io/atareao/oximeal:latest
+```
+
+Los `.sha256` permiten verificar la integridad; la provenance se comprueba con
+`gh attestation verify`.

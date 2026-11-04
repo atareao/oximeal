@@ -2,13 +2,20 @@ import type {
   ApiErrorBody,
   AuthMeResponse,
   MealPlanEntryView,
+  MealPlanInput,
+  MealPlanPatchInput,
   Recipe,
+  RecipeImportInput,
+  RecipeImportResult,
+  RecipeInput,
   RecipeListResponse,
   RecipeQueryParams,
+  RecipeToShoppingListInput,
   ShoppingItem,
   ShoppingItemInput,
   ShoppingItemPatch,
   ShoppingListGroup,
+  TagWithCount,
 } from './types';
 
 const API_BASE = '/api';
@@ -16,6 +23,7 @@ const REQUEST_TIMEOUT_MS = 10_000;
 const CSRF_HEADER = 'X-CSRF-Token';
 const MUTATION_METHODS: ReadonlySet<NonNullable<RequestOptions['method']>> = new Set([
   'POST',
+  'PUT',
   'PATCH',
   'DELETE',
 ]);
@@ -34,7 +42,7 @@ export class ApiError extends Error {
 }
 
 export interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   signal?: AbortSignal;
 }
@@ -97,7 +105,8 @@ function isAbortError(error: unknown): boolean {
 }
 
 /**
- * Realiza una petición HTTP y devuelve el JSON tipado.
+ * Realiza una petición HTTP y devuelve el JSON tipado junto con el código de
+ * estado de la respuesta.
  *
  * - Adjunta `credentials: 'same-origin'` (cookies de sesión same-origin).
  * - Añade `X-CSRF-Token` en POST/PATCH/DELETE cuando hay token.
@@ -107,10 +116,10 @@ function isAbortError(error: unknown): boolean {
  * - Los fallos de red se normalizan a `ApiError(0, 'network_error', …)`; las
  *   cancelaciones (`AbortError`) se propagan sin envolver.
  */
-async function performRequest<T>(
+async function performRequestWithStatus<T>(
   url: string,
   options: RequestOptions = {},
-): Promise<T | undefined> {
+): Promise<{ data: T | undefined; status: number }> {
   const { method = 'GET', body, signal } = options;
 
   const headers: Record<string, string> = { Accept: 'application/json' };
@@ -173,10 +182,18 @@ async function performRequest<T>(
   }
 
   if (response.status === 204) {
-    return undefined;
+    return { data: undefined, status: response.status };
   }
 
-  return (await response.json()) as T;
+  return { data: (await response.json()) as T, status: response.status };
+}
+
+async function performRequest<T>(
+  url: string,
+  options: RequestOptions = {},
+): Promise<T | undefined> {
+  const { data } = await performRequestWithStatus<T>(url, options);
+  return data;
 }
 
 export function apiRequest(
@@ -219,6 +236,7 @@ export function fetchRecipes(
   const query = buildQuery({
     q: params.q,
     category: params.category,
+    tag: params.tag,
     page: params.page,
     page_size: params.page_size,
   });
@@ -229,6 +247,58 @@ export function fetchRecipe(id: string, signal?: AbortSignal): Promise<Recipe> {
   return apiRequest<Recipe>(`/recipes/${encodeURIComponent(id)}`, { signal });
 }
 
+/** `POST /api/recipes` — alta de receta. */
+export function createRecipe(input: RecipeInput): Promise<Recipe> {
+  return apiRequest<Recipe>('/recipes', { method: 'POST', body: input });
+}
+
+/**
+ * `POST /api/recipes/import` — importa una receta desde una URL (Schema.org).
+ *
+ * Devuelve la receta creada y si fue un alta (`201`) o una importación
+ * idempotente de una `source_url` ya existente (`200`).
+ */
+export async function importRecipe(input: RecipeImportInput): Promise<RecipeImportResult> {
+  const { data, status } = await performRequestWithStatus<Recipe>('/api/recipes/import', {
+    method: 'POST',
+    body: input,
+  });
+  if (!data) {
+    throw new ApiError(status, 'invalid_response', 'Respuesta vacía al importar la receta');
+  }
+  return { recipe: data, created: status === 201 };
+}
+
+/** `PUT /api/recipes/{id}` — reemplazo completo de una receta. */
+export function updateRecipe(id: string, input: RecipeInput): Promise<Recipe> {
+  return apiRequest<Recipe>(`/recipes/${encodeURIComponent(id)}`, { method: 'PUT', body: input });
+}
+
+/** `DELETE /api/recipes/{id}` — borrado de una receta (204 sin cuerpo). */
+export function deleteRecipe(id: string): Promise<void> {
+  return apiRequest(`/recipes/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+/** `GET /api/tags` — catálogo de etiquetas con su recuento de recetas. */
+export function fetchTags(signal?: AbortSignal): Promise<TagWithCount[]> {
+  return apiRequest<TagWithCount[]>('/tags', { signal });
+}
+
+/**
+ * `POST /api/tags` — crea una etiqueta a partir de su nombre.
+ *
+ * El backend es idempotente por `slug`: responde `201` con la nueva etiqueta o
+ * `200` con la existente. En ambos casos devuelve la etiqueta con su conteo.
+ */
+export function createTag(name: string): Promise<TagWithCount> {
+  return apiRequest<TagWithCount>('/tags', { method: 'POST', body: { name } });
+}
+
+/** `DELETE /api/tags/{id}` — borra la etiqueta y sus asociaciones (204). */
+export function deleteTag(id: string): Promise<void> {
+  return apiRequest(`/tags/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
 export function fetchMealPlan(
   startDate: string,
   endDate: string,
@@ -236,6 +306,27 @@ export function fetchMealPlan(
 ): Promise<MealPlanEntryView[]> {
   const query = buildQuery({ start_date: startDate, end_date: endDate });
   return apiRequest<MealPlanEntryView[]>(`/meal-plan${query}`, { signal });
+}
+
+/** `POST /api/meal-plan` — asigna una receta a un slot del plan. */
+export function createMealPlanEntry(input: MealPlanInput): Promise<MealPlanEntryView> {
+  return apiRequest<MealPlanEntryView>('/meal-plan', { method: 'POST', body: input });
+}
+
+/** `DELETE /api/meal-plan/{id}` — elimina una entrada del plan (204 sin cuerpo). */
+export function deleteMealPlanEntry(id: string): Promise<void> {
+  return apiRequest(`/meal-plan/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+/** `PATCH /api/meal-plan/{id}` — edita las raciones de una entrada existente. */
+export function patchMealPlanEntry(
+  id: string,
+  input: MealPlanPatchInput,
+): Promise<MealPlanEntryView> {
+  return apiRequest<MealPlanEntryView>(`/meal-plan/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: input,
+  });
 }
 
 export function fetchShoppingList(signal?: AbortSignal): Promise<ShoppingListGroup[]> {
@@ -259,4 +350,19 @@ export function consolidateShoppingList(): Promise<ShoppingListGroup[]> {
 
 export function clearCompletedShoppingItems(): Promise<void> {
   return apiRequest('/shopping-list/completed', { method: 'DELETE' });
+}
+
+/**
+ * `POST /api/shopping-list/from-recipe` — vuelca los ingredientes de una receta
+ * en la lista, escalados a las raciones indicadas (o a las de la receta).
+ *
+ * Devuelve la lista agrupada ya reconsolidada (mismo cuerpo que `consolidate`).
+ */
+export function addRecipeToShoppingList(
+  input: RecipeToShoppingListInput,
+): Promise<ShoppingListGroup[]> {
+  return apiRequest<ShoppingListGroup[]>('/shopping-list/from-recipe', {
+    method: 'POST',
+    body: input,
+  });
 }
