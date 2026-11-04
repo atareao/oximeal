@@ -23,6 +23,7 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Corregido
 
+- **Seguridad (auth):** `GET /auth/login` aceptaba un `return_to` con caracteres de control (TAB/CR/LF). Como el navegador los elimina al parsear la URL, un valor como `/%09/evil.com` se convertía en `//evil.com` y el 302 posterior al login terminaba en un origen externo (*open redirect*, CWE-601), explotable para *phishing* con el dominio legítimo. `sanitize_return_to` ahora rechaza cualquier carácter de control y usa `/` como destino de retorno (#80).
 - **CI/Release:** el job `release` tomaba el generador de notas y el `CHANGELOG.md` del árbol del **tag**; al revalidar un tag anterior al generador, el step fallaba con `exit 127` (`release-notes.sh: No such file or directory`). Ahora ese job hace checkout del commit que disparó la ejecución (`github.sha`), mientras los jobs de binarios e imagen siguen construyendo desde el tag.
 - **CI/Release:** las notas de la release reproducen también el encabezado `## [X.Y.Z] - fecha` de la sección del `CHANGELOG.md`.
 - **CI/Release:** el job `release` de `release.yml` descargaba **todos** los artefactos del run (incluido el caché de Docker Buildx, que rompía la descarga con «Unable to download and extract artifact»); ahora sube/baja los binarios con nombre explícito y `pattern: oximeal-*` (#64).
