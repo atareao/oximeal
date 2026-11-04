@@ -2,6 +2,7 @@
 
 use axum::Json;
 use axum::Router;
+use axum::extract::rejection::JsonRejection;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
@@ -10,7 +11,8 @@ use chrono::{Datelike, Duration, Local, NaiveDate};
 
 use crate::error::{AppError, AppResult};
 use crate::models::shopping_list::{
-    ConsolidateInput, ShoppingItem, ShoppingItemInput, ShoppingItemPatch, ShoppingListGroup,
+    ConsolidateInput, RecipeToShoppingListInput, ShoppingItem, ShoppingItemInput,
+    ShoppingItemPatch, ShoppingListGroup,
 };
 use crate::repo;
 use crate::routes::validation;
@@ -30,6 +32,7 @@ pub fn write_router() -> Router<AppState> {
             axum::routing::delete(delete_completed),
         )
         .route("/api/shopping-list/consolidate", post(consolidate))
+        .route("/api/shopping-list/from-recipe", post(from_recipe))
         .route("/api/shopping-list/{id}", patch(patch_item))
 }
 
@@ -143,6 +146,47 @@ pub async fn consolidate(
 
     let groups =
         repo::shopping_list::consolidate(&state.pool, &start.to_string(), &end.to_string()).await?;
+    Ok(Json(groups))
+}
+
+/// `POST /api/shopping-list/from-recipe` — vuelca una receta a la lista.
+///
+/// **Semántica**: registro declarativo. Se registra (o actualiza) la receta y sus
+/// raciones en `shopping_recipe_sources` y se reconstruyen **todas** las líneas
+/// derivadas de recetas reconsolidando las fuentes registradas. Repetir la
+/// petición es idempotente y cambiar `servings` reescala sin acumular. Las líneas
+/// del plan (`source_plan_id` no nulo) y los ítems manuales se conservan.
+#[utoipa::path(
+    post,
+    path = "/api/shopping-list/from-recipe",
+    tag = "shopping-list",
+    request_body = RecipeToShoppingListInput,
+    responses(
+        (status = 200, description = "Lista resultante del volcado", body = [ShoppingListGroup]),
+        (status = 400, description = "Cuerpo inválido o `servings` < 1"),
+        (status = 404, description = "Receta no encontrada"),
+    )
+)]
+pub async fn from_recipe(
+    State(state): State<AppState>,
+    payload: Result<Json<RecipeToShoppingListInput>, JsonRejection>,
+) -> AppResult<Json<Vec<ShoppingListGroup>>> {
+    // Un cuerpo JSON ausente o malformado (p. ej. `servings` no entero) se
+    // traduce al sobre de error estándar de la app (400) en lugar del rechazo
+    // por defecto de axum.
+    let Json(input) = payload.map_err(|rejection| {
+        AppError::Validation(format!("cuerpo JSON inválido: {}", rejection.body_text()))
+    })?;
+
+    if input.recipe_id.trim().is_empty() {
+        return Err(AppError::Validation(
+            "recipe_id no puede estar vacío".into(),
+        ));
+    }
+
+    let groups =
+        repo::shopping_list::from_recipe(&state.pool, input.recipe_id.trim(), input.servings)
+            .await?;
     Ok(Json(groups))
 }
 

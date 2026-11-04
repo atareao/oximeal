@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query';
 import {
+  addRecipeToShoppingList,
   createMealPlanEntry,
   createRecipe,
   createShoppingItem,
@@ -19,6 +20,7 @@ import {
 import {
   queryKeys,
   useAddMealPlanEntry,
+  useAddRecipeToShoppingList,
   useAddShoppingItem,
   useCreateRecipe,
   useCreateTag,
@@ -65,6 +67,7 @@ vi.mock('./client', async (importOriginal) => {
     fetchTags: vi.fn(),
     createTag: vi.fn(),
     deleteTag: vi.fn(),
+    addRecipeToShoppingList: vi.fn(),
   };
 });
 
@@ -523,5 +526,69 @@ describe('etiquetas', () => {
       'list',
       { tag: 'vegano' },
     ]);
+  });
+});
+
+describe('volcado de receta a la lista', () => {
+  const mockedAddFromRecipe = vi.mocked(addRecipeToShoppingList);
+
+  const groups: ShoppingListGroup[] = [
+    {
+      category: 'Frutas',
+      items: [
+        {
+          id: 'i1',
+          name: 'Manzana',
+          amount: 4,
+          unit: 'ud',
+          category: 'Frutas',
+          checked: false,
+          updated_at: '2026-11-01T10:00:00Z',
+        },
+      ],
+    },
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    onlineManager.setOnline(true);
+    configureMutationQueue(createMutationStore());
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+  });
+
+  afterEach(() => {
+    onlineManager.setOnline(true);
+  });
+
+  it('useAddRecipeToShoppingList vuelca la receta e invalida la lista', async () => {
+    mockedAddFromRecipe.mockResolvedValue(groups);
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useAddRecipeToShoppingList(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({ recipe_id: 'r1', servings: 4 });
+    });
+
+    expect(mockedAddFromRecipe).toHaveBeenCalledWith({ recipe_id: 'r1', servings: 4 });
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.shoppingList.all }),
+    );
+  });
+
+  it('sin conexión la operación compuesta queda pausada y no se encola', async () => {
+    // El volcado es una operación compuesta: sin conexión se pausa (networkMode
+    // 'online' por defecto) y NUNCA se encola en IndexedDB. La UI la deshabilita.
+    onlineManager.setOnline(false);
+    const { result } = renderHook(() => useAddRecipeToShoppingList(), { wrapper });
+
+    act(() => {
+      result.current.mutate({ recipe_id: 'r1', servings: 4 });
+    });
+
+    await waitFor(() => expect(result.current.isPaused).toBe(true));
+    expect(mockedAddFromRecipe).not.toHaveBeenCalled();
+    expect(getQueuedMutations()).toHaveLength(0);
   });
 });

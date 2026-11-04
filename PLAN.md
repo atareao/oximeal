@@ -821,7 +821,7 @@ P1–P3 cierran el producto.
   `RecipeCard`/detalle y filtro por etiqueta reflejado en la URL.
 - **Specs:** capacidad nueva `recipe-tags` + deltas en `recipes`,
   `recipe-catalog` y `recipe-search`.
-- **Estado:** ✅ implementado y auditado; PR pendiente (rama `feature/recipe-tags`).
+- **Estado:** ✅ cerrado (PR #61, `a98dbe0`); issue #55 cerrado.
 
 ### 20.7 Change P3 — `shopping-from-recipe` (issue #56)
 
@@ -839,7 +839,7 @@ P1–P3 cierran el producto.
   raciones, feedback y enlace a `/shopping`; sin conexión se deshabilita.
 - **Specs:** deltas en `shopping-list`, `ingredient-consolidation`,
   `recipe-catalog` y `offline-writes`.
-- **Estado:** ⬜ pendiente (rama `feature/shopping-from-recipe`).
+- **Estado:** ✅ implementado y auditado; PR pendiente (rama `feature/shopping-from-recipe`).
 
 ### 20.8 Orden de ejecución y ramas
 
@@ -867,11 +867,11 @@ recetario completo una vez cerrados los P1–P3. Una rama/PR por change desde
 
 ### 20.10 Criterios de aceptación (DoD de la Fase 7)
 
-- [ ] La imagen Docker construye y arranca con healthcheck OK y datos persistentes en el volumen.
-- [ ] Un tag `v*` publica binarios (x86_64/aarch64) + imagen GHCR + notas generadas, y **no** publica en PR.
-- [ ] Planificación desde la UI con tests (alta en slot, baja con confirmación, edición de raciones, validación y accesibilidad).
-- [ ] Etiquetas con migración + API (CRUD/filtro `tag`) y tests, fuera del FTS.
-- [ ] Volcado de receta con escalado por raciones, fusión/reconsolidación sin duplicados y respeto de no aditivos, con tests.
-- [ ] `just ci`, `just ci-ui` y `openspec validate --all --strict` en verde en las cinco ramas.
+- [x] La imagen Docker construye y arranca con healthcheck OK y datos persistentes en el volumen.
+- [x] Un tag `v*` publica binarios (x86_64/aarch64) + imagen GHCR + notas generadas, y **no** publica en PR.
+- [x] Planificación desde la UI con tests (alta en slot, baja con confirmación, edición de raciones, validación y accesibilidad).
+- [x] Etiquetas con migración + API (CRUD/filtro `tag`) y tests, fuera del FTS.
+- [x] Volcado de receta con escalado por raciones, fusión/reconsolidación sin duplicados y respeto de no aditivos, con tests.
+- [x] `just ci`, `just ci-ui` y `openspec validate --all --strict` en verde en las cinco ramas.
 - [ ] Sin regresiones en el smoke E2E.
 - [ ] Los cinco changes archivados y la Fase 7 marcada como cerrada en este plan.
