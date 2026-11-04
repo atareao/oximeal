@@ -12,12 +12,15 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [No publicado]
 
+## [0.5.1] - 2026-11-04
+
 ### Añadido
 
 - **Mantenimiento:** configuración de **Dependabot** (`.github/dependabot.yml`): actualizaciones semanales de `cargo` (workspace de la raíz), `npm`/pnpm (`frontend/`), `github-actions` y `docker`, con PRs dirigidas a `development` (gitflow), grupos `minor`+`patch` por ecosistema y las `major` en PRs separadas.
 
 ### Cambiado
 
+- **Dependencias:** `typescript` 6.0.3 (mayor; tipado, tests y build en verde) y la imagen de build del frontend pasa a `node:26-alpine` (stage `frontend`, verificado con `podman build`).
 - **CI:** acciones de los workflows actualizadas a las mayores actuales (Node 24): `actions/checkout@v7`, `setup-node@v7`, `upload-artifact@v7`, `download-artifact@v8`, `pnpm/action-setup@v6`, `attest-build-provenance@v4` y las `docker/*` (`build-push-action@v7`, `login-action@v4`, `metadata-action@v6`, `setup-buildx-action@v4`); runners fijados a `ubuntu-24.04` (incluida la matriz de binarios), sin depender de `ubuntu-latest`.
 - **CI:** la coherencia de versionado ahora incluye la `version` explícita de `backend/Cargo.toml` (no hereda de `[workspace.package]`) y se añade la puerta **Scripts (shell)** a `ci.yml` (`shellcheck` + `.github/scripts/test-gh-scripts.sh`, 14 casos).
 
