@@ -174,13 +174,13 @@ jobs:
           pattern: oximeal-*
           path: dist
           merge-multiple: true
-      - name: Generar notas con git-cliff
-        # `git-cliff-action@v4` no admite la entrada `output`; la ruta del
-        # fichero de notas se pasa a git-cliff con `-o` en `args`.
-        uses: orhun/git-cliff-action@v4
-        with:
-          config: cliff.toml
-          args: --current --strip header -o RELEASE_NOTES.md
+      - name: Generar notas de la release
+        # Las notas salen de la sección curada del CHANGELOG.md: `main` integra
+        # por squash-merge, así que `git-cliff --current` solo ve un commit y no
+        # puede reconstruirlas (ADR-33). git-cliff queda como fallback.
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: bash .github/scripts/release-notes.sh "$RELEASE_TAG" RELEASE_NOTES.md
       - name: Atestación de provenance
         uses: actions/attest-build-provenance@v2
         with:
