@@ -19,7 +19,7 @@ jobs:
     name: Backend (Rust)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Instalar toolchain (rust-toolchain.toml)
         run: rustup show
       - name: Cache de Cargo
@@ -40,7 +40,7 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Instalar pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -70,7 +70,7 @@ jobs:
     name: OpenSpec (specs)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Instalar Node
         uses: actions/setup-node@v4
         with:
