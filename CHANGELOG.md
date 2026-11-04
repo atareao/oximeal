@@ -12,8 +12,14 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [No publicado]
 
+### Cambiado
+
+- **CI:** acciones de los workflows actualizadas a las mayores actuales (Node 24): `actions/checkout@v7`, `setup-node@v7`, `upload-artifact@v7`, `download-artifact@v8`, `pnpm/action-setup@v6`, `attest-build-provenance@v4` y las `docker/*` (`build-push-action@v7`, `login-action@v4`, `metadata-action@v6`, `setup-buildx-action@v4`); runners fijados a `ubuntu-24.04` (incluida la matriz de binarios), sin depender de `ubuntu-latest`.
+- **CI:** la coherencia de versionado ahora incluye la `version` explícita de `backend/Cargo.toml` (no hereda de `[workspace.package]`) y se añade la puerta **Scripts (shell)** a `ci.yml` (`shellcheck` + `.github/scripts/test-gh-scripts.sh`, 14 casos).
+
 ### Corregido
 
+- **CI/Release:** las notas de la release reproducen también el encabezado `## [X.Y.Z] - fecha` de la sección del `CHANGELOG.md`.
 - **CI/Release:** el job `release` de `release.yml` descargaba **todos** los artefactos del run (incluido el caché de Docker Buildx, que rompía la descarga con «Unable to download and extract artifact»); ahora sube/baja los binarios con nombre explícito y `pattern: oximeal-*` (#64).
 - **CI/Release:** las notas de la release fallaban en dos frentes —`orhun/git-cliff-action@v4` no admite la entrada `output` y no escribía `RELEASE_NOTES.md`, y con `main` integrado por *squash-merge* `git-cliff --current` solo veía un commit—; ahora se generan desde la sección curada del `CHANGELOG.md` con `.github/scripts/release-notes.sh` (`git-cliff` de *fallback*) (#65, #66).
 
