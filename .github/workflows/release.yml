@@ -163,9 +163,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          # El generador de notas y el CHANGELOG pertenecen a la definición del
+          # workflow (el ref que dispara el run), no al tag, que puede ser
+          # anterior a `.github/scripts/release-notes.sh`).
           fetch-depth: 0
           persist-credentials: false
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ github.sha }}
       - name: Descargar artefactos
         # Solo los artefactos binarios: el run también publica un artefacto de
         # caché de Docker Buildx (`*.dockerbuild`) que no debe descargarse aquí.

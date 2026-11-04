@@ -7,9 +7,9 @@ Esta capability define la **automatización de releases** de OxiMeal: un workflo
 `workflow_dispatch`) que, tras reutilizar las puertas de calidad de `ci.yml` vía
 `workflow_call`, publica artefactos binarios `x86_64`/`aarch64` (`.tar.gz` +
 `.sha256`), una imagen en GHCR (`<version>` y `latest`, sin retroceder con
-pre-releases) y una GitHub Release con notas generadas por `git-cliff`
-(`cliff.toml`) a partir de Conventional Commits + gitmoji, con provenance de
-build. Incluye la verificación de coherencia entre el tag, `[workspace.package]
+pre-releases) y una GitHub Release con notas tomadas de la sección curada de
+`CHANGELOG.md` para esa versión (con `git-cliff` solo como *fallback*), con
+provenance de build. Incluye la verificación de coherencia entre el tag, `[workspace.package]
 version`, `frontend/package.json` y `CHANGELOG.md` (ADR-33).
 
 ## Requirements
@@ -108,12 +108,12 @@ autenticándose con el `GITHUB_TOKEN` y el permiso `packages: write`.
 
 ### Requirement: GitHub Release con notas generadas
 
-El workflow SHALL crear la **GitHub Release** del tag adjuntando los artefactos
-binarios y con **notas** tomadas de la sección curada de `CHANGELOG.md` para esa
-versión, mediante el script `.github/scripts/release-notes.sh`. El `CHANGELOG.md`
-es el recurso descriptivo: `main` integra por *squash-merge* y el rango entre
-tags contiene un único commit, así que `git-cliff --current` no reproduce las
-notas; `git-cliff` MAY usarse solo como *fallback* no fatal.
+El workflow SHALL crear la GitHub Release del tag adjuntando los artefactos
+binarios y con notas de la sección curada de `CHANGELOG.md` para esa versión,
+mediante `.github/scripts/release-notes.sh`. El job de release SHALL tomar el
+generador y el `CHANGELOG.md` del ref que dispara la ejecución (`github.sha`), no
+del tag, que puede ser anterior a esos ficheros. `git-cliff` MAY usarse solo como
+*fallback* no fatal.
 
 #### Scenario: Release creada con binarios y notas
 
@@ -137,6 +137,14 @@ notas; `git-cliff` MAY usarse solo como *fallback* no fatal.
 - WHEN el job de release genera las notas
 - THEN se intenta `git-cliff` como fallback
 - AND la release se crea igualmente sin fallar, con al menos una nota mínima que incluya el tag
+
+#### Scenario: El generador de notas proviene del ref de ejecución
+
+- GIVEN un `workflow_dispatch` con `tag = v0.5.0` cuyo árbol en el tag no contiene `.github/scripts/release-notes.sh`
+- WHEN se ejecuta el job de release
+- THEN el checkout del job de release usa el commit que disparó la ejecución, no el tag
+- AND las notas se generan con el `CHANGELOG.md` de ese commit
+- AND la release se crea o actualiza sin fallar
 
 ### Requirement: Coherencia de versionado (ADR-33)
 
