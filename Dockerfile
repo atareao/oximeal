@@ -3,7 +3,7 @@
 # Contexto de build = raíz del monorepo.
 
 ### Stage 1 - frontend (SPA con Vite) ###
-FROM node:24-alpine AS frontend
+FROM node:26-alpine AS frontend
 WORKDIR /app/frontend
 RUN npm install -g pnpm@12
 # Manifiestos + lockfile antes que el codigo: install reproducible y cacheable.
