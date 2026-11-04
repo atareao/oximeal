@@ -19,6 +19,7 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Corregido
 
+- **CI/Release:** el job `release` tomaba el generador de notas y el `CHANGELOG.md` del árbol del **tag**; al revalidar un tag anterior al generador, el step fallaba con `exit 127` (`release-notes.sh: No such file or directory`). Ahora ese job hace checkout del commit que disparó la ejecución (`github.sha`), mientras los jobs de binarios e imagen siguen construyendo desde el tag.
 - **CI/Release:** las notas de la release reproducen también el encabezado `## [X.Y.Z] - fecha` de la sección del `CHANGELOG.md`.
 - **CI/Release:** el job `release` de `release.yml` descargaba **todos** los artefactos del run (incluido el caché de Docker Buildx, que rompía la descarga con «Unable to download and extract artifact»); ahora sube/baja los binarios con nombre explícito y `pattern: oximeal-*` (#64).
 - **CI/Release:** las notas de la release fallaban en dos frentes —`orhun/git-cliff-action@v4` no admite la entrada `output` y no escribía `RELEASE_NOTES.md`, y con `main` integrado por *squash-merge* `git-cliff --current` solo veía un commit—; ahora se generan desde la sección curada del `CHANGELOG.md` con `.github/scripts/release-notes.sh` (`git-cliff` de *fallback*) (#65, #66).
