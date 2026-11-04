@@ -839,7 +839,7 @@ P1–P3 cierran el producto.
   raciones, feedback y enlace a `/shopping`; sin conexión se deshabilita.
 - **Specs:** deltas en `shopping-list`, `ingredient-consolidation`,
   `recipe-catalog` y `offline-writes`.
-- **Estado:** ✅ implementado y auditado; PR pendiente (rama `feature/shopping-from-recipe`).
+- **Estado:** ✅ cerrado (PR #62, `6b23b2b`); issue #56 cerrado.
 
 ### 20.8 Orden de ejecución y ramas
 
@@ -873,5 +873,5 @@ recetario completo una vez cerrados los P1–P3. Una rama/PR por change desde
 - [x] Etiquetas con migración + API (CRUD/filtro `tag`) y tests, fuera del FTS.
 - [x] Volcado de receta con escalado por raciones, fusión/reconsolidación sin duplicados y respeto de no aditivos, con tests.
 - [x] `just ci`, `just ci-ui` y `openspec validate --all --strict` en verde en las cinco ramas.
-- [ ] Sin regresiones en el smoke E2E.
-- [ ] Los cinco changes archivados y la Fase 7 marcada como cerrada en este plan.
+- [x] Sin regresiones en el smoke E2E.
+- [x] Los cinco changes archivados y la Fase 7 marcada como cerrada en este plan.

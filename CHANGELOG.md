@@ -10,7 +10,7 @@ El formato de este fichero sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y este proyecto se
 adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 
-## [No publicado]
+## [0.5.0] - 2026-11-04
 
 ### Añadido
 
