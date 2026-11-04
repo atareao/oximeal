@@ -19,13 +19,15 @@ fi
 version="${tag#v}"
 
 cargo_version="$(awk -F'"' '/^\[/{s=($0=="[workspace.package]")} s && /^version/{print $2; exit}' Cargo.toml)"
+backend_version="$(awk -F'"' '/^\[/{s=($0=="[package]")} s && /^version/{print $2; exit}' backend/Cargo.toml)"
 pkg_version="$(grep -m1 -E '"version"' frontend/package.json | sed -E 's/.*"version": *"(.*)".*/\1/')"
 changelog_version="$(grep -m1 -E '^## \[[0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md | sed -E 's/^## \[([^]]+)\].*/\1/')"
 
-echo "tag=$version cargo=$cargo_version package.json=$pkg_version changelog=$changelog_version"
+echo "tag=$version cargo=$cargo_version backend=$backend_version package.json=$pkg_version changelog=$changelog_version"
 
 fail=0
 [[ "$cargo_version" == "$version" ]] || { echo "::error::Cargo.toml ($cargo_version) != tag ($version)"; fail=1; }
+[[ "$backend_version" == "$version" ]] || { echo "::error::backend/Cargo.toml ($backend_version) != tag ($version)"; fail=1; }
 [[ "$pkg_version" == "$version" ]] || { echo "::error::frontend/package.json ($pkg_version) != tag ($version)"; fail=1; }
 [[ "$changelog_version" == "$version" ]] || { echo "::error::CHANGELOG.md ($changelog_version) != tag ($version)"; fail=1; }
 [[ "$fail" == 0 ]] || exit 1
