@@ -772,9 +772,11 @@ P1–P3 cierran el producto.
 - **Imagen GHCR**: `ghcr.io/<owner>/oximeal:<version>` y `:latest` mediante
   `docker/build-push-action` (login con `GITHUB_TOKEN`); `latest` solo se publica cuando el tag es el
   más reciente y no es *pre-release*. Plataforma `linux/amd64`.
-- **GitHub Release**: job `release` descarga artefactos, genera notas con
-  `git-cliff` (`cliff.toml`, `--current` del tag que dispara) y crea/edita la
-  release con `gh release` (`--prerelease` si procede); adjunta
+- **GitHub Release**: job `release` descarga **solo** los artefactos binarios
+  (`pattern: oximeal-*`, para no tropezar con el caché de Docker Buildx), genera
+  las notas desde la sección curada del `CHANGELOG.md`
+  (`.github/scripts/release-notes.sh`, con `git-cliff` de *fallback*) y crea/edita
+  la release con `gh release` (`--prerelease` si procede); adjunta
   provenance con `actions/attest-build-provenance` (`id-token: write`,
   `attestations: write`).
 - **Notas (`cliff.toml`)**: agrupación por tipo Conventional Commits **con
@@ -839,7 +841,7 @@ P1–P3 cierran el producto.
   raciones, feedback y enlace a `/shopping`; sin conexión se deshabilita.
 - **Specs:** deltas en `shopping-list`, `ingredient-consolidation`,
   `recipe-catalog` y `offline-writes`.
-- **Estado:** ✅ implementado y auditado; PR pendiente (rama `feature/shopping-from-recipe`).
+- **Estado:** ✅ cerrado (PR #62, `6b23b2b`); issue #56 cerrado.
 
 ### 20.8 Orden de ejecución y ramas
 
@@ -873,5 +875,40 @@ recetario completo una vez cerrados los P1–P3. Una rama/PR por change desde
 - [x] Etiquetas con migración + API (CRUD/filtro `tag`) y tests, fuera del FTS.
 - [x] Volcado de receta con escalado por raciones, fusión/reconsolidación sin duplicados y respeto de no aditivos, con tests.
 - [x] `just ci`, `just ci-ui` y `openspec validate --all --strict` en verde en las cinco ramas.
-- [ ] Sin regresiones en el smoke E2E.
-- [ ] Los cinco changes archivados y la Fase 7 marcada como cerrada en este plan.
+- [x] Sin regresiones en el smoke E2E.
+- [x] Los cinco changes archivados (P3 `2026-11-04-shopping-from-recipe`, notas de release `2026-11-04-release-notes-from-changelog`) y la Fase 7 marcada como cerrada en este plan.
+- [x] La release **v0.5.0** publicada end-to-end: tag anotado `v0.5.0`, `release.yml` 8/8 jobs en verde, GitHub Release con notas del CHANGELOG, `.tar.gz` + `.sha256` (checksum validado) e imagen `ghcr.io/atareao/oximeal:0.5.0` y `:latest`.
+
+### 20.11 Cierre de la Fase 7 — release v0.5.0
+
+Cierre real de la fase: la release **v0.5.0** quedó publicada end-to-end.
+
+- **Bump a 0.5.0** (manual, ADR-33) en `[workspace.package] version` de
+  `Cargo.toml`, `backend/Cargo.toml` (versión explícita), `frontend/package.json`
+  y `Cargo.lock`; sección `## [0.5.0] - 2026-11-04` en `CHANGELOG.md`. PR de
+  release #63 → `main` (`f332e04`); tag anotado `v0.5.0`.
+- **Workflow `release.yml`**: `quality` (reutiliza `ci.yml`) → `version` →
+  `artifacts` (x86_64 + aarch64) / `image` (GHCR) → `release`. Run final
+  `41785535065`: **8/8 jobs en verde**, incluido `GitHub Release`.
+- **Publicación verificada**: GitHub Release `v0.5.0` marcada como *Latest*, con
+  notas de la sección curada del `CHANGELOG.md`, assets
+  `oximeal-0.5.0-{x86_64,aarch64}-unknown-linux-gnu.tar.gz` + `.sha256`
+  (checksum recomprobado) y atestación de provenance; imagen
+  `ghcr.io/atareao/oximeal:0.5.0` y `:latest`.
+- **Hotfixes de CI necesarios** (job `release` falló al publicar; se resolvieron
+  por PR a `main`):
+  1. `#64` (`4f8d275`): descargar solo los artefactos binarios
+     (`pattern: oximeal-*`), excluyendo el caché de Docker Buildx que rompía la
+     descarga.
+  2. `#65` (`a4dc2bb`): `git-cliff-action@v4` no admite la entrada `output`;
+     escribir `RELEASE_NOTES.md` con `-o` en `args`.
+  3. `#66` (`d31b060`): **causa estructural** — `main` integra por *squash-merge*,
+     así que `git-cliff --current` solo ve un commit; las notas pasan a tomarse
+     del `CHANGELOG.md` (script `.github/scripts/release-notes.sh`, `git-cliff`
+     de *fallback*). Registrado como change OpenSpec
+     `2026-11-04-release-notes-from-changelog` (requisito `release` MODIFIED).
+- **Sincronización**: `main` (`f332e04` + hotfixes) se integra en `development`.
+
+**DoD del cierre:** los cinco changes de la Fase 7 archivados, `main` con la
+release publicada y `development` sincronizado; `openspec validate --all
+--strict` en verde.
