@@ -20,6 +20,6 @@
 - [x] 4.1 `just ci` y `just ci-ui` en verde
 - [x] 4.2 `openspec validate --all --strict` → 28/28 (27 specs + change)
 - [x] 4.3 Documentar en el `CHANGELOG` (`[No publicado]` > Corregido, ref. #80)
-- [ ] 4.4 Archivar el change (`openspec archive fix-return-to-open-redirect`) y PR a `main`
-- [ ] 4.5 Sincronizar `main` → `development`
-- [ ] 4.6 Cerrar #80
+- [x] 4.4 Archivar el change (`openspec archive fix-return-to-open-redirect`) y PR a `main` (PR #82)
+- [x] 4.5 Sincronizar `main` → `development` (PR #83)
+- [x] 4.6 Cerrar #80 (cerrado por `Closes #80`)
