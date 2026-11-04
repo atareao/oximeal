@@ -114,7 +114,7 @@ jobs:
       - name: Subir artefacto
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.target }}
+          name: oximeal-${{ matrix.target }}
           path: dist/*.tar.gz*
           if-no-files-found: error
 
@@ -167,16 +167,20 @@ jobs:
           persist-credentials: false
           ref: ${{ inputs.tag || github.ref }}
       - name: Descargar artefactos
+        # Solo los artefactos binarios: el run también publica un artefacto de
+        # caché de Docker Buildx (`*.dockerbuild`) que no debe descargarse aquí.
         uses: actions/download-artifact@v4
         with:
+          pattern: oximeal-*
           path: dist
           merge-multiple: true
-      - name: Generar notas con git-cliff
-        uses: orhun/git-cliff-action@v4
-        with:
-          config: cliff.toml
-          args: --current --strip header
-          output: RELEASE_NOTES.md
+      - name: Generar notas de la release
+        # Las notas salen de la sección curada del CHANGELOG.md: `main` integra
+        # por squash-merge, así que `git-cliff --current` solo ve un commit y no
+        # puede reconstruirlas (ADR-33). git-cliff queda como fallback.
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: bash .github/scripts/release-notes.sh "$RELEASE_TAG" RELEASE_NOTES.md
       - name: Atestación de provenance
         uses: actions/attest-build-provenance@v2
         with:
