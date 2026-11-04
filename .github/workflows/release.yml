@@ -144,7 +144,7 @@ jobs:
             type=raw,value=${{ needs.version.outputs.version }}
             type=raw,value=latest,enable=${{ needs.version.outputs.is_latest == 'true' }}
       - name: Construir y publicar imagen
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
