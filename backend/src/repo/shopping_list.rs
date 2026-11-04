@@ -2,12 +2,14 @@
 
 use anyhow::anyhow;
 use sqlx::{SqliteConnection, SqlitePool};
+use std::collections::{BTreeSet, HashMap};
 use uuid::Uuid;
 
 use crate::domain::category::{CATEGORY_ORDER, categorize};
 use crate::domain::consolidate::ShoppingListItemDraft;
 use crate::domain::ingredient::IngredientInput;
 use crate::domain::normalize::normalize_name;
+use crate::domain::units::{UnitFamily, canonicalize};
 use crate::error::{AppError, AppResult};
 use crate::models::shopping_list::{
     ShoppingItem, ShoppingItemInput, ShoppingItemPatch, ShoppingListGroup,
@@ -16,6 +18,24 @@ use crate::models::shopping_list::{
 /// Proyección de un ítem, forzando texto en `updated_at`.
 const SELECT_ITEM: &str = "SELECT id, name, amount, unit, category, checked, \
      CAST(updated_at AS TEXT) AS updated_at, client_id FROM shopping_list_items";
+
+/// Valor de `source_recipe_id` para las líneas que fusionan varias recetas.
+///
+/// Una línea consolidada a partir de un mismo ingrediente aportado por más de
+/// una receta ya no tiene una atribución unívoca; se marca con este centinela.
+const SOURCE_CONSOLIDATED: &str = "consolidated";
+
+/// Borrador derivado de recetas junto con su receta fuente.
+///
+/// `source_recipe_id` **nunca** es nulo: o bien es el id de la única receta que
+/// aporta el ingrediente, o bien [`SOURCE_CONSOLIDATED`] si lo aportan varias.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct RecipeDerivedDraft {
+    /// Línea consolidada lista para insertar en la lista.
+    pub draft: ShoppingListItemDraft,
+    /// Procedencia de la línea: id de receta o [`SOURCE_CONSOLIDATED`].
+    pub source_recipe_id: String,
+}
 
 /// Resultado del alta de un ítem: nuevo o ya existente por `client_id`.
 ///
@@ -197,6 +217,173 @@ pub async fn consolidate(
     tx.commit().await?;
 
     list_grouped(pool).await
+}
+
+/// Vuelca los ingredientes de una receta a la lista de la compra.
+///
+/// Registra (o actualiza) la receta y sus raciones en `shopping_recipe_sources`
+/// y reconstruye **todas** las líneas derivadas de recetas reconsolidando las
+/// fuentes registradas. Es decir, el volcado es **declarativo**: repetir la
+/// petición no duplica y cambiar las raciones reescala sin acumular. Las líneas
+/// derivadas del plan (`source_plan_id` no nulo) y los ítems manuales se
+/// conservan intactos.
+///
+/// Si la receta no existe, devuelve [`AppError::NotFound`] sin escribir nada; si
+/// las raciones solicitadas son `< 1`, devuelve [`AppError::Validation`] también
+/// sin escribir. Toda la operación ocurre en una única transacción
+/// `BEGIN IMMEDIATE` (escritura lee-luego-escribe en WAL).
+pub async fn from_recipe(
+    pool: &SqlitePool,
+    recipe_id: &str,
+    servings: Option<i64>,
+) -> AppResult<Vec<ShoppingListGroup>> {
+    // `BEGIN IMMEDIATE` evita SQLITE_BUSY_SNAPSHOT en el patrón leer-luego-escribir.
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+
+    let recipe_servings: Option<i64> =
+        sqlx::query_scalar("SELECT COALESCE(servings, 2) FROM recipes WHERE id = ?")
+            .bind(recipe_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+
+    let Some(recipe_servings) = recipe_servings else {
+        // La transacción se descarta (rollback implícito): no se escribe nada.
+        return Err(AppError::NotFound(format!("receta {recipe_id}")));
+    };
+
+    let requested = servings.unwrap_or(recipe_servings);
+    if requested < 1 {
+        return Err(AppError::Validation("servings debe ser >= 1".into()));
+    }
+
+    sqlx::query(
+        "INSERT INTO shopping_recipe_sources (recipe_id, servings) VALUES (?, ?) \
+         ON CONFLICT(recipe_id) DO UPDATE SET servings = excluded.servings",
+    )
+    .bind(recipe_id)
+    .bind(requested)
+    .execute(&mut *tx)
+    .await?;
+
+    let drafts = collect_recipe_drafts(&mut tx).await?;
+    replace_recipe_derived(&mut tx, &drafts).await?;
+
+    tx.commit().await?;
+
+    list_grouped(pool).await
+}
+
+/// Recolecta los borradores consolidados de todas las recetas volcadas.
+///
+/// Lee cada fuente registrada (`shopping_recipe_sources`), escala sus
+/// ingredientes por el factor raciones_solicitadas / raciones_receta y consolida
+/// el conjunto con el motor de dominio. Para cada línea resultante, resuelve su
+/// `source_recipe_id`: el id de la receta cuando un único origen aporta ese
+/// ingrediente, o [`SOURCE_CONSOLIDATED`] cuando lo aportan varias.
+///
+/// La atribución se indexa por **(nombre normalizado, familia, unidad canónica)**,
+/// el mismo subgrupo con el que el motor `consolidate` subdivide un ingrediente:
+/// así una misma leche en `ml` y en `ud` produce dos líneas y cada una conserva la
+/// receta que la aporta, en vez de marcarse ambas como consolidadas.
+///
+/// No abre transacción propia: el llamante controla la atomicidad.
+pub(crate) async fn collect_recipe_drafts(
+    conn: &mut SqliteConnection,
+) -> AppResult<Vec<RecipeDerivedDraft>> {
+    let rows: Vec<(String, i64, i64, String)> = sqlx::query_as(
+        "SELECT s.recipe_id, s.servings, COALESCE(r.servings, 2), CAST(r.ingredients AS TEXT) \
+         FROM shopping_recipe_sources s \
+         JOIN recipes r ON r.id = s.recipe_id",
+    )
+    .fetch_all(&mut *conn)
+    .await?;
+
+    let mut inputs: Vec<IngredientInput> = Vec::new();
+    // (nombre normalizado, familia, unidad canónica) -> recetas que lo aportan.
+    let mut attribution: HashMap<(String, UnitFamily, String), BTreeSet<String>> = HashMap::new();
+
+    for (recipe_id, source_servings, recipe_servings, blob) in rows {
+        let factor = servings_factor(source_servings, recipe_servings);
+        let parsed: Vec<IngredientInput> = serde_json::from_str(&blob)
+            .map_err(|error| AppError::Internal(anyhow!("ingredientes JSON inválidos: {error}")))?;
+
+        for mut ingredient in parsed {
+            ingredient.amount *= factor;
+            let canon = canonicalize(ingredient.amount, &ingredient.unit);
+            attribution
+                .entry((
+                    normalize_name(&ingredient.name),
+                    canon.family,
+                    canon.display_unit,
+                ))
+                .or_default()
+                .insert(recipe_id.clone());
+            inputs.push(ingredient);
+        }
+    }
+
+    let drafts = crate::domain::consolidate::consolidate(&inputs);
+
+    Ok(drafts
+        .into_iter()
+        .map(|draft| {
+            let canon = canonicalize(draft.amount, &draft.unit);
+            let key = (
+                normalize_name(&draft.name),
+                canon.family,
+                canon.display_unit,
+            );
+            let source_recipe_id = match attribution.get(&key) {
+                Some(origins) => {
+                    let mut iter = origins.iter();
+                    match (iter.next(), iter.next()) {
+                        (Some(single), None) => single.clone(),
+                        _ => SOURCE_CONSOLIDATED.to_string(),
+                    }
+                }
+                None => SOURCE_CONSOLIDATED.to_string(),
+            };
+            RecipeDerivedDraft {
+                draft,
+                source_recipe_id,
+            }
+        })
+        .collect())
+}
+
+/// Reemplaza las líneas derivadas de recetas (`source_recipe_id` no nulo) por los
+/// borradores dados, conservando los ítems manuales y las líneas del plan. Usa
+/// `conn` sin abrir transacción propia.
+///
+/// **Nota**: las líneas derivadas de recetas se recrean siempre con `checked = 0`,
+/// de modo que repetir el volcado resetea el estado "ya comprado" de esas líneas.
+/// Los ítems manuales y las líneas del plan no se tocan y conservan su `checked`.
+pub(crate) async fn replace_recipe_derived(
+    conn: &mut SqliteConnection,
+    drafts: &[RecipeDerivedDraft],
+) -> AppResult<()> {
+    sqlx::query("DELETE FROM shopping_list_items WHERE source_recipe_id IS NOT NULL")
+        .execute(&mut *conn)
+        .await?;
+
+    for entry in drafts {
+        let id = Uuid::new_v4().to_string();
+        sqlx::query(
+            "INSERT INTO shopping_list_items \
+             (id, name, amount, unit, category, checked, source_plan_id, source_recipe_id, updated_at) \
+             VALUES (?, ?, ?, ?, ?, 0, NULL, ?, CURRENT_TIMESTAMP)",
+        )
+        .bind(&id)
+        .bind(&entry.draft.name)
+        .bind(entry.draft.amount)
+        .bind(&entry.draft.unit)
+        .bind(&entry.draft.category)
+        .bind(&entry.source_recipe_id)
+        .execute(&mut *conn)
+        .await?;
+    }
+
+    Ok(())
 }
 
 /// Recolecta los borradores consolidados del plan en un rango, usando `conn`.

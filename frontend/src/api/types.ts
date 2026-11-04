@@ -145,6 +145,13 @@ export interface ShoppingItemPatch {
   amount?: number;
 }
 
+/** Cuerpo de `POST /api/shopping-list/from-recipe` (espejo de `RecipeToShoppingListInput`). */
+export interface RecipeToShoppingListInput {
+  recipe_id: string;
+  /** Raciones a volcar; si se omite, el backend usa las de la receta. */
+  servings?: number;
+}
+
 /** Sobre de error estándar del backend. */
 export interface ApiErrorBody {
   error: string;

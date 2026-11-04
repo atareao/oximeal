@@ -1,7 +1,22 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Alert, App as AntdApp, Button, Popconfirm, Result, Skeleton, Tag, Typography } from 'antd';
-import { useDeleteRecipe, useRecipe, useUpdateRecipe } from '../api/hooks';
+import {
+  Alert,
+  App as AntdApp,
+  Button,
+  InputNumber,
+  Popconfirm,
+  Result,
+  Skeleton,
+  Tag,
+  Typography,
+} from 'antd';
+import {
+  useAddRecipeToShoppingList,
+  useDeleteRecipe,
+  useRecipe,
+  useUpdateRecipe,
+} from '../api/hooks';
 import { ApiError } from '../api/client';
 import type { RecipeInput } from '../api/types';
 import { RecipeForm } from '../components/RecipeForm';
@@ -21,7 +36,11 @@ export function RecipeDetailPage() {
   const { data, isLoading, isError, error, refetch } = useRecipe(id);
   const updateRecipe = useUpdateRecipe();
   const deleteRecipe = useDeleteRecipe();
+  const addToList = useAddRecipeToShoppingList();
   const [editOpen, setEditOpen] = useState(false);
+  // `null` mientras no se toque el selector: así el valor cae en las raciones
+  // de la receta aunque estas lleguen después del primer render.
+  const [servings, setServings] = useState<number | null>(null);
 
   const handleUpdate = (input: RecipeInput) => {
     if (!id) {
@@ -60,6 +79,36 @@ export function RecipeDetailPage() {
         );
       },
     });
+  };
+
+  const handleAddToList = () => {
+    if (!id) {
+      return;
+    }
+    addToList.mutate(
+      { recipe_id: id, servings: servings ?? data?.servings ?? 2 },
+      {
+        onSuccess: () => {
+          message.success({
+            content: (
+              <>
+                Receta añadida a la lista.{' '}
+                {/* Ancla plana: el mensaje de antd se renderiza fuera del
+                    Router, donde un <Link> no tendría contexto de navegación. */}
+                <a href="/shopping">Ver la lista</a>
+              </>
+            ),
+          });
+        },
+        onError: (mutationError: unknown) => {
+          message.error(
+            mutationError instanceof Error
+              ? mutationError.message
+              : 'No se pudo añadir la receta a la lista',
+          );
+        },
+      },
+    );
   };
 
   if (isLoading) {
@@ -114,7 +163,7 @@ export function RecipeDetailPage() {
           type="warning"
           showIcon
           data-testid="recipe-detail-offline"
-          message="Sin conexión: no puedes editar ni borrar esta receta."
+          message="Sin conexión: no puedes editar, borrar ni volcar esta receta a la lista."
         />
       )}
 
@@ -142,6 +191,23 @@ export function RecipeDetailPage() {
             Borrar
           </Button>
         </Popconfirm>
+        <InputNumber
+          className="recipe-detail__servings"
+          min={1}
+          value={servings ?? data.servings}
+          onChange={(value) => setServings(value)}
+          disabled={!online}
+          aria-label="Raciones para la lista"
+        />
+        <Button
+          className="recipe-detail__add-to-list"
+          type="primary"
+          disabled={!online}
+          loading={addToList.isPending}
+          onClick={handleAddToList}
+        >
+          Añadir a la lista
+        </Button>
       </div>
 
       {data.diet_type && (

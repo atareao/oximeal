@@ -97,6 +97,38 @@ async fn openapi_json_includes_tags_endpoints_and_schemas() {
     }
 }
 
+/// El documento OpenAPI expone el volcado de receta a la lista y su esquema.
+#[tokio::test]
+async fn openapi_json_includes_from_recipe_endpoint_and_schema() {
+    let state = common::test_state().await;
+
+    let (status, body) = common::request(state, "GET", "/api/openapi.json", None).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let paths = body["paths"].as_object().expect("objeto paths");
+    let from_recipe = paths["/api/shopping-list/from-recipe"]
+        .as_object()
+        .expect("/api/shopping-list/from-recipe debe ser un objeto");
+    let post = from_recipe
+        .get("post")
+        .expect("/api/shopping-list/from-recipe debe exponer post");
+    let responses = post["responses"].as_object().expect("objeto responses");
+    for code in ["200", "400", "404"] {
+        assert!(
+            responses.contains_key(code),
+            "falta la respuesta {code} en from-recipe"
+        );
+    }
+
+    let schemas = body["components"]["schemas"]
+        .as_object()
+        .expect("objeto components.schemas");
+    assert!(
+        schemas.contains_key("RecipeToShoppingListInput"),
+        "falta el esquema RecipeToShoppingListInput en components.schemas"
+    );
+}
+
 #[tokio::test]
 async fn swagger_ui_is_served() {
     let state = common::test_state().await;

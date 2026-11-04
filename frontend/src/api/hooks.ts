@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   clearCompletedShoppingItems,
   consolidateShoppingList,
+  addRecipeToShoppingList,
   createMealPlanEntry,
   createRecipe,
   createShoppingItem,
@@ -27,6 +28,7 @@ import type {
   RecipeImportResult,
   RecipeInput,
   RecipeQueryParams,
+  RecipeToShoppingListInput,
   ShoppingItem,
   ShoppingItemInput,
   ShoppingItemPatch,
@@ -465,6 +467,24 @@ export function useConsolidateShopping() {
     mutationFn: () => consolidateShoppingList(),
     onSuccess: (groups: ShoppingListGroup[]) => {
       queryClient.setQueryData(queryKeys.shoppingList.all, groups);
+    },
+  });
+}
+
+/**
+ * Vuelca los ingredientes de una receta en la lista de la compra.
+ *
+ * Es una operación **compuesta** (reconsolida varias líneas en el servidor), así
+ * que no se encola en IndexedDB: usa el `networkMode` por defecto (`'online'`)
+ * y, sin conexión, la mutación queda pausada mientras la UI la deshabilita.
+ * Al terminar invalida la lista para que `/shopping` refleje el volcado.
+ */
+export function useAddRecipeToShoppingList() {
+  const queryClient = useQueryClient();
+  return useMutation<ShoppingListGroup[], Error, RecipeToShoppingListInput>({
+    mutationFn: (input: RecipeToShoppingListInput) => addRecipeToShoppingList(input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.shoppingList.all });
     },
   });
 }

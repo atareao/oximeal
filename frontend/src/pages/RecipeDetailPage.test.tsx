@@ -5,8 +5,16 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App as AntdApp } from 'antd';
 import type { Recipe } from '../api/types';
-import { ApiError, deleteRecipe, fetchRecipe, fetchTags, updateRecipe } from '../api/client';
+import {
+  ApiError,
+  addRecipeToShoppingList,
+  deleteRecipe,
+  fetchRecipe,
+  fetchTags,
+  updateRecipe,
+} from '../api/client';
 import { useOnline } from '../offline/connectivity';
+import recipeDetailCss from './RecipeDetailPage.css?raw';
 import { RecipeDetailPage } from './RecipeDetailPage';
 
 vi.mock('../api/client', async (importOriginal) => {
@@ -17,6 +25,7 @@ vi.mock('../api/client', async (importOriginal) => {
     updateRecipe: vi.fn(),
     deleteRecipe: vi.fn(),
     fetchTags: vi.fn(),
+    addRecipeToShoppingList: vi.fn(),
   };
 });
 
@@ -29,6 +38,7 @@ const mockedFetchRecipe = vi.mocked(fetchRecipe);
 const mockedUpdateRecipe = vi.mocked(updateRecipe);
 const mockedDeleteRecipe = vi.mocked(deleteRecipe);
 const mockedFetchTags = vi.mocked(fetchTags);
+const mockedAddFromRecipe = vi.mocked(addRecipeToShoppingList);
 const mockedUseOnline = vi.mocked(useOnline);
 
 function installMatchMedia(matches = true) {
@@ -90,6 +100,7 @@ describe('RecipeDetailPage', () => {
     mockedFetchRecipe.mockResolvedValue(recipe());
     mockedDeleteRecipe.mockResolvedValue(undefined);
     mockedFetchTags.mockResolvedValue([]);
+    mockedAddFromRecipe.mockResolvedValue([]);
   });
 
   it('muestra el detalle completo con ingredientes e instrucciones', async () => {
@@ -185,5 +196,95 @@ describe('RecipeDetailPage', () => {
     expect(screen.getByTestId('recipe-detail-offline')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /editar/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /borrar receta/i })).toBeDisabled();
+  });
+
+  it('añade la receta a la lista con las raciones por defecto y ofrece enlace a la compra', async () => {
+    const user = userEvent.setup();
+    renderDetail();
+
+    await screen.findByRole('heading', { name: 'Tortilla' });
+    const servings = screen.getByRole('spinbutton', { name: /raciones para la lista/i });
+    expect(servings).toHaveValue('4');
+
+    await user.click(screen.getByRole('button', { name: /añadir a la lista/i }));
+
+    await waitFor(() =>
+      expect(mockedAddFromRecipe).toHaveBeenCalledWith({ recipe_id: 'r1', servings: 4 }),
+    );
+    const link = await screen.findByRole('link', { name: /ver la lista/i });
+    expect(link).toHaveAttribute('href', '/shopping');
+  });
+
+  it('permite cambiar las raciones y las envía', async () => {
+    const user = userEvent.setup();
+    renderDetail();
+
+    const servings = await screen.findByRole('spinbutton', { name: /raciones para la lista/i });
+    await user.clear(servings);
+    await user.type(servings, '6');
+    await user.click(screen.getByRole('button', { name: /añadir a la lista/i }));
+
+    await waitFor(() =>
+      expect(mockedAddFromRecipe).toHaveBeenCalledWith({ recipe_id: 'r1', servings: 6 }),
+    );
+  });
+
+  it('muestra el error del servidor y mantiene la vista del detalle', async () => {
+    mockedAddFromRecipe.mockRejectedValue(new ApiError(404, 'not_found', 'La receta no existe'));
+    const user = userEvent.setup();
+    renderDetail();
+
+    await screen.findByRole('heading', { name: 'Tortilla' });
+    await user.click(screen.getByRole('button', { name: /añadir a la lista/i }));
+
+    expect(await screen.findByText('La receta no existe')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Tortilla' })).toBeInTheDocument();
+    expect(screen.getByText('Patata')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /ver la lista/i })).not.toBeInTheDocument();
+  });
+
+  it('muestra el mensaje si el servidor falla con 500', async () => {
+    mockedAddFromRecipe.mockRejectedValue(new ApiError(500, 'internal', 'Error interno'));
+    const user = userEvent.setup();
+    renderDetail();
+
+    await screen.findByRole('heading', { name: 'Tortilla' });
+    await user.click(screen.getByRole('button', { name: /añadir a la lista/i }));
+
+    expect(await screen.findByText('Error interno')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Tortilla' })).toBeInTheDocument();
+    expect(screen.getByText('Patata')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /ver la lista/i })).not.toBeInTheDocument();
+  });
+
+  it('sin conexión deshabilita la acción y el selector y no envía nada', async () => {
+    mockedUseOnline.mockReturnValue(false);
+    const user = userEvent.setup();
+    renderDetail();
+
+    await screen.findByRole('heading', { name: 'Tortilla' });
+    const addButton = screen.getByRole('button', { name: /añadir a la lista/i });
+    const servings = screen.getByRole('spinbutton', { name: /raciones para la lista/i });
+
+    expect(addButton).toBeDisabled();
+    expect(servings).toBeDisabled();
+
+    await user.click(addButton);
+    expect(mockedAddFromRecipe).not.toHaveBeenCalled();
+  });
+
+  it('la acción y el selector cumplen a11y y objetivo táctil de 48 px', async () => {
+    const { container } = renderDetail();
+
+    await screen.findByRole('heading', { name: 'Tortilla' });
+    const addButton = screen.getByRole('button', { name: /añadir a la lista/i });
+    const servings = screen.getByRole('spinbutton', { name: /raciones para la lista/i });
+
+    expect(addButton).toHaveClass('recipe-detail__add-to-list');
+    expect(servings).toHaveAttribute('aria-valuemin', '1');
+    expect(container.querySelector('.recipe-detail__servings')).not.toBeNull();
+
+    expect(recipeDetailCss).toMatch(/\.recipe-detail__add-to-list\s*\{[^}]*min-height:\s*48px/);
+    expect(recipeDetailCss).toMatch(/\.recipe-detail__servings\s*\{[^}]*min-height:\s*48px/);
   });
 });

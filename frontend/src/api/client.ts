@@ -10,6 +10,7 @@ import type {
   RecipeInput,
   RecipeListResponse,
   RecipeQueryParams,
+  RecipeToShoppingListInput,
   ShoppingItem,
   ShoppingItemInput,
   ShoppingItemPatch,
@@ -349,4 +350,19 @@ export function consolidateShoppingList(): Promise<ShoppingListGroup[]> {
 
 export function clearCompletedShoppingItems(): Promise<void> {
   return apiRequest('/shopping-list/completed', { method: 'DELETE' });
+}
+
+/**
+ * `POST /api/shopping-list/from-recipe` — vuelca los ingredientes de una receta
+ * en la lista, escalados a las raciones indicadas (o a las de la receta).
+ *
+ * Devuelve la lista agrupada ya reconsolidada (mismo cuerpo que `consolidate`).
+ */
+export function addRecipeToShoppingList(
+  input: RecipeToShoppingListInput,
+): Promise<ShoppingListGroup[]> {
+  return apiRequest<ShoppingListGroup[]>('/shopping-list/from-recipe', {
+    method: 'POST',
+    body: input,
+  });
 }

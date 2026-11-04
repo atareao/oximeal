@@ -60,6 +60,20 @@
   min-height: 48px;
 }
 
+.recipe-detail__add-to-list {
+  min-height: 48px;
+}
+
+.recipe-detail__servings {
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.recipe-detail__servings .ant-input-number-input {
+  height: 46px;
+}
+
 .recipe-detail__result-actions {
   display: flex;
   flex-wrap: wrap;

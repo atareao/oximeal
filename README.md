@@ -156,7 +156,7 @@ administración de instancia. Sin credencial válida → **401** con
 | `GET /api/meal-plan` | `read:plan` |
 | `POST /api/meal-plan`, `PATCH /api/meal-plan/{id}`, `DELETE /api/meal-plan/{id}` | `write:plan` |
 | `GET /api/shopping-list` | `read:shopping` |
-| `POST /api/shopping-list`, `PATCH /api/shopping-list/{id}`, `POST /api/shopping-list/consolidate`, `DELETE /api/shopping-list/completed` | `write:shopping` |
+| `POST /api/shopping-list`, `PATCH /api/shopping-list/{id}`, `POST /api/shopping-list/consolidate`, `POST /api/shopping-list/from-recipe`, `DELETE /api/shopping-list/completed` | `write:shopping` |
 | `GET /api/agent/recent-recipes`, `GET /api/agent/search-recipes` | `agent:read` |
 | `POST /api/agent/weekly-plan` | `agent:plan` |
 | `POST /api/agent/shopping-items`, `DELETE /api/agent/shopping/completed` | `agent:shopping` |
