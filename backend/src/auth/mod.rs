@@ -319,6 +319,11 @@ pub fn code_challenge_s256(verifier: &str) -> String {
 /// Acepta solo rutas internas como destino de retorno (evita open redirect).
 pub fn sanitize_return_to(value: Option<String>) -> Option<String> {
     let value = value?;
+    // Un navegador elimina TAB/CR/LF de la URL al parsearla, así que un valor
+    // como "/\t/evil.com" acabaría como "//evil.com", fuera del origen (#80).
+    if value.chars().any(char::is_control) {
+        return None;
+    }
     if value.starts_with('/') && !value.starts_with("//") && !value.contains('\\') {
         Some(value)
     } else {
@@ -374,5 +379,57 @@ mod tests {
         assert_eq!(sanitize_return_to(Some("//evil.com".into())), None);
         assert_eq!(sanitize_return_to(Some("https://evil.com".into())), None);
         assert_eq!(sanitize_return_to(None), None);
+    }
+    #[test]
+    fn sanitize_return_to_rejects_control_characters() {
+        // Un navegador elimina TAB/CR/LF al parsear la URL: "/\t/evil.com" se
+        // convierte en "//evil.com" y el 302 acabaría fuera del origen (#80).
+        for value in [
+            "/\t/evil.com",
+            "/\n/evil.com",
+            "/\r/evil.com",
+            "/\t\t//evil.com",
+            "/menu\t",
+        ] {
+            assert_eq!(
+                sanitize_return_to(Some(value.to_string())),
+                None,
+                "debe rechazarse el carácter de control en {value:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn sanitize_return_to_keeps_internal_paths_with_query() {
+        for value in [
+            "/shopping",
+            "/recipes?q=pasta",
+            "/recipes?q=pasta&page=2",
+            "/recipes?q=a b",
+        ] {
+            assert_eq!(
+                sanitize_return_to(Some(value.to_string())),
+                Some(value.to_string()),
+                "debe conservarse {value:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn sanitize_return_to_output_never_escapes_origin() {
+        // Invariante del sink: si un valor se acepta, no puede salir del origen.
+        for value in [
+            "/shopping",
+            "/recipes?q=pasta",
+            "/a/b?c=d#e",
+            "/\t/evil.com",
+            "/\n//evil.com",
+        ] {
+            if let Some(accepted) = sanitize_return_to(Some(value.to_string())) {
+                assert!(accepted.starts_with('/'), "{accepted:?}");
+                assert!(!accepted.starts_with("//"), "{accepted:?}");
+                assert!(!accepted.chars().any(char::is_control), "{accepted:?}");
+            }
+        }
     }
 }

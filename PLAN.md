@@ -912,3 +912,45 @@ Cierre real de la fase: la release **v0.5.0** quedó publicada end-to-end.
 **DoD del cierre:** los cinco changes de la Fase 7 archivados, `main` con la
 release publicada y `development` sincronizado; `openspec validate --all
 --strict` en verde.
+
+### 20.12 Mantenimiento post-release y auditoría de seguridad — hotfix #80
+
+Cierre del ciclo de mantenimiento tras la v0.5.0, con el backlog de seguridad
+atendido por SDD + TDD.
+
+- **A — Validación del pipeline**: `workflow_dispatch` con `tag=v0.5.0`
+  (run `41790282569`, **8/8 jobs**) validó de paso los *bumps* de acciones. El
+  job `release` fallaba con `exit 127` al revalidar tags anteriores al
+  generador de notas; ahora hace checkout del ref que dispara la ejecución
+  (`ref: ${{ github.sha }}`) mientras `artifacts`/`image` siguen compilando
+  desde el tag. Change `release-notes-generator-from-ref`, PR #70.
+- **B — Mantenimiento de CI**: acciones a mayores con Node 24 (`checkout@v7`,
+  `setup-node@v7`, `upload-artifact@v7`, `download-artifact@v8`,
+  `pnpm/action-setup@v6`, `attest-build-provenance@v4`, `docker/*`), runners
+  fijados a `ubuntu-24.04`, `check-version.sh` valida también
+  `backend/Cargo.toml` y nueva puerta **Scripts (shell)** (`shellcheck` +
+  `.github/scripts/test-gh-scripts.sh`, 14 casos). Change `ci-maintenance`,
+  PR #69.
+- **C — Dependabot**: `.github/dependabot.yml` para `cargo`, `npm`/pnpm,
+  `github-actions` y `docker`, con PRs a `development` (gitflow), cadencia
+  semanal y grupos `minor`+`patch`. Nueva capability `dependencies`. PR #71.
+  Primera ejecución: 7 PRs (#73–#79) todas con base `development`.
+- **Sincronización** `main` → `development` (PR #72).
+- **E — Auditoría de seguridad run-1** (import SSRF/ADR-30 + BFF OIDC): **1
+  hallazgo MEDIUM** (#80) y **12 notas de endurecimiento** (#81); el SSRF del
+  import queda limpio (esquema, canonicalización de IPv4/IPv6, RFC1918/ULA/
+  link-local/CGNAT, redirecciones revalidadas, *pin* DNS anti-TOCTOU,
+  `Content-Type` y tope de tamaño). Artefactos en la auditoría local; los
+  hallazgos se reportan como issues, no como notas.
+- **Hotfix #80 (CWE-601, open redirect post-login)**: `sanitize_return_to`
+  solo vetaba `/` inicial, `//` y `\`; un `return_to=/%09/evil.com` pasaba y
+  el `302 Location: /<TAB>/evil.com` se normalizaba en el navegador a
+  `//evil.com`. Ahora se rechaza cualquier `char::is_control` y el destino cae
+  a `/`. Ciclo completo: change aprobado y archivado, **RED reproducido
+  end-to-end** (sin el fix, el callback emitía `Location: "/\t/evil.com"`),
+  unitarios + integración, `just ci`/`just ci-ui`/`openspec validate --all
+  --strict` en verde, PR #82 → `main` (`465c7f6`) y sync PR #83 →
+  `development` (`cebf024`).
+- **Estado**: `main` y `development` con árbol idéntico (0 ficheros), #80
+  cerrado, pendiente solo el backlog de endurecimiento #81 y la reconciliación
+  de las PRs de Dependabot.
