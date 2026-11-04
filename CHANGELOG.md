@@ -12,8 +12,20 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [No publicado]
 
+### Añadido
+
+- **Mantenimiento:** configuración de **Dependabot** (`.github/dependabot.yml`): actualizaciones semanales de `cargo` (workspace de la raíz), `npm`/pnpm (`frontend/`), `github-actions` y `docker`, con PRs dirigidas a `development` (gitflow), grupos `minor`+`patch` por ecosistema y las `major` en PRs separadas.
+
+### Cambiado
+
+- **CI:** acciones de los workflows actualizadas a las mayores actuales (Node 24): `actions/checkout@v7`, `setup-node@v7`, `upload-artifact@v7`, `download-artifact@v8`, `pnpm/action-setup@v6`, `attest-build-provenance@v4` y las `docker/*` (`build-push-action@v7`, `login-action@v4`, `metadata-action@v6`, `setup-buildx-action@v4`); runners fijados a `ubuntu-24.04` (incluida la matriz de binarios), sin depender de `ubuntu-latest`.
+- **CI:** la coherencia de versionado ahora incluye la `version` explícita de `backend/Cargo.toml` (no hereda de `[workspace.package]`) y se añade la puerta **Scripts (shell)** a `ci.yml` (`shellcheck` + `.github/scripts/test-gh-scripts.sh`, 14 casos).
+
 ### Corregido
 
+- **Seguridad (auth):** `GET /auth/login` aceptaba un `return_to` con caracteres de control (TAB/CR/LF). Como el navegador los elimina al parsear la URL, un valor como `/%09/evil.com` se convertía en `//evil.com` y el 302 posterior al login terminaba en un origen externo (*open redirect*, CWE-601), explotable para *phishing* con el dominio legítimo. `sanitize_return_to` ahora rechaza cualquier carácter de control y usa `/` como destino de retorno (#80).
+- **CI/Release:** el job `release` tomaba el generador de notas y el `CHANGELOG.md` del árbol del **tag**; al revalidar un tag anterior al generador, el step fallaba con `exit 127` (`release-notes.sh: No such file or directory`). Ahora ese job hace checkout del commit que disparó la ejecución (`github.sha`), mientras los jobs de binarios e imagen siguen construyendo desde el tag.
+- **CI/Release:** las notas de la release reproducen también el encabezado `## [X.Y.Z] - fecha` de la sección del `CHANGELOG.md`.
 - **CI/Release:** el job `release` de `release.yml` descargaba **todos** los artefactos del run (incluido el caché de Docker Buildx, que rompía la descarga con «Unable to download and extract artifact»); ahora sube/baja los binarios con nombre explícito y `pattern: oximeal-*` (#64).
 - **CI/Release:** las notas de la release fallaban en dos frentes —`orhun/git-cliff-action@v4` no admite la entrada `output` y no escribía `RELEASE_NOTES.md`, y con `main` integrado por *squash-merge* `git-cliff --current` solo veía un commit—; ahora se generan desde la sección curada del `CHANGELOG.md` con `.github/scripts/release-notes.sh` (`git-cliff` de *fallback*) (#65, #66).
 

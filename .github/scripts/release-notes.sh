@@ -5,7 +5,8 @@
 # ¿Por qué no git-cliff? `main` integra cada release por *squash-merge*, así
 # que el rango `v<anterior>..v<actual>` en `main` contiene un único commit y
 # `git-cliff --current` no puede reconstruir las notas. `git-cliff` se usa solo
-# como *fallback* si el CHANGELOG no tuviera la sección de la versión.
+# como *fallback* si el CHANGELOG no tuviera la sección de la versión. La salida
+# reproduce la sección tal cual, incluido su encabezado `## [X.Y.Z] - fecha`.
 set -euo pipefail
 
 version="${1:-}"
@@ -23,7 +24,7 @@ version="${version#v}"
 body=""
 if grep -qE "^## \[${version//./\\.}\]" CHANGELOG.md; then
   body="$(awk -v ver="$version" '
-    $0 ~ "^## \\[" ver "\\]" { inside=1; next }
+    $0 ~ "^## \\[" ver "\\]" { print; print ""; inside=1; next }
     inside && /^## \[/        { exit }
     inside                    { buf[++n]=$0 }
     END {

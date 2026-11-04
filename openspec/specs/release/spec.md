@@ -7,9 +7,9 @@ Esta capability define la **automatización de releases** de OxiMeal: un workflo
 `workflow_dispatch`) que, tras reutilizar las puertas de calidad de `ci.yml` vía
 `workflow_call`, publica artefactos binarios `x86_64`/`aarch64` (`.tar.gz` +
 `.sha256`), una imagen en GHCR (`<version>` y `latest`, sin retroceder con
-pre-releases) y una GitHub Release con notas generadas por `git-cliff`
-(`cliff.toml`) a partir de Conventional Commits + gitmoji, con provenance de
-build. Incluye la verificación de coherencia entre el tag, `[workspace.package]
+pre-releases) y una GitHub Release con notas tomadas de la sección curada de
+`CHANGELOG.md` para esa versión (con `git-cliff` solo como *fallback*), con
+provenance de build. Incluye la verificación de coherencia entre el tag, `[workspace.package]
 version`, `frontend/package.json` y `CHANGELOG.md` (ADR-33).
 
 ## Requirements
@@ -44,18 +44,17 @@ opcional, por `workflow_dispatch` (input `tag`). El workflow SHALL ejecutarse
 
 ### Requirement: Puertas de calidad antes de publicar
 
-El workflow SHALL ejecutar las mismas puertas de calidad que `ci.yml` —`cargo
-fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings` y
-`cargo test` con y sin la feature `embed-ui`, más las puertas del frontend
-(`typecheck`, `format:check`, `test`, `lint`, `build`, `check-bundle`)— como
-dependencia previa de los jobs de publicación. Si cualquier puerta falla, el
-workflow SHALL terminar sin publicar artefactos, imagen ni release.
+El workflow SHALL ejecutar, antes de los jobs de publicación, las mismas puertas
+de calidad que `ci.yml`: backend (`fmt --check`, `clippy -D warnings`, `test` con y
+sin `embed-ui`), frontend (`typecheck`, `format:check`, `test`, `lint`, `build`,
+`check-bundle`) y scripts (`shellcheck` + tests de `.github/scripts`). Si cualquier
+puerta falla, SHALL terminar sin publicar artefactos, imagen ni release.
 
 #### Scenario: Puertas en verde habilitan la publicación
 
 - GIVEN un tag de versión válido
 - WHEN se ejecuta el workflow de release
-- THEN se ejecutan las puertas de backend y frontend
+- THEN se ejecutan las puertas de backend, frontend y scripts
 - AND, si todas pasan, continúan los jobs de artefactos, imagen y release
 
 #### Scenario: Fallo de build impide publicar
@@ -64,6 +63,12 @@ workflow SHALL terminar sin publicar artefactos, imagen ni release.
 - WHEN se ejecuta el workflow de release
 - THEN el workflow falla antes de cualquier paso de publicación
 - AND no se crea ni artefacto binario, ni imagen en GHCR, ni GitHub Release
+
+#### Scenario: La puerta de scripts valida los scripts de CI
+
+- GIVEN un script de `.github/scripts/` con un aviso de `shellcheck` o un test que falla
+- WHEN se ejecuta la puerta de scripts
+- THEN la puerta falla y el workflow no publica nada
 
 ### Requirement: Artefactos binarios por arquitectura
 
@@ -103,12 +108,12 @@ autenticándose con el `GITHUB_TOKEN` y el permiso `packages: write`.
 
 ### Requirement: GitHub Release con notas generadas
 
-El workflow SHALL crear la **GitHub Release** del tag adjuntando los artefactos
-binarios y con **notas** tomadas de la sección curada de `CHANGELOG.md` para esa
-versión, mediante el script `.github/scripts/release-notes.sh`. El `CHANGELOG.md`
-es el recurso descriptivo: `main` integra por *squash-merge* y el rango entre
-tags contiene un único commit, así que `git-cliff --current` no reproduce las
-notas; `git-cliff` MAY usarse solo como *fallback* no fatal.
+El workflow SHALL crear la GitHub Release del tag adjuntando los artefactos
+binarios y con notas de la sección curada de `CHANGELOG.md` para esa versión,
+mediante `.github/scripts/release-notes.sh`. El job de release SHALL tomar el
+generador y el `CHANGELOG.md` del ref que dispara la ejecución (`github.sha`), no
+del tag, que puede ser anterior a esos ficheros. `git-cliff` MAY usarse solo como
+*fallback* no fatal.
 
 #### Scenario: Release creada con binarios y notas
 
@@ -133,19 +138,27 @@ notas; `git-cliff` MAY usarse solo como *fallback* no fatal.
 - THEN se intenta `git-cliff` como fallback
 - AND la release se crea igualmente sin fallar, con al menos una nota mínima que incluya el tag
 
+#### Scenario: El generador de notas proviene del ref de ejecución
+
+- GIVEN un `workflow_dispatch` con `tag = v0.5.0` cuyo árbol en el tag no contiene `.github/scripts/release-notes.sh`
+- WHEN se ejecuta el job de release
+- THEN el checkout del job de release usa el commit que disparó la ejecución, no el tag
+- AND las notas se generan con el `CHANGELOG.md` de ese commit
+- AND la release se crea o actualiza sin fallar
+
 ### Requirement: Coherencia de versionado (ADR-33)
 
-La versión del proyecto SHALL tener como fuente de verdad
-`[workspace.package] version` de `Cargo.toml`. El workflow SHALL verificar que el
-tag, `[workspace.package] version`, `version` de `frontend/package.json` y la
-sección más reciente con versión de `CHANGELOG.md` son coherentes; si no lo son,
-el workflow SHALL fallar antes de publicar. El *bump* de versión SHALL ser manual
-en un PR de release a `main`, y el tag SHALL tener el formato `v<version>`
-(SemVer).
+La versión del proyecto SHALL tener como fuente de verdad `[workspace.package]
+version` de `Cargo.toml`. El workflow SHALL verificar que el tag,
+`[workspace.package] version`, la `version` explícita de `backend/Cargo.toml`, la
+`version` de `frontend/package.json` y la sección más reciente de
+`CHANGELOG.md` son coherentes; si no lo son, SHALL fallar antes de publicar. El
+*bump* SHALL ser manual en un PR de release a `main` y el tag SHALL tener el
+formato `v<version>` (SemVer).
 
 #### Scenario: Tag y versión coherentes
 
-- GIVEN `Cargo.toml` con `version = "0.5.0"`, `frontend/package.json` con `"version": "0.5.0"` y el tag `v0.5.0`
+- GIVEN `Cargo.toml` con `version = "0.5.0"`, `backend/Cargo.toml` con `version = "0.5.0"`, `frontend/package.json` con `"version": "0.5.0"` y el tag `v0.5.0`
 - WHEN se ejecuta el workflow de release
 - THEN la comprobación de coherencia pasa
 - AND el workflow continúa con la publicación
@@ -155,6 +168,13 @@ en un PR de release a `main`, y el tag SHALL tener el formato `v<version>`
 - GIVEN un tag que no empieza por `v`, con formato no SemVer, o cuyo número no coincide con la `version` del workspace
 - WHEN se ejecuta el workflow de release
 - THEN el workflow falla con un mensaje que indica la incoherencia
+- AND no se publica ningún artefacto, imagen ni release
+
+#### Scenario: Versión de backend/Cargo.toml olvidada en el bump
+
+- GIVEN `[workspace.package] version` y `frontend/package.json` en `0.6.0` pero `backend/Cargo.toml` todavía en `0.5.0`
+- WHEN se ejecuta el workflow de release para el tag `v0.6.0`
+- THEN la comprobación falla señalando `backend/Cargo.toml`
 - AND no se publica ningún artefacto, imagen ni release
 
 ### Requirement: Permisos y provenance del workflow
