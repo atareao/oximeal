@@ -175,11 +175,12 @@ jobs:
           path: dist
           merge-multiple: true
       - name: Generar notas con git-cliff
+        # `git-cliff-action@v4` no admite la entrada `output`; la ruta del
+        # fichero de notas se pasa a git-cliff con `-o` en `args`.
         uses: orhun/git-cliff-action@v4
         with:
           config: cliff.toml
-          args: --current --strip header
-          output: RELEASE_NOTES.md
+          args: --current --strip header -o RELEASE_NOTES.md
       - name: Atestación de provenance
         uses: actions/attest-build-provenance@v2
         with:
