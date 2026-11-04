@@ -1,0 +1,89 @@
+# Configuracion de Dependabot: actualizaciones automaticas de dependencias.
+# GitHub solo lee este fichero de la rama POR DEFECTO (`main`), pero todas las
+# PRs apuntan a `development` (gitflow): `main` solo recibe releases y hotfixes.
+version: 2
+
+updates:
+  # Workspace Rust de la raiz (`Cargo.toml`, miembro `backend`).
+  - package-ecosystem: cargo
+    directory: "/"
+    target-branch: development
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "⬆️ deps"
+    labels:
+      - dependencies
+      - rust
+    groups:
+      cargo-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+
+  # Frontend React/TS con pnpm (`frontend/pnpm-lock.yaml`).
+  - package-ecosystem: npm
+    directory: "/frontend"
+    target-branch: development
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "⬆️ deps"
+    labels:
+      - dependencies
+      - frontend
+    groups:
+      npm-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+
+  # Acciones de los workflows (`.github/workflows/*.yml`).
+  - package-ecosystem: github-actions
+    directory: "/"
+    target-branch: development
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "⬆️ deps"
+    labels:
+      - dependencies
+      - ci
+    groups:
+      actions-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+
+  # Imagen base del contenedor (`Dockerfile` en la raiz).
+  - package-ecosystem: docker
+    directory: "/"
+    target-branch: development
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "⬆️ deps"
+    labels:
+      - dependencies
+      - docker
+    groups:
+      docker-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch

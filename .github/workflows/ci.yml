@@ -17,9 +17,9 @@ permissions:
 jobs:
   backend:
     name: Backend (Rust)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Instalar toolchain (rust-toolchain.toml)
         run: rustup show
       - name: Cache de Cargo
@@ -35,18 +35,18 @@ jobs:
 
   frontend:
     name: Frontend (React/TS)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Instalar pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 12
       - name: Instalar Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
@@ -68,12 +68,22 @@ jobs:
 
   openspec:
     name: OpenSpec (specs)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Instalar Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24
       - name: Validar especificaciones
         run: npx --yes @fission-ai/openspec@1.16.0 validate --all --strict
+
+  scripts:
+    name: Scripts (shell)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: ShellCheck
+        run: shellcheck .github/scripts/*.sh
+      - name: Tests de los scripts de CI
+        run: bash .github/scripts/test-gh-scripts.sh
