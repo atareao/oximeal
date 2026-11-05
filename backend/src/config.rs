@@ -20,7 +20,7 @@ const DEFAULT_BIND_ADDR: &str = "0.0.0.0:8080";
 const DEFAULT_SESSION_TTL_SECS: u64 = 2_592_000; // 30 días
 const DEFAULT_SESSION_REFRESH_MARGIN_SECS: u64 = 300; // 5 minutos
 const DEFAULT_SESSION_ABSOLUTE_TTL_SECS: u64 = 43_200; // 12 horas
-const DEFAULT_SESSION_COOKIE_NAME: &str = "oximeal_session";
+const DEFAULT_SESSION_COOKIE_NAME: &str = "__Host-oximeal_session";
 
 /// Secretos de sesión nunca aceptables en producción.
 const FORBIDDEN_SESSION_SECRETS: &[&str] =
@@ -39,7 +39,7 @@ const REQUIRED_OIDC_VARS: &[&str] = &[
 ];
 
 /// Configuración inmutable del proceso.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Config {
     /// URL de conexión de SQLite, p. ej. `sqlite://data/oximeal.db`.
     pub database_url: String,
@@ -61,7 +61,7 @@ pub struct Config {
 }
 
 /// Parámetros del cliente OIDC (Pocket ID).
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct OidcConfig {
     /// Issuer (`iss`) del proveedor de identidad.
     pub issuer: String,
@@ -85,7 +85,7 @@ pub struct OidcConfig {
 }
 
 /// Parámetros de la sesión server-side.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct SessionConfig {
     /// Secreto de firma de la cookie. `None` solo si OIDC está desactivado.
     pub secret: Option<String>,
@@ -100,6 +100,50 @@ pub struct SessionConfig {
     pub cookie_name: String,
     /// `Secure` en la cookie (obligatorio fuera de localhost).
     pub cookie_secure: bool,
+}
+
+/// `Debug` de [`Config`]: delega en los `Debug` de sus partes, que redactan
+/// los secretos.
+impl std::fmt::Debug for Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Config")
+            .field("database_url", &self.database_url)
+            .field("bind_addr", &self.bind_addr)
+            .field("allowed_origins", &self.allowed_origins)
+            .field("import_allowed_hosts", &self.import_allowed_hosts)
+            .field("session", &self.session)
+            .field("oidc", &self.oidc)
+            .finish()
+    }
+}
+
+/// `Debug` de [`OidcConfig`]: el `client_secret` nunca se imprime.
+impl std::fmt::Debug for OidcConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OidcConfig")
+            .field("issuer", &self.issuer)
+            .field("client_id", &self.client_id)
+            .field("client_secret", &"[REDACTED]")
+            .field("api_audience", &self.api_audience)
+            .field("redirect_uri", &self.redirect_uri)
+            .field("post_logout_redirect_uri", &self.post_logout_redirect_uri)
+            .field("allowed_groups", &self.allowed_groups)
+            .finish()
+    }
+}
+
+/// `Debug` de [`SessionConfig`]: el secreto de firma nunca se imprime.
+impl std::fmt::Debug for SessionConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SessionConfig")
+            .field("secret", &self.secret.as_ref().map(|_| "[REDACTED]"))
+            .field("ttl", &self.ttl)
+            .field("absolute_ttl", &self.absolute_ttl)
+            .field("refresh_margin", &self.refresh_margin)
+            .field("cookie_name", &self.cookie_name)
+            .field("cookie_secure", &self.cookie_secure)
+            .finish()
+    }
 }
 
 /// Configuración por defecto de sesión, usada cuando OIDC está desactivado.
@@ -140,13 +184,26 @@ impl Config {
             None
         };
 
-        // Con OIDC activo, una cookie sin `Secure` viaja también por HTTP. Es
-        // válido en localhost (desarrollo), pero se avisa de forma explícita.
+        // Con OIDC activo, una cookie sin `Secure` viaja también por HTTP.
+        // Fail-closed: solo se acepta con un opt-in explícito y ruidoso.
         if oidc.is_some() && !session.cookie_secure {
+            if !parse_bool(&env_or_default("ALLOW_INSECURE_COOKIE", "false")) {
+                bail!(
+                    "SESSION_COOKIE_SECURE=false con OIDC_ENABLED=true: la cookie de sesión \
+                     viajaría por HTTP. Usa HTTPS o define ALLOW_INSECURE_COOKIE=true para \
+                     aceptarlo de forma explícita (solo desarrollo en localhost)."
+                );
+            }
             tracing::warn!(
-                "SESSION_COOKIE_SECURE=false con OIDC_ENABLED=true: la cookie de sesión \
-                 no se restringe a HTTPS. Aceptable solo en localhost; usa HTTPS en producción."
+                "ALLOW_INSECURE_COOKIE=true: la cookie de sesión no se restringe a HTTPS. \
+                 Aceptable solo en localhost; usa HTTPS en producción."
             );
+        }
+
+        // El prefijo `__Host-` obliga a `Secure`: sin él el navegador descarta
+        // la cookie y la sesión no funcionaría.
+        if session.cookie_name.starts_with("__Host-") && !session.cookie_secure {
+            bail!("SESSION_COOKIE_NAME con prefijo __Host- exige SESSION_COOKIE_SECURE=true");
         }
 
         Ok(Self {
@@ -179,6 +236,8 @@ impl Config {
 /// Resuelve la configuración de sesión desde el entorno con sus defaults.
 fn load_session_config() -> SessionConfig {
     let ttl = parse_secs("SESSION_TTL_SECS").unwrap_or(DEFAULT_SESSION_TTL_SECS);
+    let absolute_ttl =
+        parse_secs("SESSION_ABSOLUTE_TTL_SECS").unwrap_or(DEFAULT_SESSION_ABSOLUTE_TTL_SECS);
     let refresh_margin =
         parse_secs("SESSION_REFRESH_MARGIN_SECS").unwrap_or(DEFAULT_SESSION_REFRESH_MARGIN_SECS);
     let cookie_name = env_or(DEFAULT_SESSION_COOKIE_NAME, "SESSION_COOKIE_NAME");
@@ -190,8 +249,7 @@ fn load_session_config() -> SessionConfig {
     SessionConfig {
         secret,
         ttl: Duration::from_secs(ttl),
-        // Andamiaje RED: aún no se lee `SESSION_ABSOLUTE_TTL_SECS`.
-        absolute_ttl: Duration::from_secs(DEFAULT_SESSION_ABSOLUTE_TTL_SECS),
+        absolute_ttl: Duration::from_secs(absolute_ttl),
         refresh_margin: Duration::from_secs(refresh_margin),
         cookie_name,
         cookie_secure,
@@ -495,6 +553,7 @@ mod tests {
             env::set_var("OIDC_ALLOWED_GROUPS", "oximeal-users, admins");
             env::set_var("SESSION_COOKIE_SECURE", "false");
             env::set_var("ALLOW_INSECURE_COOKIE", "true");
+            env::set_var("SESSION_COOKIE_NAME", "oximeal_session");
             env::set_var("SESSION_TTL_SECS", "60");
         }
 
@@ -549,6 +608,7 @@ mod tests {
         unsafe {
             env::set_var("SESSION_COOKIE_SECURE", "false");
             env::set_var("ALLOW_INSECURE_COOKIE", "true");
+            env::set_var("SESSION_COOKIE_NAME", "oximeal_session");
         }
 
         let lines = capture_logs(|| {
@@ -665,6 +725,7 @@ mod tests {
         unsafe {
             env::set_var("SESSION_COOKIE_SECURE", "false");
             env::set_var("ALLOW_INSECURE_COOKIE", "true");
+            env::set_var("SESSION_COOKIE_NAME", "oximeal_session");
         }
 
         let lines = capture_logs(|| {

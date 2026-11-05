@@ -9,6 +9,7 @@
 //!   y `ExpiredDeletion` sobre el pool de `sqlx`.
 
 use std::collections::HashMap;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -92,6 +93,20 @@ pub struct AuthenticatedSession {
     pub id_token: Option<String>,
     /// Instante Unix (segundos) en el que caduca el access token.
     pub access_token_expires_at: i64,
+    /// Instante Unix (segundos) en el que se inició la sesión (login).
+    ///
+    /// `0` (ausente en sesiones antiguas) se considera caducado: la vida
+    /// absoluta se mide desde el login y el refresco de tokens no la extiende.
+    #[serde(default)]
+    pub started_at: i64,
+}
+
+impl AuthenticatedSession {
+    /// Indica si la sesión superó su vida absoluta desde el inicio del login.
+    pub fn is_past_absolute_ttl(&self, absolute_ttl: Duration) -> bool {
+        let now = chrono::Utc::now().timestamp();
+        now.saturating_sub(self.started_at) >= absolute_ttl.as_secs() as i64
+    }
 }
 
 /// Almacén de sesiones de `tower-sessions` sobre la tabla `sessions` de SQLite.

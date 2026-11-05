@@ -13,7 +13,10 @@ pub mod state;
 pub mod static_files;
 
 use axum::Router;
-use axum::http::{HeaderName, HeaderValue, Method, header};
+use axum::extract::{Request, State};
+use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, header};
+use axum::middleware::{Next, from_fn_with_state};
+use axum::response::Response;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tower_sessions::{Expiry, SessionManagerLayer, cookie::SameSite};
@@ -71,7 +74,50 @@ pub fn app(state: AppState) -> Router {
         None => router,
     };
 
+    // Las respuestas a peticiones con credenciales (cookie de sesión o Bearer)
+    // pueden contener datos privados: nunca se cachean.
+    let router = router.layer(from_fn_with_state(
+        state.clone(),
+        no_store_for_authenticated,
+    ));
+
     router.with_state(state)
+}
+
+/// Indica si la petición trae credenciales (cookie de sesión o `Bearer`).
+fn has_credentials(state: &AppState, headers: &HeaderMap) -> bool {
+    if headers.contains_key(header::AUTHORIZATION) {
+        return true;
+    }
+
+    let cookie_name = state.config.session.cookie_name.as_str();
+    headers
+        .get(header::COOKIE)
+        .and_then(|value| value.to_str().ok())
+        .map(|cookies| {
+            cookies.split(';').any(|pair| {
+                pair.trim_start()
+                    .strip_prefix(cookie_name)
+                    .is_some_and(|rest| rest.starts_with('='))
+            })
+        })
+        .unwrap_or(false)
+}
+
+/// Añade `Cache-Control: no-store` a las respuestas autenticadas.
+async fn no_store_for_authenticated(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let authenticated = has_credentials(&state, request.headers());
+    let mut response = next.run(request).await;
+    if authenticated {
+        response
+            .headers_mut()
+            .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    }
+    response
 }
 
 /// Construye la capa CORS a partir de la lista de orígenes permitidos.

@@ -71,6 +71,9 @@ pub struct IdTokenClaims {
     /// Nonce anti-replay.
     #[serde(default)]
     pub nonce: Option<String>,
+    /// Cliente autorizado (`azp`). Si viene, debe coincidir con el `client_id`.
+    #[serde(default)]
+    pub azp: Option<String>,
 }
 
 /// Cliente OIDC con caché de discovery y JWKS.
@@ -232,6 +235,8 @@ impl OidcClient {
         let mut validation = Validation::new(Algorithm::RS256);
         validation.set_issuer(&[self.issuer.trim_end_matches('/')]);
         validation.set_audience(&[client_id]);
+        // Rechaza tokens que aún no son válidos (`nbf` en el futuro).
+        validation.validate_nbf = true;
 
         let data = decode::<IdTokenClaims>(token, &key, &validation).map_err(|error| {
             tracing::debug!(error = %error, "ID token rechazado");
@@ -240,6 +245,13 @@ impl OidcClient {
 
         if let Some(expected) = nonce
             && data.claims.nonce.as_deref() != Some(expected)
+        {
+            return Err(AuthError::Unauthorized);
+        }
+
+        // `azp` (authorized party) debe ser este cliente si el IdP lo emite.
+        if let Some(azp) = data.claims.azp.as_deref()
+            && azp != client_id
         {
             return Err(AuthError::Unauthorized);
         }
