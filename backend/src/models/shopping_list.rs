@@ -59,6 +59,9 @@ pub struct ShoppingItemPatch {
     /// Nueva cantidad.
     #[serde(default)]
     pub amount: Option<f64>,
+    /// Nueva categoría de pasillo.
+    #[serde(default)]
+    pub category: Option<String>,
 }
 
 /// Cuerpo (opcional) de consolidación desde el plan.

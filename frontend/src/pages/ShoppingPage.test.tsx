@@ -98,9 +98,9 @@ describe('ShoppingPage', () => {
     ];
     renderShopping();
 
-    expect(await screen.findByText('Verdulería')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /Verdulería/ })).toBeInTheDocument();
     expect(screen.getByText('🥦')).toBeInTheDocument();
-    expect(screen.getByText('Pescadería')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Pescadería/ })).toBeInTheDocument();
     expect(screen.getByText('🐟')).toBeInTheDocument();
   });
 
@@ -261,7 +261,7 @@ describe('ShoppingPage', () => {
     ];
     renderShopping();
 
-    await screen.findByText('Despensa');
+    await screen.findByRole('heading', { name: /Despensa/ });
     const headings = screen.getAllByRole('heading', { level: 2 }).slice(1);
     expect(within(headings[0]).getByText('Despensa')).toBeInTheDocument();
     expect(within(headings[1]).getByText('Verdulería')).toBeInTheDocument();

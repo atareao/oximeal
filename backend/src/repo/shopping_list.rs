@@ -188,6 +188,16 @@ pub async fn patch_item(
         .await?;
     }
 
+    if let Some(category) = patch.category.as_deref() {
+        sqlx::query(
+            "UPDATE shopping_list_items SET category = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        )
+        .bind(category)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    }
+
     get_item(pool, id).await
 }
 

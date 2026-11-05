@@ -9,6 +9,7 @@ use axum::response::IntoResponse;
 use axum::routing::{get, patch, post};
 use chrono::{Datelike, Duration, Local, NaiveDate};
 
+use crate::domain::category::CATEGORY_ORDER;
 use crate::error::{AppError, AppResult};
 use crate::models::shopping_list::{
     ConsolidateInput, RecipeToShoppingListInput, ShoppingItem, ShoppingItemInput,
@@ -106,13 +107,22 @@ pub async fn patch_item(
     Path(id): Path<String>,
     Json(patch): Json<ShoppingItemPatch>,
 ) -> AppResult<Json<ShoppingItem>> {
-    if patch.checked.is_none() && patch.amount.is_none() {
-        return Err(AppError::Validation("debe indicar checked o amount".into()));
+    if patch.checked.is_none() && patch.amount.is_none() && patch.category.is_none() {
+        return Err(AppError::Validation(
+            "debe indicar checked, amount o category".into(),
+        ));
     }
     if let Some(amount) = patch.amount
         && amount < 0.0
     {
         return Err(AppError::Validation("amount debe ser >= 0".into()));
+    }
+    if let Some(category) = patch.category.as_deref()
+        && !CATEGORY_ORDER.contains(&category)
+    {
+        return Err(AppError::Validation(format!(
+            "categoría inválida: {category}"
+        )));
     }
 
     let item = repo::shopping_list::patch_item(&state.pool, &id, &patch).await?;

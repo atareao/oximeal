@@ -143,6 +143,7 @@ export interface ShoppingItemInput {
 export interface ShoppingItemPatch {
   checked?: boolean;
   amount?: number;
+  category?: string;
 }
 
 /** Cuerpo de `POST /api/shopping-list/from-recipe` (espejo de `RecipeToShoppingListInput`). */

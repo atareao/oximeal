@@ -283,10 +283,7 @@ async fn patch_rejects_unknown_category() {
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
-    let message = body["message"]
-        .as_str()
-        .unwrap_or_default()
-        .to_lowercase();
+    let message = body["message"].as_str().unwrap_or_default().to_lowercase();
     assert!(
         message.contains("category") || message.contains("categoría"),
         "el error debe mencionar la categoría, pero fue: {message:?}"
