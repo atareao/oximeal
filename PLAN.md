@@ -954,3 +954,31 @@ atendido por SDD + TDD.
 - **Estado**: `main` y `development` con árbol idéntico (0 ficheros), #80
   cerrado, pendiente solo el backlog de endurecimiento #81 y la reconciliación
   de las PRs de Dependabot.
+
+### 20.13 — Endurecimiento del BFF de sesión y cliente OIDC (#81)
+
+Primer change del backlog de endurecimiento, aprobado por el usuario con
+alcance **BFF de sesión/OIDC** y las notas (3) y (12e) como «documentar, sin
+código».
+
+- **Change `security-hardening-auth`** (SDD): 5 requisitos tocados en
+  `auth-session` (MODIFIED callback + ADDED vida absoluta), `api-authorization`
+  (ADDED `no-store`), `oidc-config` (MODIFIED entorno + ADDED secretos fuera de
+  logs) y `deployment` (MODIFIED entorno). 18 escenarios. Archivado como
+  `2026-11-05-security-hardening-auth`.
+- **TDD**: RED con 8 tests unitarios y 5 de integración fallando por la causa
+  esperada (22 tests de auth previos en verde); GREEN mínimo; `clippy -D
+  warnings` limpio; suite con y sin `embed-ui` en verde.
+- **Implementación**: `Debug` manual con `[REDACTED]`; cookie por defecto
+  `__Host-oximeal_session` con validación del prefijo; fail-closed de
+  `SESSION_COOKIE_SECURE` con escape `ALLOW_INSECURE_COOKIE`; vida absoluta
+  `SESSION_ABSOLUTE_TTL_SECS` (12 h) comprobada antes de `ensure_fresh` en
+  middleware y `/auth/me`; `nbf`/`azp` en `verify_id_token`; capa
+  `Cache-Control: no-store` para peticiones con cookie o `Bearer`.
+- **Docs**: `deploy/README.md` (prefijo, TTL absoluto, escape y HSTS/
+  `Referrer-Policy` en el proxy), `.env.example`, `deploy/.env.example`,
+  `deploy/oidc-dev.md` y `README.md`.
+- **Puertas**: `just ci`, `just ci-ui`, `openspec validate --all --strict`
+  (27 specs) y CI del PR (4/4) en verde. PR #87 → `development` (`68cde0c`).
+- **Pendiente del backlog #81**: cifrado en reposo (11), RP-initiated logout
+  (12d) y SSRF del import (1, 2, 4, 5, 6, 7).
