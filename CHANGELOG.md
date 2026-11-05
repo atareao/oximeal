@@ -12,6 +12,19 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [No publicado]
 
+### Añadido
+
+- **Seguridad (sesión):** vida absoluta de la sesión (`SESSION_ABSOLUTE_TTL_SECS`, 12 h por defecto) medida desde el login. El refresco de tokens ya no puede extenderla indefinidamente: superado el plazo, las rutas protegidas responden `401` y `/auth/me` devuelve `authenticated: false` (#81).
+- **Seguridad (API):** las respuestas a peticiones autenticadas (cookie de sesión o `Bearer`) llevan `Cache-Control: no-store` para evitar que datos privados queden en cachés intermedias (#81).
+
+### Cambiado
+
+- **Seguridad (cookie):** el nombre por defecto de la cookie de sesión pasa a `__Host-oximeal_session`. El prefijo `__Host-` obliga a `Secure`, `Path=/` y sin `Domain`, y el arranque falla si se combina con `SESSION_COOKIE_SECURE=false`. **Impacto de despliegue:** al actualizar se invalidan las sesiones existentes y cada usuario vuelve a iniciar sesión una vez (#81).
+- **Seguridad (configuración):** con `OIDC_ENABLED=true`, `SESSION_COOKIE_SECURE=false` ya no solo avisa: impide arrancar salvo que se defina `ALLOW_INSECURE_COOKIE=true` (escape explícito para desarrollo en localhost) (#81).
+- **Seguridad (OIDC):** la validación del ID token rechaza `nbf` en el futuro y un `azp` distinto del `client_id` (#81).
+- **Seguridad (logs):** `Debug` de `Config`, `OidcConfig` y `SessionConfig` redacta `client_secret` y `SESSION_SECRET` como `[REDACTED]` (#81).
+- **Despliegue:** `deploy/README.md` documenta el prefijo `__Host-`, la vida absoluta, el escape `ALLOW_INSECURE_COOKIE` y que HSTS/`Referrer-Policy` corresponden al reverse-proxy (#81).
+
 ## [0.5.1] - 2026-11-04
 
 ### Añadido
