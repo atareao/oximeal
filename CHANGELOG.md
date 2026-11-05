@@ -14,6 +14,8 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Añadido
 
+- **Lista de la compra:** la categoría de cada ítem se puede corregir desde su fila con un selector de pasillo; `PATCH /api/shopping-list/{id}` acepta `category` y la valida contra las ocho categorías canónicas (#81).
+- **Lista de la compra:** la heurística de categorización cubre más frutas y verduras (`melocotón`, `nectarina`, `albaricoque`, `ciruela`, `mango`, `aguacate`, `higo`, `mora`, `mandarina`, `pomelo`, `coco`, `boniato`, `repollo`, `maíz`, `espárrago`…), con reglas específicas para evitar colisiones (`morcilla`/`mora`, `hígado`/`higo`, `limonada`/`limón`, `manzanilla`/`manzana`) (#81).
 - **Seguridad (sesión):** vida absoluta de la sesión (`SESSION_ABSOLUTE_TTL_SECS`, 12 h por defecto) medida desde el login. El refresco de tokens ya no puede extenderla indefinidamente: superado el plazo, las rutas protegidas responden `401` y `/auth/me` devuelve `authenticated: false` (#81).
 - **Seguridad (API):** las respuestas a peticiones autenticadas (cookie de sesión o `Bearer`) llevan `Cache-Control: no-store` para evitar que datos privados queden en cachés intermedias (#81).
 
