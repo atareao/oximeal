@@ -267,6 +267,34 @@ describe('ShoppingPage', () => {
     expect(within(headings[1]).getByText('Verdulería')).toBeInTheDocument();
   });
 
+  it('permite cambiar la categoría de un ítem desde su fila', async () => {
+    listState = [
+      { category: 'Otros', items: [item({ id: '1', name: 'Melocotón', category: 'Otros' })] },
+    ];
+    const user = userEvent.setup();
+    renderShopping();
+
+    const selector = await screen.findByRole('combobox', { name: /categoría de melocotón/i });
+    const options = within(selector).getAllByRole('option');
+    expect(options.map((option) => option.textContent)).toEqual([
+      'Verdulería',
+      'Pescadería',
+      'Carnicería',
+      'Refrigerados',
+      'Panadería',
+      'Bebidas',
+      'Despensa',
+      'Otros',
+    ]);
+    expect(selector).toHaveValue('Otros');
+
+    await user.selectOptions(selector, 'Verdulería');
+
+    await waitFor(() => {
+      expect(mockedPatch).toHaveBeenCalledWith('1', { category: 'Verdulería' });
+    });
+  });
+
   it('muestra el aviso de cambios pendientes cuando hay cola', async () => {
     configureMutationQueue(createMutationStore());
     await enqueueCreate({ name: 'Leche', amount: 1, unit: 'ud' });

@@ -232,6 +232,83 @@ mod tests {
     }
 
     #[test]
+    fn frutas_van_a_verduleria() {
+        let frutas = [
+            "melocoton",
+            "nectarina",
+            "albaricoque",
+            "ciruela",
+            "pina",
+            "mango",
+            "aguacate",
+            "granada",
+            "higo",
+            "frambuesa",
+            "arandano",
+            "mora",
+            "mandarina",
+            "pomelo",
+            "coco",
+            "datil",
+            "caqui",
+            "paraguayo",
+        ];
+        for fruta in frutas {
+            assert_eq!(categorize(fruta), "Verdulería", "fruta: {fruta}");
+        }
+    }
+
+    #[test]
+    fn verduras_van_a_verduleria() {
+        let verduras = [
+            "espinaca",
+            "acelga",
+            "lechuga",
+            "cebolla",
+            "ajo",
+            "puerro",
+            "zanahoria",
+            "calabacin",
+            "calabaza",
+            "berenjena",
+            "pimiento",
+            "pepino",
+            "patata",
+            "boniato",
+            "judia",
+            "guisante",
+            "alcachofa",
+            "brocoli",
+            "coliflor",
+            "repollo",
+            "apio",
+            "remolacha",
+            "rabano",
+            "seta",
+            "champinon",
+            "maiz",
+            "esparrago",
+        ];
+        for verdura in verduras {
+            assert_eq!(categorize(verdura), "Verdulería", "verdura: {verdura}");
+        }
+    }
+
+    #[test]
+    fn legumbres_secas_van_a_despensa() {
+        assert_eq!(categorize("garbanzo"), "Despensa");
+        assert_eq!(categorize("lenteja"), "Despensa");
+    }
+
+    #[test]
+    fn colisiones_ganan_la_regla_especifica() {
+        assert_eq!(categorize("morcilla"), "Carnicería");
+        assert_eq!(categorize("higado"), "Carnicería");
+        assert_eq!(categorize("limonada"), "Bebidas");
+        assert_eq!(categorize("manzanilla"), "Despensa");
+    }
+
+    #[test]
     fn orden_de_categorias_es_unico_y_termina_en_otros() {
         assert_eq!(CATEGORY_ORDER.len(), 8);
         assert_eq!(CATEGORY_ORDER.last(), Some(&"Otros"));
