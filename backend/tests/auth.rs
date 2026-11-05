@@ -6,8 +6,8 @@ mod common;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use common::idp::{
-    ACCESS_GROUPS_REFRESH, ACCESS_NO_GROUPS_REFRESH, API_AUDIENCE, INVALID_REFRESH, MockIdp,
-    NO_GROUPS_REFRESH, NO_ID_TOKEN_REFRESH, USER_GROUPS, access_token,
+    ACCESS_GROUPS_REFRESH, ACCESS_NO_GROUPS_REFRESH, API_AUDIENCE, INVALID_REFRESH, IdTokenVariant,
+    MockIdp, NO_GROUPS_REFRESH, NO_ID_TOKEN_REFRESH, USER_GROUPS, access_token,
 };
 use common::{send, test_state_oidc};
 use oximeal_backend::state::AppState;
@@ -143,6 +143,49 @@ async fn expire_session(state: &AppState, refresh_token: &str) {
         .execute(&state.pool)
         .await
         .expect("actualizar sesión");
+}
+
+/// Fija `started_at` de la sesión autenticada hace `secs` segundos.
+///
+/// Simula el paso del tiempo sin esperar: la vida absoluta de la sesión se
+/// mide desde el inicio del login, no desde la última actividad.
+async fn age_session(state: &AppState, secs: i64) {
+    let (id, data): (String, Vec<u8>) = sqlx::query_as("SELECT id, data FROM sessions LIMIT 1")
+        .fetch_one(&state.pool)
+        .await
+        .expect("hay una sesión guardada");
+
+    let mut value: serde_json::Value = serde_json::from_slice(&data).expect("data es JSON");
+    let auth = value
+        .get_mut("state")
+        .and_then(|state| state.get_mut("auth"))
+        .expect("la sesión tiene auth");
+    auth["started_at"] = json!(chrono::Utc::now().timestamp() - secs);
+
+    let new_data = serde_json::to_vec(&value).expect("serializar sesión");
+    sqlx::query("UPDATE sessions SET data = ?1 WHERE id = ?2")
+        .bind(new_data)
+        .bind(id)
+        .execute(&state.pool)
+        .await
+        .expect("actualizar sesión");
+}
+
+/// Completa login+callback con el mock dado y devuelve el estado del callback.
+async fn callback_status(state: &AppState) -> (StatusCode, serde_json::Value) {
+    let (login_cookie, state_param, nonce, _) = start_login(state).await;
+    let uri = format!(
+        "/auth/callback?code={nonce}&state={}",
+        urlencode(&state_param)
+    );
+    let request = Request::builder()
+        .method("GET")
+        .uri(uri)
+        .header("cookie", login_cookie)
+        .body(Body::empty())
+        .expect("request callback");
+    let (status, _headers, body) = send(state.clone(), request).await;
+    (status, body)
 }
 
 #[tokio::test]
@@ -630,4 +673,108 @@ async fn logout_with_authorization_header_still_requires_csrf() {
     let (status, body) = get_me(&state, Some(&cookie)).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["authenticated"], true);
+}
+
+#[tokio::test]
+async fn callback_rejects_id_token_with_future_nbf() {
+    // `nbf` en el futuro: el ID token todavía no es válido.
+    let idp = MockIdp::start_with(IdTokenVariant::NbfInFuture).await;
+    let state = test_state_oidc(&idp.issuer, USER_GROUPS).await;
+
+    let (status, body) = callback_status(&state).await;
+
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "body: {body}");
+}
+
+#[tokio::test]
+async fn callback_rejects_id_token_with_foreign_azp() {
+    // `azp` distinto del `client_id`: el token se emitió para otro cliente.
+    let idp = MockIdp::start_with(IdTokenVariant::ForeignAzp).await;
+    let state = test_state_oidc(&idp.issuer, USER_GROUPS).await;
+
+    let (status, body) = callback_status(&state).await;
+
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "body: {body}");
+}
+
+#[tokio::test]
+async fn protected_route_rejects_session_past_absolute_ttl() {
+    let idp = MockIdp::start().await;
+    let state = test_state_oidc(&idp.issuer, USER_GROUPS).await;
+
+    let cookie = complete_login(&state).await;
+    // 13 h > 12 h de vida absoluta por defecto. El refresh token sigue siendo
+    // válido: la renovación no debe resucitar la sesión.
+    age_session(&state, 13 * 3600).await;
+
+    let request = Request::builder()
+        .method("GET")
+        .uri("/api/recipes")
+        .header("cookie", cookie)
+        .body(Body::empty())
+        .unwrap();
+    let (status, _headers, body) = send(state, request).await;
+
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "body: {body}");
+}
+
+#[tokio::test]
+async fn me_reports_anonymous_past_absolute_ttl() {
+    let idp = MockIdp::start().await;
+    let state = test_state_oidc(&idp.issuer, USER_GROUPS).await;
+
+    let cookie = complete_login(&state).await;
+    age_session(&state, 13 * 3600).await;
+
+    let (status, body) = get_me(&state, Some(&cookie)).await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert_eq!(
+        body["authenticated"], false,
+        "una sesión que supera la vida absoluta debe ser anónima: {body}"
+    );
+}
+
+#[tokio::test]
+async fn authenticated_responses_are_not_cacheable() {
+    let idp = MockIdp::start().await;
+    let state = test_state_oidc(&idp.issuer, USER_GROUPS).await;
+
+    // Vía cookie: `/auth/me` autenticado.
+    let cookie = complete_login(&state).await;
+    let request = Request::builder()
+        .method("GET")
+        .uri("/auth/me")
+        .header("cookie", cookie)
+        .body(Body::empty())
+        .unwrap();
+    let (status, headers, _) = send(state.clone(), request).await;
+    assert_eq!(status, StatusCode::OK);
+    let cache_control = headers
+        .get("cache-control")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    assert!(
+        cache_control.contains("no-store"),
+        "las respuestas autenticadas por cookie no deben cachearse: {cache_control:?}"
+    );
+
+    // Vía Bearer: ruta protegida del API.
+    let token = access_token(&idp.issuer, "read:recipes", API_AUDIENCE);
+    let request = Request::builder()
+        .method("GET")
+        .uri("/api/recipes")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let (status, headers, _) = send(state, request).await;
+    assert_eq!(status, StatusCode::OK);
+    let cache_control = headers
+        .get("cache-control")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    assert!(
+        cache_control.contains("no-store"),
+        "las respuestas autenticadas por Bearer no deben cachearse: {cache_control:?}"
+    );
 }

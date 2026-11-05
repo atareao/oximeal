@@ -116,6 +116,18 @@ async fn authorize_session(
         return AuthError::Unauthorized.into_response();
     }
 
+    // Vida absoluta: se mide desde el login y el refresco no la extiende. Se
+    // comprueba antes de `ensure_fresh` para que la renovación no la resucite.
+    let absolute_ttl = auth.session_config().absolute_ttl;
+    if let Some(authenticated) = session_state.auth.as_ref()
+        && authenticated.is_past_absolute_ttl(absolute_ttl)
+    {
+        if session.flush().await.is_err() {
+            tracing::warn!("no se pudo destruir la sesión caducada");
+        }
+        return AuthError::Unauthorized.into_response();
+    }
+
     // CSRF en mutaciones autenticadas por cookie. Un fallo NO destruye la sesión.
     if is_mutating(request.method()) {
         let expected = session_state

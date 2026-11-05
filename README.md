@@ -133,10 +133,14 @@ valor inseguro/por defecto. Arranca igualmente aunque el IdP esté caído (la
 sesión caducará, pero el proceso no muere).
 
 Variables opcionales con sus valores por defecto: `SESSION_TTL_SECS`
-(`2592000` = 30 días), `SESSION_REFRESH_MARGIN_SECS` (`300` = 5 min),
-`SESSION_COOKIE_NAME` (`oximeal_session`), `SESSION_COOKIE_SECURE` (`true`),
-`ALLOWED_ORIGINS` (CSV; vacío ⇒ ningún origen CORS permitido) e
-`IMPORT_ALLOWED_HOSTS` (CSV; vacío ⇒ estricto). Los hosts de
+(`2592000` = 30 días), `SESSION_ABSOLUTE_TTL_SECS` (`43200` = 12 h de vida
+absoluta desde el login, que el refresco no extiende),
+`SESSION_REFRESH_MARGIN_SECS` (`300` = 5 min), `SESSION_COOKIE_NAME`
+(`__Host-oximeal_session`), `SESSION_COOKIE_SECURE` (`true`),
+`ALLOW_INSECURE_COOKIE` (`false`; con OIDC activo, `SESSION_COOKIE_SECURE=false`
+impide arrancar salvo que se active este escape), `ALLOWED_ORIGINS` (CSV; vacío
+⇒ ningún origen CORS permitido) e `IMPORT_ALLOWED_HOSTS` (CSV; vacío ⇒
+estricto). Los hosts de
 `IMPORT_ALLOWED_HOSTS` omiten **solo** la guarda de rango privado al importar
 recetas desde URL (pensado para pruebas locales; nunca añadas hosts internos en
 producción).
