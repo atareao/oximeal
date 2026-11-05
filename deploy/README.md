@@ -48,13 +48,21 @@ deploy/.env). No requieren recompilar la imagen.
 | Servidor | `BIND_ADDR`, `RUST_LOG` |
 | OIDC | `OIDC_ENABLED`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_API_AUDIENCE`, `OIDC_REDIRECT_URI`, `OIDC_POST_LOGOUT_REDIRECT_URI`, `OIDC_ALLOWED_GROUPS` |
 | CORS / import | `ALLOWED_ORIGINS`, `IMPORT_ALLOWED_HOSTS` |
-| Sesion | `SESSION_SECRET`, `SESSION_TTL_SECS`, `SESSION_REFRESH_MARGIN_SECS`, `SESSION_COOKIE_NAME`, `SESSION_COOKIE_SECURE` |
+| Sesion | `SESSION_SECRET`, `SESSION_TTL_SECS`, `SESSION_ABSOLUTE_TTL_SECS`, `SESSION_REFRESH_MARGIN_SECS`, `SESSION_COOKIE_NAME`, `SESSION_COOKIE_SECURE`, `ALLOW_INSECURE_COOKIE` |
 
 - **Modo abierto** (`OIDC_ENABLED=false`): solo desarrollo; la API queda sin
   autenticacion y se advierte en los logs.
 - **Modo OIDC** (`OIDC_ENABLED=true`): con la configuracion obligatoria arriba.
-  El contenedor **falla al arrancar** si falta alguna variable o si
-  `SESSION_SECRET` es inseguro.
+  El contenedor **falla al arrancar** si falta alguna variable, si
+  `SESSION_SECRET` es inseguro o si `SESSION_COOKIE_SECURE=false` sin
+  `ALLOW_INSECURE_COOKIE=true` (fail-closed).
+- **Cookie de sesion**: por defecto `__Host-oximeal_session`. El prefijo
+  `__Host-` exige `Secure`, `Path=/` y ausencia de `Domain`; el navegador
+  descarta la cookie si no se cumple. Cambiar el nombre invalida las sesiones
+  vivas (todos vuelven a iniciar sesion una vez).
+- **Vida absoluta**: `SESSION_ABSOLUTE_TTL_SECS` (def. 12 h) limita la sesion
+  desde el login. El refresco de tokens **no** la extiende; pasado ese tiempo
+  hay que reautenticarse.
 
 ## 4. Volumen y permisos
 
@@ -122,6 +130,23 @@ oximeal.example.com {
     reverse_proxy 127.0.0.1:8080
 }
 ```
+
+El proxy es el sitio correcto para las cabeceras de seguridad del navegador:
+OxiMeal no las emite. Añade al menos `Strict-Transport-Security` (HSTS) y
+`Referrer-Policy: no-referrer` (o `strict-origin-when-cross-origin`). Con Caddy:
+
+```
+oximeal.example.com {
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        Referrer-Policy "no-referrer"
+    }
+    reverse_proxy 127.0.0.1:8080
+}
+```
+
+Las respuestas autenticadas (cookie o `Bearer`) ya llevan
+`Cache-Control: no-store` desde la aplicacion.
 
 ## 8. Verificacion automatizada
 
