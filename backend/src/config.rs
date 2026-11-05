@@ -19,6 +19,7 @@ const DEFAULT_BIND_ADDR: &str = "0.0.0.0:8080";
 
 const DEFAULT_SESSION_TTL_SECS: u64 = 2_592_000; // 30 días
 const DEFAULT_SESSION_REFRESH_MARGIN_SECS: u64 = 300; // 5 minutos
+const DEFAULT_SESSION_ABSOLUTE_TTL_SECS: u64 = 43_200; // 12 horas
 const DEFAULT_SESSION_COOKIE_NAME: &str = "oximeal_session";
 
 /// Secretos de sesión nunca aceptables en producción.
@@ -90,6 +91,9 @@ pub struct SessionConfig {
     pub secret: Option<String>,
     /// Vida útil de la sesión.
     pub ttl: Duration,
+    /// Vida absoluta de la sesión desde el inicio del login. El refresco de
+    /// tokens **no** la extiende.
+    pub absolute_ttl: Duration,
     /// Margen antes de la caducidad en el que se refresca la sesión.
     pub refresh_margin: Duration,
     /// Nombre de la cookie de sesión.
@@ -104,6 +108,7 @@ impl Default for SessionConfig {
         Self {
             secret: None,
             ttl: Duration::from_secs(DEFAULT_SESSION_TTL_SECS),
+            absolute_ttl: Duration::from_secs(DEFAULT_SESSION_ABSOLUTE_TTL_SECS),
             refresh_margin: Duration::from_secs(DEFAULT_SESSION_REFRESH_MARGIN_SECS),
             cookie_name: DEFAULT_SESSION_COOKIE_NAME.to_string(),
             cookie_secure: true,
@@ -185,6 +190,8 @@ fn load_session_config() -> SessionConfig {
     SessionConfig {
         secret,
         ttl: Duration::from_secs(ttl),
+        // Andamiaje RED: aún no se lee `SESSION_ABSOLUTE_TTL_SECS`.
+        absolute_ttl: Duration::from_secs(DEFAULT_SESSION_ABSOLUTE_TTL_SECS),
         refresh_margin: Duration::from_secs(refresh_margin),
         cookie_name,
         cookie_secure,
@@ -298,6 +305,8 @@ mod tests {
         "SESSION_REFRESH_MARGIN_SECS",
         "SESSION_COOKIE_NAME",
         "SESSION_COOKIE_SECURE",
+        "ALLOW_INSECURE_COOKIE",
+        "SESSION_ABSOLUTE_TTL_SECS",
     ];
 
     /// Configuración OIDC completa y válida reutilizable por los tests.
@@ -466,8 +475,9 @@ mod tests {
 
         assert!(config.oidc.is_none());
         assert!(config.allowed_origins.is_empty());
-        assert_eq!(config.session.cookie_name, "oximeal_session");
+        assert_eq!(config.session.cookie_name, "__Host-oximeal_session");
         assert_eq!(config.session.ttl, Duration::from_secs(2592000));
+        assert_eq!(config.session.absolute_ttl, Duration::from_secs(43200));
         assert_eq!(config.session.refresh_margin, Duration::from_secs(300));
         assert!(config.session.cookie_secure);
         assert!(config.session.secret.is_none());
@@ -484,6 +494,7 @@ mod tests {
             );
             env::set_var("OIDC_ALLOWED_GROUPS", "oximeal-users, admins");
             env::set_var("SESSION_COOKIE_SECURE", "false");
+            env::set_var("ALLOW_INSECURE_COOKIE", "true");
             env::set_var("SESSION_TTL_SECS", "60");
         }
 
@@ -531,19 +542,23 @@ mod tests {
 
     #[test]
     fn oidc_enabled_insecure_cookie_emits_warning() {
-        // M7: cookie sin `Secure` con OIDC activo avisa (pero no bloquea).
+        // M7: cookie sin `Secure` con OIDC activo solo se acepta con opt-in
+        // explícito (`ALLOW_INSECURE_COOKIE=true`) y avisa de forma visible.
         let _scope = EnvScope::new(REQUIRED_OIDC);
         // SAFETY: acceso serializado por `ENV_LOCK`.
-        unsafe { env::set_var("SESSION_COOKIE_SECURE", "false") };
+        unsafe {
+            env::set_var("SESSION_COOKIE_SECURE", "false");
+            env::set_var("ALLOW_INSECURE_COOKIE", "true");
+        }
 
         let lines = capture_logs(|| {
-            Config::from_env().expect("config OIDC válida");
+            Config::from_env().expect("config OIDC válida con opt-in");
         });
 
         assert!(
             lines
                 .iter()
-                .any(|line| line.contains("SESSION_COOKIE_SECURE")),
+                .any(|line| line.contains("ALLOW_INSECURE_COOKIE")),
             "se esperaba el warning de cookie insegura; capturado: {lines:?}"
         );
     }
@@ -561,6 +576,120 @@ mod tests {
         unsafe { env::set_var("IMPORT_ALLOWED_HOSTS", "example.com, 10.0.0.1") };
         let config = Config::from_env().expect("config válida");
         assert_eq!(config.import_allowed_hosts, vec!["example.com", "10.0.0.1"]);
+    }
+
+    #[test]
+    fn debug_redacts_secrets() {
+        // Los secretos nunca deben aparecer en un `Debug` (logs, panics, etc.).
+        let config = Config {
+            database_url: "sqlite::memory:".to_string(),
+            bind_addr: "127.0.0.1:0".to_string(),
+            allowed_origins: Vec::new(),
+            import_allowed_hosts: Vec::new(),
+            session: SessionConfig {
+                secret: Some("super-secret-session-value".to_string()),
+                ..SessionConfig::default()
+            },
+            oidc: Some(OidcConfig {
+                issuer: "https://idp.example/".to_string(),
+                client_id: "oximeal-spa".to_string(),
+                client_secret: "super-secret-client-value".to_string(),
+                api_audience: "https://oximeal.local/api".to_string(),
+                redirect_uri: "https://app.example/auth/callback".to_string(),
+                post_logout_redirect_uri: "https://app.example/".to_string(),
+                allowed_groups: vec!["oximeal-users".to_string()],
+            }),
+        };
+
+        let rendered = format!("{config:?}");
+        assert!(
+            !rendered.contains("super-secret-session-value"),
+            "el secreto de sesión no debe aparecer: {rendered}"
+        );
+        assert!(
+            !rendered.contains("super-secret-client-value"),
+            "el client_secret no debe aparecer: {rendered}"
+        );
+        assert!(
+            rendered.contains("[REDACTED]"),
+            "los secretos deben redactarse de forma explícita: {rendered}"
+        );
+        // Los campos no secretos siguen visibles para poder depurar.
+        assert!(rendered.contains("oximeal-spa"), "{rendered}");
+    }
+
+    #[test]
+    fn default_cookie_name_uses_host_prefix() {
+        assert_eq!(
+            SessionConfig::default().cookie_name,
+            "__Host-oximeal_session"
+        );
+
+        let _scope = EnvScope::new(&[("OIDC_ENABLED", "false")]);
+        let config = Config::from_env().expect("config abierta");
+        assert_eq!(config.session.cookie_name, "__Host-oximeal_session");
+    }
+
+    #[test]
+    fn host_prefix_cookie_requires_secure() {
+        // El prefijo `__Host-` obliga a `Secure`; sin él la cookie no se emitiría.
+        let _scope = EnvScope::new(&[("OIDC_ENABLED", "false")]);
+        // SAFETY: acceso serializado por `ENV_LOCK`.
+        unsafe {
+            env::set_var("SESSION_COOKIE_NAME", "__Host-custom");
+            env::set_var("SESSION_COOKIE_SECURE", "false");
+        }
+
+        let error = Config::from_env().expect_err("__Host- sin Secure debe fallar");
+        assert!(error.to_string().contains("__Host-"), "{error}");
+    }
+
+    #[test]
+    fn insecure_cookie_with_oidc_fails_closed() {
+        // Fail-closed: con OIDC activo, una cookie sin `Secure` no arranca.
+        let _scope = EnvScope::new(REQUIRED_OIDC);
+        // SAFETY: acceso serializado por `ENV_LOCK`.
+        unsafe { env::set_var("SESSION_COOKIE_SECURE", "false") };
+
+        let error = Config::from_env().expect_err("cookie insegura con OIDC debe fallar");
+        assert!(
+            error.to_string().contains("ALLOW_INSECURE_COOKIE"),
+            "el error debe indicar el escape explícito: {error}"
+        );
+    }
+
+    #[test]
+    fn insecure_cookie_allowed_with_explicit_opt_in() {
+        let _scope = EnvScope::new(REQUIRED_OIDC);
+        // SAFETY: acceso serializado por `ENV_LOCK`.
+        unsafe {
+            env::set_var("SESSION_COOKIE_SECURE", "false");
+            env::set_var("ALLOW_INSECURE_COOKIE", "true");
+        }
+
+        let lines = capture_logs(|| {
+            let config = Config::from_env().expect("el opt-in explícito permite HTTP");
+            assert!(!config.session.cookie_secure);
+        });
+
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("ALLOW_INSECURE_COOKIE")),
+            "el opt-in debe dejar rastro en los logs: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn absolute_ttl_defaults_to_twelve_hours() {
+        let _scope = EnvScope::new(&[("OIDC_ENABLED", "false")]);
+        let config = Config::from_env().expect("config abierta");
+        assert_eq!(config.session.absolute_ttl, Duration::from_secs(43_200));
+
+        // SAFETY: acceso serializado por `ENV_LOCK`.
+        unsafe { env::set_var("SESSION_ABSOLUTE_TTL_SECS", "3600") };
+        let config = Config::from_env().expect("config abierta");
+        assert_eq!(config.session.absolute_ttl, Duration::from_secs(3_600));
     }
 
     #[test]

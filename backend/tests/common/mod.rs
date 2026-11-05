@@ -78,6 +78,7 @@ pub fn oidc_state(
         session: SessionConfig {
             secret: Some("integration-tests-session-secret-value".to_string()),
             ttl: Duration::from_secs(259_200),
+            absolute_ttl: Duration::from_secs(43_200),
             refresh_margin: Duration::from_secs(300),
             cookie_name: "oximeal_session".to_string(),
             cookie_secure: false,
