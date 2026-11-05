@@ -185,8 +185,10 @@ periodo de arranque y reintentos definidos. El contenedor SHALL considerarse
 
 La imagen SHALL ser configurable por variables de entorno sin recompilación,
 respetando `.env.example`. SHALL documentarse el **modo abierto**
-(`OIDC_ENABLED=false`, solo desarrollo) y el **modo OIDC** (`OIDC_ENABLED=true`
-con configuración obligatoria).
+(`OIDC_ENABLED=false`, solo desarrollo), el **modo OIDC**, el endurecimiento
+de sesión (`__Host-`, `SESSION_COOKIE_SECURE`, `SESSION_ABSOLUTE_TTL_SECS`,
+`ALLOW_INSECURE_COOKIE`) y que HSTS y `Referrer-Policy` los aporta el *reverse
+proxy* que termina el TLS.
 
 #### Scenario: Variables de entorno reconocidas
 
@@ -208,6 +210,13 @@ con configuración obligatoria).
 - WHEN la aplicación arranca
 - THEN el proceso falla al arrancar con un error explícito
 - AND el healthcheck permanece en fallo (el contenedor no se marca `healthy`)
+
+#### Scenario: Terminación TLS en el proxy
+
+- GIVEN el despliegue recomendado con el TLS terminado en el *reverse proxy*
+- WHEN se documenta en `deploy/README.md`
+- THEN se indica que la cookie viaja con `Secure` y prefijo `__Host-`
+- AND se documenta que HSTS y `Referrer-Policy` se configuran en el proxy, no en la aplicación
 
 ### Requirement: Orquestación con compose
 
