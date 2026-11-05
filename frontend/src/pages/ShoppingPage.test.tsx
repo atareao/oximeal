@@ -98,9 +98,9 @@ describe('ShoppingPage', () => {
     ];
     renderShopping();
 
-    expect(await screen.findByText('Verdulería')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /Verdulería/ })).toBeInTheDocument();
     expect(screen.getByText('🥦')).toBeInTheDocument();
-    expect(screen.getByText('Pescadería')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Pescadería/ })).toBeInTheDocument();
     expect(screen.getByText('🐟')).toBeInTheDocument();
   });
 
@@ -261,10 +261,38 @@ describe('ShoppingPage', () => {
     ];
     renderShopping();
 
-    await screen.findByText('Despensa');
+    await screen.findByRole('heading', { name: /Despensa/ });
     const headings = screen.getAllByRole('heading', { level: 2 }).slice(1);
     expect(within(headings[0]).getByText('Despensa')).toBeInTheDocument();
     expect(within(headings[1]).getByText('Verdulería')).toBeInTheDocument();
+  });
+
+  it('permite cambiar la categoría de un ítem desde su fila', async () => {
+    listState = [
+      { category: 'Otros', items: [item({ id: '1', name: 'Melocotón', category: 'Otros' })] },
+    ];
+    const user = userEvent.setup();
+    renderShopping();
+
+    const selector = await screen.findByRole('combobox', { name: /categoría de melocotón/i });
+    const options = within(selector).getAllByRole('option');
+    expect(options.map((option) => option.textContent)).toEqual([
+      'Verdulería',
+      'Pescadería',
+      'Carnicería',
+      'Refrigerados',
+      'Panadería',
+      'Bebidas',
+      'Despensa',
+      'Otros',
+    ]);
+    expect(selector).toHaveValue('Otros');
+
+    await user.selectOptions(selector, 'Verdulería');
+
+    await waitFor(() => {
+      expect(mockedPatch).toHaveBeenCalledWith('1', { category: 'Verdulería' });
+    });
   });
 
   it('muestra el aviso de cambios pendientes cuando hay cola', async () => {

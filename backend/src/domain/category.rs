@@ -33,6 +33,11 @@ static RULES: &[(&str, &str)] = &[
     // Excepciones específicas antes que su palabra base.
     ("tomate frito", DESPENSA),
     ("harina de trigo", PANADERIA),
+    ("limonada", BEBIDAS),
+    ("naranjada", BEBIDAS),
+    ("manzanilla", DESPENSA),
+    ("morcilla", CARNICERIA),
+    ("higado", CARNICERIA),
     // Verdulería / Frutería
     ("tomate", VERDULERIA),
     ("cebolla", VERDULERIA),
@@ -72,6 +77,28 @@ static RULES: &[(&str, &str)] = &[
     ("kiwi", VERDULERIA),
     ("fresa", VERDULERIA),
     ("cereza", VERDULERIA),
+    ("melocoton", VERDULERIA),
+    ("nectarina", VERDULERIA),
+    ("albaricoque", VERDULERIA),
+    ("ciruela", VERDULERIA),
+    ("pina", VERDULERIA),
+    ("mango", VERDULERIA),
+    ("granada", VERDULERIA),
+    ("higo", VERDULERIA),
+    ("frambuesa", VERDULERIA),
+    ("arandano", VERDULERIA),
+    ("mora", VERDULERIA),
+    ("mandarina", VERDULERIA),
+    ("pomelo", VERDULERIA),
+    ("coco", VERDULERIA),
+    ("datil", VERDULERIA),
+    ("caqui", VERDULERIA),
+    ("paraguayo", VERDULERIA),
+    ("boniato", VERDULERIA),
+    ("repollo", VERDULERIA),
+    ("rabano", VERDULERIA),
+    ("maiz", VERDULERIA),
+    ("esparrago", VERDULERIA),
     // Pescadería
     ("lubina", PESCADERIA),
     ("merluza", PESCADERIA),
@@ -229,6 +256,83 @@ mod tests {
     #[test]
     fn excepcion_tomate_frito() {
         assert_eq!(categorize("tomate frito"), "Despensa");
+    }
+
+    #[test]
+    fn frutas_van_a_verduleria() {
+        let frutas = [
+            "melocoton",
+            "nectarina",
+            "albaricoque",
+            "ciruela",
+            "pina",
+            "mango",
+            "aguacate",
+            "granada",
+            "higo",
+            "frambuesa",
+            "arandano",
+            "mora",
+            "mandarina",
+            "pomelo",
+            "coco",
+            "datil",
+            "caqui",
+            "paraguayo",
+        ];
+        for fruta in frutas {
+            assert_eq!(categorize(fruta), "Verdulería", "fruta: {fruta}");
+        }
+    }
+
+    #[test]
+    fn verduras_van_a_verduleria() {
+        let verduras = [
+            "espinaca",
+            "acelga",
+            "lechuga",
+            "cebolla",
+            "ajo",
+            "puerro",
+            "zanahoria",
+            "calabacin",
+            "calabaza",
+            "berenjena",
+            "pimiento",
+            "pepino",
+            "patata",
+            "boniato",
+            "judia",
+            "guisante",
+            "alcachofa",
+            "brocoli",
+            "coliflor",
+            "repollo",
+            "apio",
+            "remolacha",
+            "rabano",
+            "seta",
+            "champinon",
+            "maiz",
+            "esparrago",
+        ];
+        for verdura in verduras {
+            assert_eq!(categorize(verdura), "Verdulería", "verdura: {verdura}");
+        }
+    }
+
+    #[test]
+    fn legumbres_secas_van_a_despensa() {
+        assert_eq!(categorize("garbanzo"), "Despensa");
+        assert_eq!(categorize("lenteja"), "Despensa");
+    }
+
+    #[test]
+    fn colisiones_ganan_la_regla_especifica() {
+        assert_eq!(categorize("morcilla"), "Carnicería");
+        assert_eq!(categorize("higado"), "Carnicería");
+        assert_eq!(categorize("limonada"), "Bebidas");
+        assert_eq!(categorize("manzanilla"), "Despensa");
     }
 
     #[test]

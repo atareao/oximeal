@@ -233,6 +233,94 @@ async fn patch_with_empty_body_returns_400() {
 }
 
 #[tokio::test]
+async fn patch_updates_category() {
+    let state = common::test_state().await;
+
+    let (_, created) = common::request(
+        state.clone(),
+        "POST",
+        "/api/shopping-list",
+        Some(json!({"name": "Leche", "amount": 1.0, "unit": "l"})),
+    )
+    .await;
+    let id = created["id"].as_str().expect("id de ítem");
+
+    let (status, body) = common::request(
+        state.clone(),
+        "PATCH",
+        &format!("/api/shopping-list/{id}"),
+        Some(json!({"category": "Verdulería"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["category"], "Verdulería");
+
+    let (status, groups) = common::request(state, "GET", "/api/shopping-list", None).await;
+    assert_eq!(status, StatusCode::OK);
+    let item = find_item(&groups, "Leche").expect("leche en la lista");
+    assert_eq!(item["category"], "Verdulería");
+}
+
+#[tokio::test]
+async fn patch_rejects_unknown_category() {
+    let state = common::test_state().await;
+
+    let (_, created) = common::request(
+        state.clone(),
+        "POST",
+        "/api/shopping-list",
+        Some(json!({"name": "Leche", "amount": 1.0, "unit": "l"})),
+    )
+    .await;
+    let id = created["id"].as_str().expect("id de ítem");
+    let original = created["category"].as_str().expect("categoría inicial");
+
+    let (status, body) = common::request(
+        state.clone(),
+        "PATCH",
+        &format!("/api/shopping-list/{id}"),
+        Some(json!({"category": "Frutas"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let message = body["message"].as_str().unwrap_or_default().to_lowercase();
+    assert!(
+        message.contains("category") || message.contains("categoría"),
+        "el error debe mencionar la categoría, pero fue: {message:?}"
+    );
+
+    let (status, groups) = common::request(state, "GET", "/api/shopping-list", None).await;
+    assert_eq!(status, StatusCode::OK);
+    let item = find_item(&groups, "Leche").expect("leche en la lista");
+    assert_eq!(item["category"], original);
+}
+
+#[tokio::test]
+async fn patch_category_and_checked_together() {
+    let state = common::test_state().await;
+
+    let (_, created) = common::request(
+        state.clone(),
+        "POST",
+        "/api/shopping-list",
+        Some(json!({"name": "Leche", "amount": 1.0, "unit": "l"})),
+    )
+    .await;
+    let id = created["id"].as_str().expect("id de ítem");
+
+    let (status, body) = common::request(
+        state,
+        "PATCH",
+        &format!("/api/shopping-list/{id}"),
+        Some(json!({"category": "Verdulería", "checked": true})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["category"], "Verdulería");
+    assert_eq!(body["checked"], true);
+}
+
+#[tokio::test]
 async fn consolidate_sums_repeated_ingredients_and_keeps_manual_items() {
     let state = common::test_state().await;
 
