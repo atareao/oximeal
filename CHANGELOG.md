@@ -37,6 +37,10 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 - **Interfaz (tema oscuro):** la paleta oscura pasa de la escala azulada *slate* a una escala neutra de negros y grises (`#0a0a0a`, `#141414`, `#1f1f1f`, `#e5e5e5`, `#a3a3a3`, `#3f3f3f`) con contraste AA (≥ 4.5:1) entre texto y fondos; el acento verde se mantiene y el `theme-color`/manifest se alinean con el modo por defecto (`#0a0a0a`).
 - **Recetas (datos):** la migración `0009` añade `recipe_tags.source`, la tabla `recipe_tag_suppressions` y el catálogo automático; un backfill idempotente etiqueta las recetas existentes al arrancar (#55).
 
+### Corregido
+
+- **Interfaz (barra superior):** `Configuración` y `Salir` ya no se salen de la pantalla en móviles estrechos. El logo pasa a forma compacta por debajo de 480px, el grupo de acciones deja de comprimirse y se reducen huecos y padding; el ancho mínimo de la barra baja de ~440px a ~300px y todos los controles conservan 48px de objetivo táctil.
+
 ## [0.5.1] - 2026-11-04
 
 ### Añadido

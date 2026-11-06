@@ -34,6 +34,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
+  flex-shrink: 0;
 }
 
 .app-header__link,
@@ -74,6 +75,41 @@
   white-space: nowrap;
 }
 
+.app-header__brand-mark {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+@media (max-width: 479px) {
+  .app-header {
+    gap: 4px;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .app-header__brand {
+    padding: 0 4px;
+  }
+
+  .app-header__brand-mark {
+    font-size: 15px;
+  }
+
+  .app-header__nav {
+    gap: 2px;
+  }
+
+  .app-header__actions {
+    gap: 2px;
+  }
+
+  .app-header__link,
+  .app-header__logout {
+    padding: 0 6px;
+  }
+}
+
 @media (max-width: 767px) {
   .app-header__brand {
     font-size: 16px;
@@ -82,18 +118,11 @@
 
 @media (max-width: 359px) {
   .app-header {
-    gap: 4px;
     padding-left: 6px;
     padding-right: 6px;
   }
 
   .app-header__brand {
-    padding: 0 4px;
     font-size: 15px;
-  }
-
-  .app-header__link,
-  .app-header__logout {
-    padding: 0 6px;
   }
 }
