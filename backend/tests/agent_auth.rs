@@ -21,6 +21,8 @@ const AGENT_READ: &str = "agent:read";
 const AGENT_PLAN: &str = "agent:plan";
 /// Permiso M2M de lista de la compra de la Agent API.
 const AGENT_SHOPPING: &str = "agent:shopping";
+/// Permiso M2M de creación de recetas de la Agent API.
+const AGENT_WRITE: &str = "agent:write";
 
 /// Mintea un access token válido con el `scope` dado contra el API de test.
 fn token_for(idp: &MockIdp, scope: &str) -> String {
@@ -133,6 +135,101 @@ async fn m2m_token_with_agent_shopping_accesses_shopping_endpoints() {
     .await;
     assert_eq!(status, StatusCode::OK, "body: {body}");
     assert_eq!(body["removed"], 0);
+}
+
+#[tokio::test]
+async fn m2m_token_with_agent_write_creates_recipe() {
+    let idp = MockIdp::start().await;
+    let state = test_state_oidc(&idp.issuer, USER_GROUPS).await;
+    let token = token_for(&idp, AGENT_WRITE);
+
+    let (status, _headers, body) = call(
+        &state,
+        "POST",
+        "/api/agent/recipes",
+        Some(&token),
+        None,
+        Some(json!({
+            "name": "Tortilla",
+            "category": "main",
+            "ingredients": [{"name": "Huevo", "amount": 3.0, "unit": "ud"}]
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "body: {body}");
+    assert!(body["id"].is_string(), "debe devolver id: {body}");
+}
+
+#[tokio::test]
+async fn m2m_token_without_agent_write_is_forbidden() {
+    let idp = MockIdp::start().await;
+    let state = test_state_oidc(&idp.issuer, USER_GROUPS).await;
+    let token = token_for(&idp, AGENT_READ);
+
+    let (status, _headers, body) = call(
+        &state,
+        "POST",
+        "/api/agent/recipes",
+        Some(&token),
+        None,
+        Some(json!({
+            "name": "Tortilla",
+            "category": "main",
+            "ingredients": [{"name": "Huevo", "amount": 3.0, "unit": "ud"}]
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "body: {body}");
+}
+
+#[tokio::test]
+async fn user_token_cannot_create_agent_recipe() {
+    let idp = MockIdp::start().await;
+    let state = test_state_oidc(&idp.issuer, USER_GROUPS).await;
+    // Token de usuario SPA: permisos de dominio, ninguno `agent:*`.
+    let token = token_for(&idp, "openid read:recipes write:recipes");
+
+    let (status, _headers, body) = call(
+        &state,
+        "POST",
+        "/api/agent/recipes",
+        Some(&token),
+        None,
+        Some(json!({
+            "name": "Tortilla",
+            "category": "main",
+            "ingredients": [{"name": "Huevo", "amount": 3.0, "unit": "ud"}]
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "body: {body}");
+}
+
+#[tokio::test]
+async fn agent_recipe_without_credentials_returns_401() {
+    let idp = MockIdp::start().await;
+    let state = test_state_oidc(&idp.issuer, USER_GROUPS).await;
+
+    let (status, headers, _body) = call(
+        &state,
+        "POST",
+        "/api/agent/recipes",
+        None,
+        None,
+        Some(json!({
+            "name": "Tortilla",
+            "category": "main",
+            "ingredients": [{"name": "Huevo", "amount": 3.0, "unit": "ud"}]
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        headers
+            .get(header::WWW_AUTHENTICATE)
+            .and_then(|value| value.to_str().ok()),
+        Some("Bearer")
+    );
 }
 
 #[tokio::test]

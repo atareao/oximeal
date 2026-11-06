@@ -55,6 +55,7 @@ const DOCS_PATH: &str = "/api/docs";
         agent::weekly_plan,
         agent::add_shopping_items,
         agent::delete_completed,
+        agent::create_recipe,
         crate::auth::routes::login,
         crate::auth::routes::callback,
         crate::auth::routes::me,

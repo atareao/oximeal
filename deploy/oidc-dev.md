@@ -98,7 +98,7 @@ you'll reference them in the backend environment.
 | **Type** | Confidential – *Client access* (M2M) |
 | **Client name** | `Oximeal Valet` |
 | **Audience** | `https://oximeal.local/api` |
-| **Permission scopes** | `agent.read agent.plan agent.shopping` |
+| **Permission scopes** | `agent.read agent.plan agent.shopping agent.write` |
 
 Note that **public** clients are **not** allowed to obtain M2M tokens.
 
