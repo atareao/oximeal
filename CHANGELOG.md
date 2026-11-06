@@ -12,6 +12,8 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [No publicado]
 
+## [0.6.0] - 2026-11-06
+
 ### Añadido
 
 - **Agent API:** nuevo `POST /api/agent/recipes` con permiso M2M `agent:write` para que Valet cree recetas reutilizando el mismo `RecipeInput` y la misma validación que la API de usuario.
