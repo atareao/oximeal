@@ -632,24 +632,32 @@ async fn create_recipe_with_new_tags_creates_and_associates() {
     .await;
     assert_eq!(status, StatusCode::CREATED, "body: {body}");
 
+    // Las dos manuales ("Vegano", "Sin gluten") se resuelven al catálogo
+    // automático; la heurística añade las complementarias (sin lactosa y
+    // vegetariano, porque el vegano ya es manual).
     let returned = body["tags"].as_array().expect("tags en la respuesta");
-    assert_eq!(returned.len(), 2, "la receta devuelve sus etiquetas");
+    assert_eq!(
+        returned.len(),
+        4,
+        "la receta devuelve sus etiquetas: {body}"
+    );
     let id = body["id"].as_str().expect("id").to_string();
 
-    // Cada etiqueta tiene id, name y slug.
+    // Cada etiqueta tiene id, name, slug y source.
     for tag in returned {
         assert!(tag["id"].is_string(), "id de etiqueta");
         assert!(tag["name"].is_string(), "name de etiqueta");
         assert!(tag["slug"].is_string(), "slug de etiqueta");
+        assert!(tag["source"].is_string(), "source de etiqueta");
         assert!(tag.get("recipe_count").is_none());
     }
 
-    // Se crearon en el catálogo y están asociadas a una receta.
+    // Las etiquetas asociadas tienen recuento 1; el resto del catálogo, 0.
     let (status, tags) = common::request(state.clone(), "GET", "/api/tags", None).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(tags.as_array().map(Vec::len), Some(2));
     for tag in tags.as_array().expect("array") {
-        assert_eq!(tag["recipe_count"], 1, "una receta asociada: {tag}");
+        let expected = if tag["slug"] == "picante" { 0 } else { 1 };
+        assert_eq!(tag["recipe_count"], expected, "recuento: {tag}");
     }
 
     // El detalle también incluye las etiquetas.
@@ -657,7 +665,12 @@ async fn create_recipe_with_new_tags_creates_and_associates() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
         tag_slugs(&detail),
-        vec!["sin gluten".to_string(), "vegano".to_string()]
+        vec![
+            "sin-gluten".to_string(),
+            "sin-lactosa".to_string(),
+            "vegano".to_string(),
+            "vegetariano".to_string()
+        ]
     );
 }
 
@@ -679,17 +692,31 @@ async fn create_recipe_deduplicates_tags_by_slug() {
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "body: {body}");
+
+    // Los tres nombres normalizan al mismo slug: una sola asociación manual.
+    let vegano = body["tags"]
+        .as_array()
+        .expect("tags")
+        .iter()
+        .find(|t| t["slug"] == "vegano")
+        .expect("vegano");
+    assert_eq!(vegano["source"], "manual", "la manual gana: {body}");
     assert_eq!(
-        body["tags"].as_array().map(Vec::len),
-        Some(1),
-        "solo una etiqueta tras deduplicar"
+        tag_slugs(&body).iter().filter(|s| *s == "vegano").count(),
+        1,
+        "solo una etiqueta vegano tras deduplicar"
     );
 
+    // Una sola etiqueta `vegano` en el catálogo.
     let (status, tags) = common::request(state, "GET", "/api/tags", None).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
-        tags.as_array().map(Vec::len),
-        Some(1),
+        tags.as_array()
+            .expect("array")
+            .iter()
+            .filter(|t| t["slug"] == "vegano")
+            .count(),
+        1,
         "una sola en catálogo"
     );
 }
@@ -727,10 +754,14 @@ async fn update_recipe_replaces_tags() {
     )
     .await;
     assert_eq!(status, StatusCode::OK, "body: {updated}");
-    assert_eq!(
-        tag_slugs(&updated),
-        vec!["b".to_string(), "c".to_string()],
-        "quedan B y C"
+    let slugs = tag_slugs(&updated);
+    assert!(
+        slugs.contains(&"b".to_string()) && slugs.contains(&"c".to_string()),
+        "quedan B y C: {slugs:?}"
+    );
+    assert!(
+        !slugs.contains(&"a".to_string()),
+        "la manual A desaparece: {slugs:?}"
     );
 
     // La etiqueta A desaparece de la receta pero sigue en el catálogo.
@@ -783,15 +814,33 @@ async fn update_recipe_with_empty_tags_clears_them() {
     )
     .await;
     assert_eq!(status, StatusCode::OK, "body: {updated}");
-    assert_eq!(updated["tags"].as_array().map(Vec::len), Some(0));
 
+    // Sin etiquetas manuales: solo quedan las automáticas recalculadas.
+    let remaining = updated["tags"].as_array().expect("tags");
+    assert!(
+        remaining.iter().all(|t| t["source"] == "auto"),
+        "sin manuales tras vaciar: {updated}"
+    );
+    // El vegano vuelve como sugerencia automática (el tomate no tiene origen animal).
+    assert_eq!(
+        remaining
+            .iter()
+            .find(|t| t["slug"] == "vegano")
+            .map(|t| t["source"].clone()),
+        Some(serde_json::json!("auto")),
+        "vegano ahora automático: {updated}"
+    );
+
+    // La etiqueta permanece en el catálogo.
     let (status, tags) = common::request(state, "GET", "/api/tags", None).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(
-        tags.as_array().map(Vec::len),
-        Some(1),
-        "la etiqueta permanece en el catálogo"
-    );
+    let vegano = tags
+        .as_array()
+        .expect("array")
+        .iter()
+        .find(|t| t["slug"] == "vegano")
+        .expect("vegano en catálogo");
+    assert_eq!(vegano["recipe_count"], 1);
 }
 
 /// El listado y el detalle incluyen las etiquetas de cada receta.
@@ -816,14 +865,26 @@ async fn recipe_list_and_detail_include_tags() {
     let (status, list) = common::request(state.clone(), "GET", "/api/recipes", None).await;
     assert_eq!(status, StatusCode::OK);
     let item = &list["items"][0];
-    assert_eq!(item["tags"][0]["name"], "Vegano");
-    assert_eq!(item["tags"][0]["slug"], "vegano");
-    assert!(item["tags"][0]["id"].is_string());
+    let item_vegano = item["tags"]
+        .as_array()
+        .expect("tags del resumen")
+        .iter()
+        .find(|t| t["slug"] == "vegano")
+        .expect("vegano en el resumen");
+    assert_eq!(item_vegano["name"], "Vegano");
+    assert!(item_vegano["id"].is_string());
 
     let id = item["id"].as_str().expect("id").to_string();
     let (status, detail) = common::request(state, "GET", &format!("/api/recipes/{id}"), None).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(detail["tags"][0]["slug"], "vegano");
+    let detail_tags = detail["tags"].as_array().expect("tags del detalle");
+    assert_eq!(
+        detail_tags
+            .iter()
+            .find(|t| t["slug"] == "vegano")
+            .expect("vegano en el detalle")["name"],
+        "Vegano"
+    );
 }
 
 /// Filtro `?tag=<slug>`: solo las recetas asociadas; `total` refleja el subconjunto.
@@ -831,10 +892,12 @@ async fn recipe_list_and_detail_include_tags() {
 async fn list_filter_by_tag_slug() {
     let state = common::test_state().await;
 
-    for (name, tags) in [
-        ("Con gluten", vec!["con-gluten"]),
-        ("Sin gluten uno", vec!["sin-gluten"]),
-        ("Sin gluten dos", vec!["sin-gluten"]),
+    // El ingrediente refuerza la etiqueta: "Harina" veta `sin-gluten` automático,
+    // "Arroz" lo sugiere (y coincide con la etiqueta manual).
+    for (name, tags, ingredient) in [
+        ("Con gluten", vec!["con-gluten"], "Harina"),
+        ("Sin gluten uno", vec!["sin-gluten"], "Arroz"),
+        ("Sin gluten dos", vec!["sin-gluten"], "Arroz"),
     ] {
         let (status, _) = common::request(
             state.clone(),
@@ -843,7 +906,7 @@ async fn list_filter_by_tag_slug() {
             Some(json!({
                 "name": name,
                 "category": "main",
-                "ingredients": [{"name": "Tomate", "amount": 1.0, "unit": "ud"}],
+                "ingredients": [{"name": ingredient, "amount": 1.0, "unit": "ud"}],
                 "tags": tags
             })),
         )
@@ -878,7 +941,15 @@ async fn list_filter_by_tag_id() {
 
     let (status, tags) = common::request(state.clone(), "GET", "/api/tags", None).await;
     assert_eq!(status, StatusCode::OK);
-    let tag_id = tags[0]["id"].as_str().expect("id de etiqueta").to_string();
+    let tag_id = tags
+        .as_array()
+        .expect("array")
+        .iter()
+        .find(|t| t["slug"] == "vegano")
+        .expect("etiqueta vegano")["id"]
+        .as_str()
+        .expect("id de etiqueta")
+        .to_string();
 
     let (status, body) =
         common::request(state, "GET", &format!("/api/recipes?tag={tag_id}"), None).await;
@@ -1043,9 +1114,14 @@ async fn delete_recipe_cascades_associations_and_keeps_tags() {
         common::request(state.clone(), "DELETE", &format!("/api/recipes/{id}"), None).await;
     assert_eq!(status, StatusCode::NO_CONTENT);
 
-    // La etiqueta sigue existiendo, ahora sin recetas asociadas.
+    // La etiqueta manual sigue existiendo, ahora sin recetas asociadas.
     let (status, tags) = common::request(state, "GET", "/api/tags", None).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(tags.as_array().map(Vec::len), Some(1));
-    assert_eq!(tags[0]["recipe_count"], 0);
+    let vegano = tags
+        .as_array()
+        .expect("array")
+        .iter()
+        .find(|t| t["slug"] == "vegano")
+        .expect("etiqueta vegano");
+    assert_eq!(vegano["recipe_count"], 0);
 }

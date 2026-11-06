@@ -50,6 +50,15 @@
   font-weight: 600;
 }
 
+/* Sugerida automáticamente: estilo atenuado y discontinuo. */
+.recipe-detail__tag--auto {
+  border-style: dashed;
+  background: var(--surface-muted, #f7fafc);
+  color: var(--text-muted, #718096);
+  font-weight: 500;
+  font-style: italic;
+}
+
 .recipe-detail__actions {
   display: flex;
   flex-wrap: wrap;

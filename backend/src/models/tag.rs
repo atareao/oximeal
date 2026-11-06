@@ -17,6 +17,8 @@ pub struct RecipeTag {
     pub name: String,
     /// Identidad canónica normalizada (única).
     pub slug: String,
+    /// Procedencia de la asociación: `manual` o `auto`.
+    pub source: String,
 }
 
 /// Etiqueta del catálogo con su recuento de recetas asociadas.

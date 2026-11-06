@@ -275,6 +275,8 @@ fn map_recipe(recipe: &Value) -> RecipeInput {
         instructions,
         source_url,
         tags: Vec::new(),
+        auto_tags: true,
+        suppressed_auto_tags: Vec::new(),
     }
 }
 

@@ -3,11 +3,13 @@
 use anyhow::anyhow;
 use sqlx::{QueryBuilder, Sqlite, SqlitePool};
 
+use crate::domain::ingredient::IngredientInput;
 use crate::error::{AppError, AppResult};
 use crate::models::recipe::{
     Recipe, RecipeDetailRow, RecipeInput, RecipeListResponse, RecipeSummaryRow,
 };
 use crate::repo::tags;
+use crate::services::autotag;
 
 /// Longitud mínima de `q` para usar FTS5 (el tokenizer `trigram` exige 3).
 const FTS_MIN_CHARS: usize = 3;
@@ -144,6 +146,7 @@ pub async fn create(pool: &SqlitePool, id: &str, input: &RecipeInput) -> AppResu
     let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
     insert(&mut *tx, id, input).await?;
     tags::replace_for_recipe(&mut tx, id, &input.tags).await?;
+    autotag::apply(&mut tx, id, input).await?;
     tx.commit().await?;
     get(pool, id).await
 }
@@ -188,6 +191,7 @@ pub async fn create_or_get_by_source_url(
 
     insert(&mut *tx, id, input).await?;
     tags::replace_for_recipe(&mut tx, id, &input.tags).await?;
+    autotag::apply(&mut tx, id, input).await?;
     tx.commit().await?;
 
     let recipe = get(pool, id).await?;
@@ -286,9 +290,46 @@ pub async fn update(pool: &SqlitePool, id: &str, input: &RecipeInput) -> AppResu
     .execute(&mut *tx)
     .await?;
 
-    // Reemplaza el conjunto de etiquetas dentro de la misma transacción.
+    // Reemplaza el conjunto de etiquetas manuales y recalcula las automáticas
+    // dentro de la misma transacción.
     tags::replace_for_recipe(&mut tx, id, &input.tags).await?;
+    autotag::apply(&mut tx, id, input).await?;
 
+    tx.commit().await?;
+
+    get(pool, id).await
+}
+
+/// Recalcula las etiquetas automáticas de una receta existente.
+///
+/// Conserva las etiquetas `manual` y las supresiones registradas; devuelve la
+/// `Recipe` actualizada. 404 si la receta no existe.
+pub async fn recalculate_autotags(pool: &SqlitePool, id: &str) -> AppResult<Recipe> {
+    // Escritura read-then-write: BEGIN IMMEDIATE evita SQLITE_BUSY_SNAPSHOT en WAL.
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+
+    let row: Option<(String, String, Option<String>)> = sqlx::query_as(
+        "SELECT name, CAST(ingredients AS TEXT) AS ingredients, instructions \
+         FROM recipes WHERE id = ?",
+    )
+    .bind(id)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    let (name, ingredients_json, instructions) =
+        row.ok_or_else(|| AppError::NotFound(format!("receta {id}")))?;
+    let ingredients: Vec<IngredientInput> = serde_json::from_str(&ingredients_json)
+        .map_err(|error| AppError::Internal(anyhow!("ingredientes JSON inválidos: {error}")))?;
+
+    autotag::recalculate(
+        &mut tx,
+        id,
+        &ingredients,
+        &name,
+        instructions.as_deref(),
+        true,
+    )
+    .await?;
     tx.commit().await?;
 
     get(pool, id).await

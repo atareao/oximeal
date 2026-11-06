@@ -989,10 +989,10 @@ Notas del usuario tras revisar el shell mobile-first. Estado: #1, #2 y #4 **entr
 
 1. **Tema oscuro en negros**: sustituir la paleta azulada actual (`#0f172a`, `#111827`, `#1e293b`) por una escala de negros y grises neutros con contraste AA. Afecta a `frontend/src/index.css`, `frontend/src/components/theme.ts` y los `.css` que consumen las variables. **✅ Entregado** (§22.2, PR #94).
 2. **Solo comida y cena**: retirar desayuno y merienda de la planificación. Afecta a `DayCard` (volver a `lunch`/`dinner`), `DailyView`, `AddMealPlanDialog`/`MEAL_TYPE_OPTIONS`, la spec `weekly-menu` (revertir el escenario de cuatro franjas añadido en `ui-mobile-first-shell`) y los tests. **✅ Entregado** (§23.1, PR #96).
-3. **Etiquetas de recetas**: además del filtro existente, poder **añadir etiquetas manualmente** y **etiquetar automáticamente** las recetas. Requiere change SDD con backend (modelo, repositorio, endpoints y heurística de autotagging) y frontend (formulario y detalle de receta). Decidir en la propuesta: catálogo de etiquetas, reglas automáticas, precedencia manual vs. automática y migración de recetas existentes.
+3. **Etiquetas de recetas**: además del filtro existente, poder **añadir etiquetas manualmente** y **etiquetar automáticamente** las recetas. Requiere change SDD con backend (modelo, repositorio, endpoints y heurística de autotagging) y frontend (formulario y detalle de receta). Decidir en la propuesta: catálogo de etiquetas, reglas automáticas, precedencia manual vs. automática y migración de recetas existentes. **✅ Entregado** (§24, PR pendiente).
 4. **Salir fuera de Configuración**: el botón Salir debe vivir solo en la barra superior, a la derecha de Configuración. Eliminar el bloque de cierre de sesión de `SettingsPage` (la identidad puede quedarse) y ajustar la spec `auth-ui` y los tests. **✅ Entregado** (§22.1, PR #93).
 
-Orden sugerido: 2 y 4 (pequeños, corrigen lo recién entregado) → 1 (visual) → 3 (feature con backend). Ejecutado: #4, #1 y #2 ✅; queda #3.
+Orden sugerido: 2 y 4 (pequeños, corrigen lo recién entregado) → 1 (visual) → 3 (feature con backend). Ejecutado: #4, #1, #2 y #3 ✅.
 
 ---
 
@@ -1056,3 +1056,18 @@ Orden sugerido: 2 y 4 (pequeños, corrigen lo recién entregado) → 1 (visual) 
   - OpenSpec: el `Requirement: Tema Antd y safe-area` de `ui-shell` (523 caracteres) rechazado por `validate --all --strict` (CLI 1.16.0).
   - Frontend: `frontend/src/pages/SettingsPage.test.tsx` sin formatear (prettier).
 - **Fix:** rama `hotfix/openspec-ui-shell-strict`, PR #97, mergeado. `development` en verde (4/4).
+
+---
+
+## 24. Backlog UI — Bloque C: #3 Etiquetas automáticas de recetas (2026-11-06)
+
+> Metodología: SDD + TDD estricto (RED → GREEN → REFACTOR), auditoría por bloque (`@rust-reviewer` y `@react-reviewer`), gitflow con gitmoji.
+
+### 24.1 (#3) Etiquetado automático
+
+- **Change SDD:** `recipe-autotagging` (propuesta, diseño y deltas de `recipe-tags`, `recipes` y `recipe-catalog`).
+- **Decisiones:** vocabulario cerrado de etiquetas automáticas (`vegetariano`, `vegano`, `sin-gluten`, `sin-lactosa`, `picante`); heurística determinista sobre ingredientes con normalización sin diacríticos y match por token completo (exclusión por ausencia, `picante` por presencia); procedencia por asociación (`recipe_tags.source`, manual gana); supresión por receta (`recipe_tag_suppressions`) y `PUT` reemplaza supresiones; migración aditiva `0009` + backfill idempotente en arranque con marcador `PRAGMA user_version` que NO avanza si alguna receta falla.
+- **Backend:** `backend/migrations/0009_recipe_tag_provenance.sql`, `backend/src/services/autotag.rs`, `models/tag.rs`, `models/recipe.rs`, `repo/tags.rs`, `repo/recipes.rs`, `routes/recipes.rs` (`POST /api/recipes/{id}/autotag`), `routes/openapi.rs`, `main.rs`; tests `backend/tests/autotag.rs` y ajustes en `tags.rs`/`recipes.rs`/`meal_plan.rs`/`schema_constraints.rs`.
+- **Frontend:** `api/types.ts`, `components/RecipeForm.tsx`, `components/RecipeCard.tsx`, `pages/RecipeDetailPage.tsx` (+ CSS) y sus tests; sugerencias retirables (`suppressed_auto_tags`) y toggle `auto_tags`.
+- **Rama:** `feature/recipe-autotagging`.
+- **Estado:** ✅ implementado y auditado (backend PASS con avisos cerrados; frontend PASS).

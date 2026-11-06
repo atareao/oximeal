@@ -79,6 +79,48 @@
   min-height: 48px;
 }
 
+.recipe-form__auto-tags {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.recipe-form__auto-tags-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.recipe-form__suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recipe-form__suggestion {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 4px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.recipe-form__suggestion-remove {
+  min-height: 48px;
+}
+
+.recipe-form__auto-tags-toggle {
+  margin-bottom: 16px;
+}
+
 .recipe-form__actions {
   display: flex;
   justify-content: flex-end;

@@ -78,11 +78,7 @@ seleccionarla, reutilizando `useRecipe`/`fetchRecipe`.
 
 ### Requirement: Alta y edición desde la UI
 
-La aplicación SHALL permitir crear y editar recetas desde la UI mediante un
-formulario que valide los campos requeridos y muestre los errores de validación
-del servidor, sin permitir guardar datos inválidos. El formulario SHALL incluir un
-**selector de etiquetas con creación al vuelo**: el usuario puede elegir
-etiquetas existentes o escribir una nueva, y las etiquetas se envían por nombre.
+La aplicación SHALL permitir crear y editar recetas desde la UI con un formulario que valide los campos requeridos y muestre los errores del servidor, sin guardar datos inválidos. El formulario SHALL incluir un selector de etiquetas con creación al vuelo (por nombre) y SHALL mostrar las etiquetas automáticas sugeridas de forma distinguible, permitiendo retirarlas (en `suppressed_auto_tags`) y desactivar el etiquetado automático con `auto_tags`.
 
 #### Scenario: Alta de receta
 
@@ -102,6 +98,13 @@ etiquetas existentes o escribir una nueva, y las etiquetas se envían por nombre
 - WHEN el usuario selecciona una etiqueta existente y escribe una nueva
 - THEN ambas se incluyen en el payload `tags` de la receta
 - AND al guardar se reflejan en la tarjeta y el detalle
+
+#### Scenario: Retirar una sugerencia automática
+
+- GIVEN el formulario de edición con una etiqueta automática «Sin gluten» mostrada como sugerida
+- WHEN el usuario la retira y guarda
+- THEN el payload incluye `sin-gluten` en `suppressed_auto_tags`
+- AND tras guardar la etiqueta no reaparece
 
 #### Scenario: Validación fallida
 
@@ -157,14 +160,20 @@ degradado, sin prometer persistencia que no exista.
 
 ### Requirement: Etiquetas en el listado
 
-La tarjeta de receta del recetario SHALL mostrar las etiquetas de la receta y
-SHALL permitir iniciar el filtrado por una de ellas.
+La tarjeta de receta del recetario SHALL mostrar las etiquetas de la receta, distinguiendo visualmente las manuales de las automáticas sugeridas, y SHALL permitir iniciar el filtrado por una de ellas.
 
 #### Scenario: Etiquetas en la tarjeta
 
 - GIVEN una receta con etiquetas en el listado
 - WHEN se muestra su tarjeta
 - THEN se ven sus etiquetas
+- AND al seleccionar una se aplica el filtro por esa etiqueta
+
+#### Scenario: Distinción manual frente a automática
+
+- GIVEN una receta con una etiqueta manual y una automática
+- WHEN se muestra su tarjeta
+- THEN ambas se ven con una presentación distinta según su `source`
 - AND al seleccionar una se aplica el filtro por esa etiqueta
 
 ### Requirement: Añadir una receta a la lista de la compra

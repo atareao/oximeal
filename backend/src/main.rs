@@ -26,6 +26,19 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("inicialización de la base de datos")?;
 
+    // Etiquetado automático de las recetas existentes: idempotente y con
+    // marcador persistente, solo actúa la primera vez tras la migración 0009.
+    // El backfill es tolerante con las filas corruptas y no debe impedir el
+    // arranque: si alguna receta no se puede procesar, se registra y se
+    // continúa sirviendo; el marcador no avanza y esas recetas se reintentarán
+    // en otro arranque.
+    if let Err(error) = oximeal_backend::services::autotag::backfill(&pool).await {
+        tracing::error!(
+            error = %error,
+            "el backfill de etiquetas automáticas falló; se continúa el arranque"
+        );
+    }
+
     let config = Arc::new(config);
     let auth = AuthService::build(&config, pool.clone())
         .context("construir el servicio de autenticación")?;

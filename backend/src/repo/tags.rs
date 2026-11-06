@@ -14,6 +14,7 @@ use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
 use crate::models::tag::{RecipeTag, Tag, TagRow, display_name, slugify};
+use crate::services::autotag;
 
 /// Proyección de una etiqueta con su recuento de recetas asociadas.
 const SELECT_TAG_WITH_COUNT: &str = "SELECT t.id, t.name, t.slug, \
@@ -37,8 +38,10 @@ pub async fn list(pool: &SqlitePool) -> AppResult<Vec<Tag>> {
 /// si ya existía una con el mismo `slug` (comparación insensible a mayúsculas y
 /// espacios), en cuyo caso devuelve la existente sin modificarla.
 pub async fn create(pool: &SqlitePool, raw_name: &str) -> AppResult<(Tag, bool)> {
-    let slug = slugify(raw_name);
-    let name = display_name(raw_name);
+    // Se aplica la misma canonicalización que `replace_for_recipe`/`resolve`:
+    // una etiqueta del catálogo automático («Sin gluten») comparte el `slug`
+    // canónico (`sin-gluten`) y no se duplica.
+    let (name, slug) = resolve(raw_name);
 
     // Escritura read-then-write: BEGIN IMMEDIATE evita SQLITE_BUSY_SNAPSHOT en WAL.
     let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
@@ -95,31 +98,43 @@ pub async fn delete(pool: &SqlitePool, id: &str) -> AppResult<()> {
     Ok(())
 }
 
-/// Reemplaza el conjunto de etiquetas de una receta (borra y reinserta).
+/// Reemplaza el conjunto de etiquetas **manuales** de una receta.
 ///
 /// Se ejecuta dentro de la misma transacción `BEGIN IMMEDIATE` que la escritura
-/// de la receta. Crea al vuelo las etiquetas que no existan (comparando por
-/// `slug`) y **deduplica** por `slug`, conservando el nombre de la primera
-/// aparición. Un nombre vacío o solo de espacios se ignora.
+/// de la receta. Borra solo las asociaciones `manual` (las `auto` las gestiona
+/// [`crate::services::autotag`]), crea al vuelo las etiquetas que no existan
+/// (comparando por `slug`) y **deduplica** por `slug`. Una etiqueta del catálogo
+/// automático se resuelve a su `slug` canónico (p. ej. «Sin gluten» →
+/// `sin-gluten`) y, al ser manual, elimina su supresión (la manual gana).
 pub(crate) async fn replace_for_recipe(
     conn: &mut SqliteConnection,
     recipe_id: &str,
     names: &[String],
 ) -> AppResult<()> {
-    sqlx::query("DELETE FROM recipe_tags WHERE recipe_id = ?")
+    sqlx::query("DELETE FROM recipe_tags WHERE recipe_id = ? AND source = 'manual'")
         .bind(recipe_id)
         .execute(&mut *conn)
         .await?;
 
     let mut seen: HashSet<String> = HashSet::new();
     for raw in names {
-        let slug = slugify(raw);
+        let (name, slug) = resolve(raw);
         if slug.is_empty() || !seen.insert(slug.clone()) {
             continue;
         }
 
-        let tag_id = upsert(&mut *conn, &display_name(raw), &slug).await?;
-        sqlx::query("INSERT INTO recipe_tags (recipe_id, tag_id) VALUES (?, ?)")
+        let tag_id = upsert(&mut *conn, &name, &slug).await?;
+        sqlx::query(
+            "INSERT INTO recipe_tags (recipe_id, tag_id, source) VALUES (?, ?, 'manual') \
+             ON CONFLICT(recipe_id, tag_id) DO UPDATE SET source = 'manual'",
+        )
+        .bind(recipe_id)
+        .bind(&tag_id)
+        .execute(&mut *conn)
+        .await?;
+
+        // Añadir manualmente una etiqueta suprimida borra su supresión.
+        sqlx::query("DELETE FROM recipe_tag_suppressions WHERE recipe_id = ? AND tag_id = ?")
             .bind(recipe_id)
             .bind(&tag_id)
             .execute(&mut *conn)
@@ -129,10 +144,78 @@ pub(crate) async fn replace_for_recipe(
     Ok(())
 }
 
+/// Reemplaza el conjunto de supresiones automáticas de una receta.
+///
+/// Resuelve cada nombre o `slug` a una etiqueta (creándola si no existe) y
+/// registra la supresión. Una etiqueta ya fijada como `manual` no se suprime.
+pub(crate) async fn replace_suppressions(
+    conn: &mut SqliteConnection,
+    recipe_id: &str,
+    names: &[String],
+) -> AppResult<()> {
+    sqlx::query("DELETE FROM recipe_tag_suppressions WHERE recipe_id = ?")
+        .bind(recipe_id)
+        .execute(&mut *conn)
+        .await?;
+
+    let mut seen: HashSet<String> = HashSet::new();
+    for raw in names {
+        let (name, slug) = resolve(raw);
+        if slug.is_empty() || !seen.insert(slug.clone()) {
+            continue;
+        }
+
+        let tag_id = upsert(&mut *conn, &name, &slug).await?;
+
+        let manual: Option<String> = sqlx::query_scalar(
+            "SELECT source FROM recipe_tags \
+             WHERE recipe_id = ? AND tag_id = ? AND source = 'manual'",
+        )
+        .bind(recipe_id)
+        .bind(&tag_id)
+        .fetch_optional(&mut *conn)
+        .await?;
+        if manual.is_some() {
+            continue;
+        }
+
+        sqlx::query(
+            "INSERT INTO recipe_tag_suppressions (recipe_id, tag_id) VALUES (?, ?) \
+             ON CONFLICT DO NOTHING",
+        )
+        .bind(recipe_id)
+        .bind(&tag_id)
+        .execute(&mut *conn)
+        .await?;
+    }
+
+    Ok(())
+}
+
+/// Resuelve un nombre de etiqueta a `(nombre, slug)`.
+///
+/// Si corresponde a una etiqueta del catálogo automático, usa su `slug` y nombre
+/// canónicos; en caso contrario, los deriva con [`display_name`] y [`slugify`].
+fn resolve(raw: &str) -> (String, String) {
+    match autotag::canonical_auto_slug(raw) {
+        Some(slug) => {
+            let name = autotag::name_for_slug(slug).unwrap_or(slug).to_string();
+            (name, slug.to_string())
+        }
+        None => (display_name(raw), slugify(raw)),
+    }
+}
+
+/// Inserta (si falta) una etiqueta del catálogo automático y devuelve su id.
+pub(crate) async fn upsert_auto(conn: &mut SqliteConnection, slug: &str) -> AppResult<String> {
+    let name = autotag::name_for_slug(slug).unwrap_or(slug);
+    upsert(conn, name, slug).await
+}
+
 /// Etiquetas de una receta, ordenadas por nombre (sin recuento).
 pub async fn for_recipe(pool: &SqlitePool, recipe_id: &str) -> AppResult<Vec<RecipeTag>> {
-    let rows: Vec<(String, String, String)> = sqlx::query_as(
-        "SELECT t.id, t.name, t.slug FROM recipe_tags rt \
+    let rows: Vec<(String, String, String, String)> = sqlx::query_as(
+        "SELECT t.id, t.name, t.slug, rt.source FROM recipe_tags rt \
          JOIN tags t ON t.id = rt.tag_id WHERE rt.recipe_id = ? \
          ORDER BY t.name ASC, t.id ASC",
     )
@@ -142,7 +225,12 @@ pub async fn for_recipe(pool: &SqlitePool, recipe_id: &str) -> AppResult<Vec<Rec
 
     Ok(rows
         .into_iter()
-        .map(|(id, name, slug)| RecipeTag { id, name, slug })
+        .map(|(id, name, slug, source)| RecipeTag {
+            id,
+            name,
+            slug,
+            source,
+        })
         .collect())
 }
 
@@ -159,7 +247,7 @@ pub async fn for_recipes(
     }
 
     let mut query = QueryBuilder::<Sqlite>::new(
-        "SELECT rt.recipe_id, t.id, t.name, t.slug FROM recipe_tags rt \
+        "SELECT rt.recipe_id, t.id, t.name, t.slug, rt.source FROM recipe_tags rt \
          JOIN tags t ON t.id = rt.tag_id WHERE rt.recipe_id IN (",
     );
     {
@@ -170,13 +258,15 @@ pub async fn for_recipes(
     }
     query.push(") ORDER BY t.name ASC, t.id ASC");
 
-    let rows: Vec<(String, String, String, String)> =
+    let rows: Vec<(String, String, String, String, String)> =
         query.build_query_as().fetch_all(pool).await?;
-    for (recipe_id, id, name, slug) in rows {
-        grouped
-            .entry(recipe_id)
-            .or_default()
-            .push(RecipeTag { id, name, slug });
+    for (recipe_id, id, name, slug, source) in rows {
+        grouped.entry(recipe_id).or_default().push(RecipeTag {
+            id,
+            name,
+            slug,
+            source,
+        });
     }
 
     Ok(grouped)

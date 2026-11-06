@@ -39,11 +39,7 @@ filtros aplicados.
 
 ### Requirement: Alta de receta
 
-El sistema SHALL exponer `POST /api/recipes` que valida categoría
-(main|salad|side|dessert|breakfast) e ingredientes, persiste la receta y SHALL
-aceptar un campo opcional `tags` con los nombres de sus etiquetas, creando al
-vuelo las que no existan y asociándolas a la receta. La `Recipe` devuelta SHALL
-incluir sus etiquetas.
+El sistema SHALL exponer `POST /api/recipes` que valida categoría (main|salad|side|dessert|breakfast) e ingredientes, persiste la receta y SHALL aceptar un campo opcional `tags` con los nombres de sus etiquetas manuales, creando al vuelo las que no existan. SHALL aplicar el etiquetado automático salvo que `auto_tags` sea `false` y SHALL aceptar `suppressed_auto_tags`. La `Recipe` devuelta SHALL incluir sus etiquetas con `source`.
 
 #### Scenario: Creación válida
 
@@ -61,13 +57,19 @@ incluir sus etiquetas.
 
 - GIVEN un payload válido con `tags: ["Vegano"]` y la etiqueta no existía
 - WHEN se envía a `POST /api/recipes`
-- THEN se crea la etiqueta y la receta queda asociada a ella
-- AND la `Recipe` devuelta incluye la etiqueta
+- THEN se crea la etiqueta y la receta queda asociada a ella como `manual`
+- AND la `Recipe` devuelta incluye la etiqueta y las automáticas resultantes
+
+#### Scenario: Alta sin etiquetado automático
+
+- GIVEN un payload válido con `auto_tags: false`
+- WHEN se envía a `POST /api/recipes`
+- THEN la receta no recibe etiquetas automáticas
+- AND solo se asocian las etiquetas manuales indicadas
 
 ### Requirement: Detalle de receta
 
-El sistema SHALL exponer `GET /api/recipes/{id}` devolviendo la receta completa
-con ingredientes y etiquetas.
+El sistema SHALL exponer `GET /api/recipes/{id}` devolviendo la receta completa con ingredientes y etiquetas, cada etiqueta con `id`, `name`, `slug` y `source`.
 
 #### Scenario: No encontrada
 
@@ -77,18 +79,13 @@ con ingredientes y etiquetas.
 
 #### Scenario: Detalle con etiquetas
 
-- GIVEN una receta con etiquetas asociadas
+- GIVEN una receta con etiquetas manuales y automáticas
 - WHEN se consulta `GET /api/recipes/{id}`
-- THEN la respuesta incluye las etiquetas con `id`, `name` y `slug`
+- THEN la respuesta incluye las etiquetas con `id`, `name`, `slug` y `source`
 
 ### Requirement: Actualización de receta
 
-El sistema SHALL exponer `PUT /api/recipes/{id}` con permiso `write:recipes`, que
-reemplaza la receta completa —nombre, categoría, `diet_type`,
-`prep_time_minutes`, `servings`, ingredientes, instrucciones, `source_url` y
-etiquetas—, responde `200` con la `Recipe` actualizada y mantiene sincronizado el
-índice de búsqueda FTS. El campo `tags` SHALL reemplazar el conjunto de etiquetas
-de la receta, creando al vuelo las que no existan.
+El sistema SHALL exponer `PUT /api/recipes/{id}` con permiso `write:recipes`, que reemplaza la receta completa —nombre, categoría, `diet_type`, `prep_time_minutes`, `servings`, ingredientes, instrucciones, `source_url` y etiquetas manuales—, responde `200` con la `Recipe` actualizada y mantiene sincronizado el índice de búsqueda FTS. El campo `tags` SHALL reemplazar el conjunto de etiquetas `manual`, y el etiquetado automático SHALL recalcularse salvo que `auto_tags` sea `false`.
 
 #### Scenario: Actualización válida
 
@@ -120,10 +117,10 @@ de la receta, creando al vuelo las que no existan.
 
 #### Scenario: Reemplazo de etiquetas
 
-- GIVEN una receta asociada a las etiquetas A y B
+- GIVEN una receta asociada manualmente a las etiquetas A y B
 - WHEN se envía `PUT /api/recipes/{id}` con `tags: ["B", "C"]`
-- THEN la receta queda asociada a B y C
-- AND la asociación con A desaparece
+- THEN la receta queda asociada a B y C como `manual`
+- AND la asociación manual con A desaparece
 - AND no se borra ninguna etiqueta del catálogo
 
 ### Requirement: Borrado de receta
