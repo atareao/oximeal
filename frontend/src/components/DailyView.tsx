@@ -44,6 +44,7 @@ export function DailyView({
       <DayCard
         date={date}
         entries={entries}
+        slots={['breakfast', 'lunch', 'dinner', 'snack']}
         online={online}
         onAdd={onAdd}
         onRemove={onRemove}

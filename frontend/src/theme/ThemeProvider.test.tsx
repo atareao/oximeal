@@ -124,4 +124,26 @@ describe('ThemeProvider', () => {
     expect(screen.getByTestId('resolved')).toHaveTextContent('light');
     expect(document.documentElement).toHaveAttribute('data-theme', 'light');
   });
+
+  it('un valor corrupto en localStorage resuelve oscuro', () => {
+    localStorage.setItem('oximeal.theme', 'banana');
+
+    renderProvider();
+
+    expect(screen.getByTestId('resolved')).toHaveTextContent('dark');
+    expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
+  });
+
+  it('si setItem lanza, aplica el tema igualmente sin persistir', async () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('QuotaExceededError');
+    });
+    const user = userEvent.setup();
+    renderProvider();
+
+    await user.click(screen.getByRole('button', { name: 'Claro' }));
+
+    expect(document.documentElement).toHaveAttribute('data-theme', 'light');
+    expect(screen.getByTestId('resolved')).toHaveTextContent('light');
+  });
 });

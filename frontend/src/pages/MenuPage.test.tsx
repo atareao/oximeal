@@ -701,4 +701,54 @@ describe('MenuPage', () => {
       ),
     );
   });
+
+  it('un view inválido muestra la vista semanal y normaliza la URL', async () => {
+    entries = [view({ id: 'seed' })];
+    renderMenuAt('/?view=xxx&week=2026-11-02');
+
+    expect(await screen.findByTestId('weekly-calendar')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('view=week'));
+    expect(screen.getByTestId('location')).not.toHaveTextContent('view=xxx');
+  });
+
+  it('una semana que cruza de año pide el rango correcto', async () => {
+    entries = [view({ id: 'seed', date: '2026-12-28' })];
+    renderMenuAt('/?week=2026-12-28');
+
+    await screen.findByTestId('weekly-calendar');
+
+    await waitFor(() =>
+      expect(mockedFetchMealPlan).toHaveBeenLastCalledWith(
+        '2026-12-28',
+        '2027-01-03',
+        expect.anything(),
+      ),
+    );
+  });
+
+  it('la vista diaria muestra desayuno, comida, cena y merienda', async () => {
+    entries = [
+      view({
+        id: 'b',
+        date: '2026-11-02',
+        meal_type: 'breakfast',
+        recipe: summary({ id: 'rb', name: 'Tostadas' }),
+      }),
+      view({
+        id: 's',
+        date: '2026-11-02',
+        meal_type: 'snack',
+        recipe: summary({ id: 'rs', name: 'Fruta' }),
+      }),
+    ];
+    renderMenuAt('/?view=day&date=2026-11-02');
+
+    const card = await screen.findByTestId('day-card');
+    expect(within(card).getByText('DESAYUNO')).toBeInTheDocument();
+    expect(within(card).getByText('COMIDA')).toBeInTheDocument();
+    expect(within(card).getByText('CENA')).toBeInTheDocument();
+    expect(within(card).getByText('MERIENDA')).toBeInTheDocument();
+    expect(within(card).getByText('Tostadas')).toBeInTheDocument();
+    expect(within(card).getByText('Fruta')).toBeInTheDocument();
+  });
 });

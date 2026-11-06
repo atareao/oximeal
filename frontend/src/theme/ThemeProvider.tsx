@@ -31,9 +31,18 @@ function readStoredMode(): ThemeMode {
   if (typeof window === 'undefined') {
     return 'dark';
   }
-  const stored = window.localStorage.getItem(STORAGE_KEY);
-  return isThemeMode(stored) ? stored : 'dark';
+  try {
+    const stored = window.localStorage.getItem(STORAGE_KEY);
+    return isThemeMode(stored) ? stored : 'dark';
+  } catch {
+    return 'dark';
+  }
 }
+
+const THEME_COLORS: Record<ResolvedTheme, string> = {
+  dark: '#0f172a',
+  light: '#f7fafc',
+};
 
 function subscribeSystemTheme(onChange: () => void): () => void {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
@@ -78,11 +87,19 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   useEffect(() => {
     document.documentElement.dataset.theme = resolvedMode;
     document.documentElement.style.colorScheme = resolvedMode;
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (meta) {
+      meta.content = THEME_COLORS[resolvedMode];
+    }
   }, [resolvedMode]);
 
   const setMode = useCallback((next: ThemeMode) => {
     if (typeof window !== 'undefined') {
-      window.localStorage.setItem(STORAGE_KEY, next);
+      try {
+        window.localStorage.setItem(STORAGE_KEY, next);
+      } catch {
+        // Almacenamiento bloqueado: se aplica el tema sin persistir.
+      }
     }
     setModeState(next);
   }, []);

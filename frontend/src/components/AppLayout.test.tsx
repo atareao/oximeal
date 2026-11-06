@@ -5,11 +5,6 @@ import { AppLayout } from './AppLayout';
 import { useSession, type SessionContextValue } from '../auth/session';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 
-vi.mock('../lib/config', () => ({
-  VALET_URL: 'http://valet.test',
-  hasValet: true,
-}));
-
 vi.mock('../auth/session', () => ({
   useSession: vi.fn(),
 }));

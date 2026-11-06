@@ -15,6 +15,8 @@ export interface DayCardProps {
   onEditServings?: (entry: MealPlanEntryView) => void;
   /** Id de la entrada cuya baja está en curso, para el estado de carga. */
   removingId?: string | null;
+  /** Franjas a mostrar, en orden. Por defecto, comida y cena. */
+  slots?: readonly MealType[];
 }
 
 interface MealSlotProps {
@@ -102,7 +104,9 @@ function MealSlot({
   );
 }
 
-/** Tarjeta de un día con las franjas COMIDA y CENA y acciones de planificación. */
+const DEFAULT_SLOTS: readonly MealType[] = ['lunch', 'dinner'];
+
+/** Tarjeta de un día con sus franjas y acciones de planificación. */
 export function DayCard({
   date,
   entries,
@@ -111,11 +115,10 @@ export function DayCard({
   onRemove,
   onEditServings,
   removingId,
+  slots = DEFAULT_SLOTS,
 }: DayCardProps) {
   const headingId = useId();
   const today = isToday(date);
-  const lunch = entries.filter((entry) => entry.meal_type === 'lunch');
-  const dinner = entries.filter((entry) => entry.meal_type === 'dinner');
 
   return (
     <article
@@ -129,28 +132,20 @@ export function DayCard({
         </span>
         {today && <span className="day-card__today-badge">Hoy</span>}
       </header>
-      <MealSlot
-        label={mealTypeLabel('lunch')}
-        mealType="lunch"
-        date={date}
-        entries={lunch}
-        online={online}
-        onAdd={onAdd}
-        onRemove={onRemove}
-        onEditServings={onEditServings}
-        removingId={removingId}
-      />
-      <MealSlot
-        label={mealTypeLabel('dinner')}
-        mealType="dinner"
-        date={date}
-        entries={dinner}
-        online={online}
-        onAdd={onAdd}
-        onRemove={onRemove}
-        onEditServings={onEditServings}
-        removingId={removingId}
-      />
+      {slots.map((slot) => (
+        <MealSlot
+          key={slot}
+          label={mealTypeLabel(slot)}
+          mealType={slot}
+          date={date}
+          entries={entries.filter((entry) => entry.meal_type === slot)}
+          online={online}
+          onAdd={onAdd}
+          onRemove={onRemove}
+          onEditServings={onEditServings}
+          removingId={removingId}
+        />
+      ))}
     </article>
   );
 }

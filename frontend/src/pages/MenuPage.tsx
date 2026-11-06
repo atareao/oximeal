@@ -73,7 +73,7 @@ function formatMonthLabel(monthStart: string): string {
   );
 }
 
-function formatDayLabel(date: string): string {
+function formatLongDayLabel(date: string): string {
   return new Intl.DateTimeFormat('es-ES', {
     weekday: 'long',
     day: 'numeric',
@@ -101,7 +101,23 @@ export function MenuPage() {
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
   const online = useOnline();
 
-  const view = resolveView(searchParams.get('view'));
+  const rawView = searchParams.get('view');
+  const view = resolveView(rawView);
+
+  // Normaliza en la URL un `view` inválido para no dejar `view=xxx`.
+  useEffect(() => {
+    if (rawView !== null && rawView !== 'day' && rawView !== 'week' && rawView !== 'month') {
+      setSearchParams(
+        (previous) => {
+          const next = new URLSearchParams(previous);
+          next.set('view', 'week');
+          return next;
+        },
+        { replace: true },
+      );
+    }
+  }, [rawView, setSearchParams]);
+
   const referenceDate =
     view === 'week'
       ? resolveWeekParam(searchParams.get('week'))
@@ -153,6 +169,9 @@ export function MenuPage() {
       if (view === 'week') {
         const today = toDateString(new Date());
         date = today >= weekStart && today <= weekEnd ? today : weekStart;
+      } else if (view === 'month') {
+        const today = toDateString(new Date());
+        date = today >= monthStart && today <= monthEnd ? today : monthStart;
       }
       setSearchParams({ view: 'day', date });
     } else {
@@ -226,7 +245,7 @@ export function MenuPage() {
       ? formatWeekRange(weekStart, weekEnd)
       : view === 'month'
         ? formatMonthLabel(monthStart)
-        : formatDayLabel(referenceDate);
+        : formatLongDayLabel(referenceDate);
 
   const header = (
     <header className="menu-page__header">

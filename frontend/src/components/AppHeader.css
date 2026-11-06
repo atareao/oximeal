@@ -42,6 +42,7 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
+  min-width: 48px;
   padding: 0 10px;
   border: 0;
   border-radius: 10px;
@@ -76,5 +77,23 @@
 @media (max-width: 767px) {
   .app-header__brand {
     font-size: 16px;
+  }
+}
+
+@media (max-width: 359px) {
+  .app-header {
+    gap: 4px;
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+
+  .app-header__brand {
+    padding: 0 4px;
+    font-size: 15px;
+  }
+
+  .app-header__link,
+  .app-header__logout {
+    padding: 0 6px;
   }
 }

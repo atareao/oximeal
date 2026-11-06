@@ -25,6 +25,7 @@ const sharedToken: ThemeConfig['token'] = {
  * web, así que no se declara `'Inter'` (evita un fallback silencioso).
  */
 export const lightTheme: ThemeConfig = {
+  algorithm: antdTheme.defaultAlgorithm,
   token: {
     ...sharedToken,
     colorBgBase: '#f7fafc',
@@ -65,6 +66,3 @@ export const darkTheme: ThemeConfig = {
 export function getTheme(resolvedMode: ResolvedTheme): ThemeConfig {
   return resolvedMode === 'dark' ? darkTheme : lightTheme;
 }
-
-/** Compatibilidad con consumidores previos que importaban `theme`. */
-export const theme: ThemeConfig = lightTheme;

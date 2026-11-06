@@ -11,6 +11,16 @@ export interface MonthlyCalendarProps {
 
 const WEEKDAY_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'] as const;
 
+const LONG_DATE_FORMAT = new Intl.DateTimeFormat('es-ES', {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+});
+
+function formatLongDate(date: string): string {
+  return LONG_DATE_FORMAT.format(parseDateString(date));
+}
+
 function daysInMonth(monthStart: string): string[] {
   const base = parseDateString(monthStart);
   const year = base.getFullYear();
@@ -48,18 +58,18 @@ export function MonthlyCalendar({ monthStart, entries, onSelectDay }: MonthlyCal
         {days.map((date) => {
           const count = entries.filter((entry) => entry.date === date).length;
           const dayNumber = parseDateString(date).getDate();
+          const summary = count === 0 ? '—' : `${count} ${count === 1 ? 'comida' : 'comidas'}`;
           return (
             <button
               key={date}
               type="button"
               className="monthly-calendar__day"
               data-testid={`month-day-${date}`}
+              aria-label={`${formatLongDate(date)}, ${summary}`}
               onClick={() => onSelectDay(date)}
             >
               <span className="monthly-calendar__day-number">{dayNumber}</span>
-              <span className="monthly-calendar__day-summary">
-                {count === 0 ? '—' : `${count} ${count === 1 ? 'comida' : 'comidas'}`}
-              </span>
+              <span className="monthly-calendar__day-summary">{summary}</span>
             </button>
           );
         })}

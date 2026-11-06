@@ -28,7 +28,7 @@ const TOUCH_STYLE = { minHeight: 48 } as const;
  */
 export function AppHeader() {
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
-  const { logout } = useSession();
+  const { status, logout } = useSession();
 
   const handleLogout = () => {
     void logout().catch(() => undefined);
@@ -48,6 +48,7 @@ export function AppHeader() {
             end={item.end}
             className="app-header__link"
             aria-label={item.label}
+            title={item.label}
             style={TOUCH_STYLE}
           >
             <span className="app-header__icon" aria-hidden="true">
@@ -63,6 +64,7 @@ export function AppHeader() {
           to={SETTINGS_ITEM.to}
           className="app-header__link"
           aria-label={SETTINGS_ITEM.label}
+          title={SETTINGS_ITEM.label}
           style={TOUCH_STYLE}
         >
           <span className="app-header__icon" aria-hidden="true">
@@ -70,18 +72,21 @@ export function AppHeader() {
           </span>
           {isDesktop && <span className="app-header__label">{SETTINGS_ITEM.label}</span>}
         </NavLink>
-        <button
-          type="button"
-          className="app-header__logout"
-          aria-label="Salir"
-          style={TOUCH_STYLE}
-          onClick={handleLogout}
-        >
-          <span className="app-header__icon" aria-hidden="true">
-            🚪
-          </span>
-          {isDesktop && <span className="app-header__label">Salir</span>}
-        </button>
+        {status === 'authenticated' && (
+          <button
+            type="button"
+            className="app-header__logout"
+            aria-label="Salir"
+            title="Salir"
+            style={TOUCH_STYLE}
+            onClick={handleLogout}
+          >
+            <span className="app-header__icon" aria-hidden="true">
+              🚪
+            </span>
+            {isDesktop && <span className="app-header__label">Salir</span>}
+          </button>
+        )}
       </div>
     </header>
   );
