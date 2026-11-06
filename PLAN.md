@@ -985,14 +985,14 @@ código».
 
 ## 21. Backlog UI — próxima sesión (2026-11-06)
 
-Notas del usuario tras revisar el shell mobile-first. **No implementadas todavía.**
+Notas del usuario tras revisar el shell mobile-first. Estado: #1, #2 y #4 **entregados** (ver §22–§23); #3 pendiente.
 
-1. **Tema oscuro en negros**: sustituir la paleta azulada actual (`#0f172a`, `#111827`, `#1e293b`) por una escala de negros y grises neutros con contraste AA. Afecta a `frontend/src/index.css`, `frontend/src/components/theme.ts` y los `.css` que consumen las variables.
-2. **Solo comida y cena**: retirar desayuno y merienda de la planificación. Afecta a `DayCard` (volver a `lunch`/`dinner`), `DailyView`, `AddMealPlanDialog`/`MEAL_TYPE_OPTIONS`, la spec `weekly-menu` (revertir el escenario de cuatro franjas añadido en `ui-mobile-first-shell`) y los tests.
+1. **Tema oscuro en negros**: sustituir la paleta azulada actual (`#0f172a`, `#111827`, `#1e293b`) por una escala de negros y grises neutros con contraste AA. Afecta a `frontend/src/index.css`, `frontend/src/components/theme.ts` y los `.css` que consumen las variables. **✅ Entregado** (§22.2, PR #94).
+2. **Solo comida y cena**: retirar desayuno y merienda de la planificación. Afecta a `DayCard` (volver a `lunch`/`dinner`), `DailyView`, `AddMealPlanDialog`/`MEAL_TYPE_OPTIONS`, la spec `weekly-menu` (revertir el escenario de cuatro franjas añadido en `ui-mobile-first-shell`) y los tests. **✅ Entregado** (§23.1, PR #96).
 3. **Etiquetas de recetas**: además del filtro existente, poder **añadir etiquetas manualmente** y **etiquetar automáticamente** las recetas. Requiere change SDD con backend (modelo, repositorio, endpoints y heurística de autotagging) y frontend (formulario y detalle de receta). Decidir en la propuesta: catálogo de etiquetas, reglas automáticas, precedencia manual vs. automática y migración de recetas existentes.
-4. **Salir fuera de Configuración**: el botón Salir debe vivir solo en la barra superior, a la derecha de Configuración. Eliminar el bloque de cierre de sesión de `SettingsPage` (la identidad puede quedarse) y ajustar la spec `auth-ui` y los tests.
+4. **Salir fuera de Configuración**: el botón Salir debe vivir solo en la barra superior, a la derecha de Configuración. Eliminar el bloque de cierre de sesión de `SettingsPage` (la identidad puede quedarse) y ajustar la spec `auth-ui` y los tests. **✅ Entregado** (§22.1, PR #93).
 
-Orden sugerido: 2 y 4 (pequeños, corrigen lo recién entregado) → 1 (visual) → 3 (feature con backend).
+Orden sugerido: 2 y 4 (pequeños, corrigen lo recién entregado) → 1 (visual) → 3 (feature con backend). Ejecutado: #4, #1 y #2 ✅; queda #3.
 
 ---
 
@@ -1028,4 +1028,31 @@ Orden sugerido: 2 y 4 (pequeños, corrigen lo recién entregado) → 1 (visual) 
 
 ### 22.3 Pendiente del backlog (siguiente turno)
 
-Próximo: #2 Solo comida y cena y #3 Etiquetas de recetas (siguiente sesión).
+✅ #4, #1 y #2 entregados. Próximo: **#3 Etiquetas de recetas** (nueva sesión; feature con backend).
+
+---
+
+## 23. Backlog UI — Bloque B: #2 Solo comida y cena (2026-11-06)
+
+> Metodología: SDD + TDD (RED → GREEN → REFACTOR), auditoría por bloque. Rama `feature/meal-types-lunch-dinner`, PR #96.
+
+### 23.1 (#2) Solo comida y cena
+
+- **Alcance:** SOLO UI. Se retiran desayuno y merienda del planificador; la planificación queda en COMIDA y CENA. Backend/API/BD intactos.
+- **Decisión:** `MealType` (`frontend/src/api/types.ts`) conserva los 4 valores como contrato de datos de la API; solo se recortan las opciones y los slots mostrados. Las filas legacy con desayuno/merienda siguen siendo válidas (no se muestran).
+- **Change SDD:** `meal-types-lunch-dinner` (archivado en `openspec/changes/archive/2026-11-06-meal-types-lunch-dinner/`). Modifica la capability `weekly-menu`: escenarios de vista diaria, semanal y resumen mensual limitados a COMIDA y CENA.
+- **Cambios:**
+  - `frontend/src/components/DailyView.tsx` — deja de pasar las 4 franjas (hereda el default `['lunch','dinner']` de `DayCard`).
+  - `frontend/src/lib/mealPlan.ts` — `MEAL_TYPE_OPTIONS` reducido a Comida/Cena; nueva fuente única `PLANNED_MEAL_TYPES = ['lunch','dinner']`.
+  - `frontend/src/components/DayCard.tsx` — usa `PLANNED_MEAL_TYPES` como `DEFAULT_SLOTS`.
+  - `frontend/src/components/MonthlyCalendar.tsx` — el resumen de cada celda cuenta solo `PLANNED_MEAL_TYPES` (fix de auditoría).
+- **Tests:** RED→GREEN de vista diaria (excluye entradas legacy), selector solo Comida/Cena y resumen mensual. `just ci-ui` verde (332 tests).
+- **Auditoría `@react-reviewer`:** 1 blocker (el resumen mensual contaba las 4 franjas) detectado y resuelto; re-auditado sin blockers.
+- **Estado:** ✅ implementado, auditado y mergeado (PR #96).
+
+### 23.2 (#97) Fix de CI preexistente de `development`
+
+- Dos checks estaban en rojo desde #94/#95, ajenos a #2:
+  - OpenSpec: el `Requirement: Tema Antd y safe-area` de `ui-shell` (523 caracteres) rechazado por `validate --all --strict` (CLI 1.16.0).
+  - Frontend: `frontend/src/pages/SettingsPage.test.tsx` sin formatear (prettier).
+- **Fix:** rama `hotfix/openspec-ui-shell-strict`, PR #97, mergeado. `development` en verde (4/4).
