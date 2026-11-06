@@ -30,7 +30,12 @@ RUN mkdir -p backend/src \
 COPY backend/src ./backend/src
 COPY backend/migrations ./backend/migrations
 COPY --from=frontend /app/frontend/dist ./frontend/dist
+RUN cargo clean -p oximeal-backend && \
+    find backend/src -type f -name '*.rs' -exec touch {} + && \
+    find backend -maxdepth 1 -type f -name 'build.rs' -exec touch {} +
 RUN cargo build --release -p oximeal-backend --features embed-ui
+RUN test -x target/release/oximeal-backend \
+ && test "$(stat -c%s target/release/oximeal-backend)" -gt 5000000
 
 ### Stage 3 - runtime (minimo, no root) ###
 FROM debian:bookworm-slim AS runtime
