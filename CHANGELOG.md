@@ -32,6 +32,7 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 - **Despliegue:** `deploy/README.md` documenta el prefijo `__Host-`, la vida absoluta, el escape `ALLOW_INSECURE_COOKIE` y que HSTS/`Referrer-Policy` corresponden al reverse-proxy (#81).
 - **Interfaz (menú):** la vista diaria muestra las cuatro franjas (desayuno, comida, cena y merienda).
 - **Interfaz (Valet):** el acceso a Valet se mantiene desde las acciones del menú; desaparece la pestaña Asistente de la navegación.
+- **Interfaz (tema oscuro):** la paleta oscura pasa de la escala azulada *slate* a una escala neutra de negros y grises (`#0a0a0a`, `#141414`, `#1f1f1f`, `#e5e5e5`, `#a3a3a3`, `#3f3f3f`) con contraste AA (≥ 4.5:1) entre texto y fondos; el acento verde se mantiene y el `theme-color`/manifest se alinean con el modo por defecto (`#0a0a0a`).
 
 ## [0.5.1] - 2026-11-04
 

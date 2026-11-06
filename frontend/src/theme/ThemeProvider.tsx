@@ -40,7 +40,7 @@ function readStoredMode(): ThemeMode {
 }
 
 const THEME_COLORS: Record<ResolvedTheme, string> = {
-  dark: '#0f172a',
+  dark: '#0a0a0a',
   light: '#f7fafc',
 };
 
