@@ -538,8 +538,7 @@ async fn create_recipe_returns_201_and_persists() {
     let id = body["id"].as_str().expect("id de receta").to_string();
     assert_eq!(body["name"], "Tortilla");
 
-    let (status, detail) =
-        common::request(state, "GET", &format!("/api/recipes/{id}"), None).await;
+    let (status, detail) = common::request(state, "GET", &format!("/api/recipes/{id}"), None).await;
     assert_eq!(status, StatusCode::OK, "la receta debe persistirse");
     assert_eq!(detail["id"], id);
     assert_eq!(detail["name"], "Tortilla");
