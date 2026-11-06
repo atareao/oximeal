@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Alert, Button, Empty, Result, Skeleton, Typography } from 'antd';
+import { Alert, Button, Empty, Result, Segmented, Skeleton, Typography } from 'antd';
 import {
   useAddMealPlanEntry,
   useMealPlan,
@@ -9,7 +9,9 @@ import {
 } from '../api/hooks';
 import type { MealPlanEntryView, MealPlanInput, MealType } from '../api/types';
 import { AddMealPlanDialog } from '../components/AddMealPlanDialog';
+import { DailyView } from '../components/DailyView';
 import { EditServingsDialog } from '../components/EditServingsDialog';
+import { MonthlyCalendar } from '../components/MonthlyCalendar';
 import { WeeklyCalendar } from '../components/WeeklyCalendar';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { useOnline } from '../offline/connectivity';
@@ -19,6 +21,7 @@ import {
   formatWeekRange,
   getWeekDays,
   isValidDateString,
+  parseDateString,
   startOfWeek,
   toDateString,
 } from '../lib/dates';
@@ -28,10 +31,22 @@ const { Title, Paragraph } = Typography;
 
 const DESKTOP_QUERY = '(min-width: 768px)';
 
+type MenuView = 'day' | 'week' | 'month';
+
+const VIEW_OPTIONS: { label: string; value: MenuView }[] = [
+  { label: 'Diaria', value: 'day' },
+  { label: 'Semanal', value: 'week' },
+  { label: 'Mensual', value: 'month' },
+];
+
 interface AddSlot {
   date: string;
   /** `undefined` cuando se planifica fuera de un slot (estado vacío). */
   mealType?: MealType;
+}
+
+function resolveView(value: string | null): MenuView {
+  return value === 'day' || value === 'month' ? value : 'week';
 }
 
 function resolveWeekParam(value: string | null): string {
@@ -41,21 +56,84 @@ function resolveWeekParam(value: string | null): string {
   return startOfWeek(toDateString(new Date()));
 }
 
+function resolveDateParam(value: string | null): string {
+  if (value && isValidDateString(value)) {
+    return value;
+  }
+  return toDateString(new Date());
+}
+
+function monthStartOf(date: string): string {
+  return `${date.slice(0, 7)}-01`;
+}
+
+function formatMonthLabel(monthStart: string): string {
+  return new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' }).format(
+    parseDateString(monthStart),
+  );
+}
+
+function formatLongDayLabel(date: string): string {
+  return new Intl.DateTimeFormat('es-ES', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  }).format(parseDateString(date));
+}
+
+function monthEndOf(monthStart: string): string {
+  const base = parseDateString(monthStart);
+  return toDateString(new Date(base.getFullYear(), base.getMonth() + 1, 0));
+}
+
+function shiftMonth(monthStart: string, delta: number): string {
+  const base = parseDateString(monthStart);
+  return toDateString(new Date(base.getFullYear(), base.getMonth() + delta, 1));
+}
+
 function describeActionError(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
-/** Vista del menú semanal editable: alta en slot, baja y edición de raciones. */
+/** Vista del menú editable: diaria, semanal o mensual, con alta, baja y edición. */
 export function MenuPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
   const online = useOnline();
 
-  const weekStart = resolveWeekParam(searchParams.get('week'));
+  const rawView = searchParams.get('view');
+  const view = resolveView(rawView);
+
+  // Normaliza en la URL un `view` inválido para no dejar `view=xxx`.
+  useEffect(() => {
+    if (rawView !== null && rawView !== 'day' && rawView !== 'week' && rawView !== 'month') {
+      setSearchParams(
+        (previous) => {
+          const next = new URLSearchParams(previous);
+          next.set('view', 'week');
+          return next;
+        },
+        { replace: true },
+      );
+    }
+  }, [rawView, setSearchParams]);
+
+  const referenceDate =
+    view === 'week'
+      ? resolveWeekParam(searchParams.get('week'))
+      : resolveDateParam(searchParams.get('date'));
+
+  const weekStart = view === 'week' ? referenceDate : startOfWeek(referenceDate);
   const weekEnd = addDays(weekStart, 6);
   const days = useMemo(() => getWeekDays(weekStart), [weekStart]);
 
-  const { data, isLoading, isError, error, refetch } = useMealPlan(weekStart, weekEnd);
+  const monthStart = monthStartOf(referenceDate);
+  const monthEnd = monthEndOf(monthStart);
+
+  const rangeStart = view === 'day' ? referenceDate : view === 'week' ? weekStart : monthStart;
+  const rangeEnd = view === 'day' ? referenceDate : view === 'week' ? weekEnd : monthEnd;
+
+  const { data, isLoading, isError, error, refetch } = useMealPlan(rangeStart, rangeEnd);
 
   // Al recuperar la conexión, refresca el plan desde el servidor
   // (scenario «Recuperación de la conexión» de offline-writes).
@@ -80,8 +158,37 @@ export function MenuPage() {
   const errorMessage =
     error instanceof Error ? error.message : 'Ha ocurrido un error al contactar con el servidor.';
 
+  const changeView = (next: MenuView) => {
+    if (next === view) {
+      return;
+    }
+    if (next === 'week') {
+      setSearchParams({ view: 'week', week: startOfWeek(referenceDate) });
+    } else if (next === 'day') {
+      let date = referenceDate;
+      if (view === 'week') {
+        const today = toDateString(new Date());
+        date = today >= weekStart && today <= weekEnd ? today : weekStart;
+      } else if (view === 'month') {
+        const today = toDateString(new Date());
+        date = today >= monthStart && today <= monthEnd ? today : monthStart;
+      }
+      setSearchParams({ view: 'day', date });
+    } else {
+      setSearchParams({ view: 'month', date: monthStartOf(referenceDate) });
+    }
+  };
+
   const goToWeek = (start: string) => {
-    setSearchParams({ week: start });
+    setSearchParams({ view: 'week', week: start });
+  };
+
+  const goToDay = (date: string) => {
+    setSearchParams({ view: 'day', date });
+  };
+
+  const goToMonth = (start: string) => {
+    setSearchParams({ view: 'month', date: start });
   };
 
   const openAdd = (date: string, mealType?: MealType) => {
@@ -133,24 +240,51 @@ export function MenuPage() {
     );
   };
 
+  const rangeLabel =
+    view === 'week'
+      ? formatWeekRange(weekStart, weekEnd)
+      : view === 'month'
+        ? formatMonthLabel(monthStart)
+        : formatLongDayLabel(referenceDate);
+
   const header = (
     <header className="menu-page__header">
       <div className="menu-page__heading">
         <Title id="menu-title" level={2} className="menu-page__title">
-          Menú semanal
+          Menú
         </Title>
         <Paragraph className="menu-page__range" type="secondary">
-          {formatWeekRange(weekStart, weekEnd)}
+          {rangeLabel}
         </Paragraph>
       </div>
+      <Segmented
+        className="menu-page__view"
+        options={VIEW_OPTIONS}
+        value={view}
+        onChange={(value) => changeView(value as MenuView)}
+      />
       <div className="menu-page__nav">
-        <Button aria-label="Semana anterior" onClick={() => goToWeek(addDays(weekStart, -7))}>
-          ‹
-        </Button>
-        <Button onClick={() => goToWeek(startOfWeek(toDateString(new Date())))}>Hoy</Button>
-        <Button aria-label="Semana siguiente" onClick={() => goToWeek(addDays(weekStart, 7))}>
-          ›
-        </Button>
+        {view === 'week' && (
+          <>
+            <Button aria-label="Semana anterior" onClick={() => goToWeek(addDays(weekStart, -7))}>
+              ‹
+            </Button>
+            <Button onClick={() => goToWeek(startOfWeek(toDateString(new Date())))}>Hoy</Button>
+            <Button aria-label="Semana siguiente" onClick={() => goToWeek(addDays(weekStart, 7))}>
+              ›
+            </Button>
+          </>
+        )}
+        {view === 'month' && (
+          <>
+            <Button aria-label="Mes anterior" onClick={() => goToMonth(shiftMonth(monthStart, -1))}>
+              ‹
+            </Button>
+            <Button aria-label="Mes siguiente" onClick={() => goToMonth(shiftMonth(monthStart, 1))}>
+              ›
+            </Button>
+          </>
+        )}
         {hasValet && (
           <Button href={VALET_URL} target="_blank" rel="noopener noreferrer">
             Añadir comidas con Valet
@@ -158,6 +292,25 @@ export function MenuPage() {
         )}
       </div>
     </header>
+  );
+
+  const emptyState = (
+    <Empty description="No hay comidas planificadas" image={Empty.PRESENTED_IMAGE_SIMPLE}>
+      <div className="menu-page__empty-actions">
+        <Paragraph type="secondary" className="menu-page__empty-hint">
+          Planifica aquí mismo una receta del recetario o añade comidas con Valet.
+        </Paragraph>
+        <Button
+          type="primary"
+          className="menu-page__empty-plan"
+          disabled={!online}
+          onClick={() => openAdd(referenceDate)}
+        >
+          Planificar una comida
+        </Button>
+        <Link to="/shopping">Ir a la lista de la compra</Link>
+      </div>
+    </Empty>
   );
 
   return (
@@ -217,44 +370,51 @@ export function MenuPage() {
         />
       )}
 
-      {!isLoading && !isError && data && data.length === 0 && (
-        <Empty
-          description="No hay comidas planificadas esta semana"
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-        >
-          <div className="menu-page__empty-actions">
-            <Paragraph type="secondary" className="menu-page__empty-hint">
-              Planifica aquí mismo una receta del recetario o añade comidas con Valet.
-            </Paragraph>
-            <Button
-              type="primary"
-              className="menu-page__empty-plan"
-              disabled={!online}
-              onClick={() => openAdd(weekStart)}
-            >
-              Planificar una comida
-            </Button>
-            <Link to="/shopping">Ir a la lista de la compra</Link>
-          </div>
-        </Empty>
-      )}
+      {!isLoading &&
+        !isError &&
+        data &&
+        view === 'week' &&
+        (data.length === 0 ? (
+          emptyState
+        ) : (
+          <WeeklyCalendar
+            days={days}
+            entries={data}
+            isDesktop={isDesktop}
+            online={online}
+            onAdd={(date, mealType) => openAdd(date, mealType)}
+            onRemove={handleRemove}
+            onEditServings={openEditServings}
+            removingId={removeEntry.isPending ? removeEntry.variables : null}
+          />
+        ))}
 
-      {!isLoading && !isError && data && data.length > 0 && (
-        <WeeklyCalendar
-          days={days}
+      {!isLoading && !isError && data && view === 'day' && (
+        <DailyView
+          date={referenceDate}
           entries={data}
-          isDesktop={isDesktop}
           online={online}
           onAdd={(date, mealType) => openAdd(date, mealType)}
           onRemove={handleRemove}
           onEditServings={openEditServings}
           removingId={removeEntry.isPending ? removeEntry.variables : null}
+          onPrevious={() => goToDay(addDays(referenceDate, -1))}
+          onNext={() => goToDay(addDays(referenceDate, 1))}
+          onToday={() => goToDay(toDateString(new Date()))}
+        />
+      )}
+
+      {!isLoading && !isError && data && view === 'month' && (
+        <MonthlyCalendar
+          monthStart={monthStart}
+          entries={data}
+          onSelectDay={(date) => goToDay(date)}
         />
       )}
 
       <AddMealPlanDialog
         open={addSlot !== null}
-        date={addSlot?.date ?? weekStart}
+        date={addSlot?.date ?? referenceDate}
         mealType={addSlot?.mealType}
         online={online}
         submitting={addEntry.isPending}

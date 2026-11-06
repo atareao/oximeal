@@ -11,7 +11,7 @@
 .edit-servings__label {
   font-size: 14px;
   font-weight: 600;
-  color: #2d3748;
+  color: var(--text);
 }
 
 .edit-servings__validation {

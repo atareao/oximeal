@@ -2,16 +2,16 @@
   width: 100%;
   min-height: 48px;
   padding: 8px 12px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--border);
   border-radius: 10px;
-  background: #ffffff;
-  color: #1a202c;
+  background: var(--surface);
+  color: var(--text);
   font-size: 16px;
   font-family: inherit;
 }
 
 .recipe-form__select:focus-visible {
-  outline: 2px solid #2f855a;
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 
@@ -35,7 +35,7 @@
 .recipe-form__ingredients-label {
   font-size: 14px;
   font-weight: 600;
-  color: #2d3748;
+  color: var(--text);
 }
 
 .recipe-form__ingredient {
