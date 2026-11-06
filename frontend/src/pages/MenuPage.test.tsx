@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App as AntdApp } from 'antd';
 import type {
@@ -18,6 +18,7 @@ import {
   patchMealPlanEntry,
 } from '../api/client';
 import { useOnline } from '../offline/connectivity';
+import { toDateString } from '../lib/dates';
 import { MenuPage } from './MenuPage';
 import dayCardCss from '../components/DayCard.css?raw';
 import addMealPlanCss from '../components/AddMealPlanDialog.css?raw';
@@ -112,15 +113,27 @@ function recipesPage(): RecipeListResponse {
   };
 }
 
+function LocationProbe() {
+  const location = useLocation();
+  return (
+    <div data-testid="location">
+      {location.pathname}
+      {location.search}
+    </div>
+  );
+}
+
 function tree(
   queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
   }),
+  initialEntry = '/?week=2026-11-02',
 ) {
   return (
     <QueryClientProvider client={queryClient}>
       <AntdApp>
-        <MemoryRouter initialEntries={['/?week=2026-11-02']}>
+        <MemoryRouter initialEntries={[initialEntry]}>
+          <LocationProbe />
           <MenuPage />
         </MemoryRouter>
       </AntdApp>
@@ -130,6 +143,10 @@ function tree(
 
 function renderMenu() {
   return render(tree());
+}
+
+function renderMenuAt(initialEntry: string) {
+  return render(tree(undefined, initialEntry));
 }
 
 function cardForDay(index: number): HTMLElement {
@@ -600,5 +617,90 @@ describe('MenuPage', () => {
     await user.click(screen.getByRole('button', { name: /reintentar/i }));
 
     expect(await screen.findByText(/no hay comidas planificadas/i)).toBeInTheDocument();
+  });
+
+  it('sin view en la URL muestra la vista semanal por defecto', async () => {
+    entries = [view({ id: 'seed' })];
+    renderMenuAt('/?week=2026-11-02');
+
+    expect(await screen.findByTestId('weekly-calendar')).toBeInTheDocument();
+    expect(screen.getByTestId('location')).not.toHaveTextContent('view=day');
+    expect(screen.getByTestId('location')).not.toHaveTextContent('view=month');
+  });
+
+  it('cambiar a Diaria muestra un solo día y actualiza view=day', async () => {
+    entries = [view({ id: 'seed' })];
+    const user = userEvent.setup();
+    renderMenuAt('/?week=2026-11-02');
+
+    await screen.findByTestId('weekly-calendar');
+    await user.click(screen.getByText('Diaria'));
+
+    await waitFor(() => expect(screen.getAllByTestId('day-card')).toHaveLength(1));
+    expect(screen.getByTestId('location')).toHaveTextContent('view=day');
+  });
+
+  it('cambiar a Mensual muestra la rejilla del mes y actualiza view=month', async () => {
+    entries = [view({ id: 'seed' })];
+    const user = userEvent.setup();
+    renderMenuAt('/?week=2026-11-02');
+
+    await screen.findByTestId('weekly-calendar');
+    await user.click(screen.getByText('Mensual'));
+
+    expect(await screen.findByTestId('monthly-calendar')).toBeInTheDocument();
+    expect(screen.getByTestId('location')).toHaveTextContent('view=month');
+  });
+
+  it('en la vista mensual tocar un día navega a view=day con la fecha', async () => {
+    entries = [view({ id: 'seed' })];
+    const user = userEvent.setup();
+    renderMenuAt('/?view=month&date=2026-11-01');
+
+    await screen.findByTestId('monthly-calendar');
+    await user.click(screen.getByTestId('month-day-2026-11-15'));
+
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('view=day'));
+    expect(screen.getByTestId('location')).toHaveTextContent('date=2026-11-15');
+  });
+
+  it('en la vista diaria los botones anterior, siguiente y Hoy actualizan la fecha', async () => {
+    entries = [view({ id: 'seed' })];
+    const user = userEvent.setup();
+    renderMenuAt('/?view=day&date=2026-11-10');
+
+    await screen.findByTestId('daily-view');
+
+    await user.click(screen.getByRole('button', { name: /día siguiente/i }));
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent('date=2026-11-11'),
+    );
+
+    await user.click(screen.getByRole('button', { name: /día anterior/i }));
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent('date=2026-11-10'),
+    );
+
+    await user.click(screen.getByRole('button', { name: /^hoy$/i }));
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        `date=${toDateString(new Date())}`,
+      ),
+    );
+  });
+
+  it('la vista mensual pide a useMealPlan el rango del mes visible', async () => {
+    entries = [view({ id: 'seed' })];
+    renderMenuAt('/?view=month&date=2026-11-01');
+
+    await screen.findByTestId('monthly-calendar');
+
+    await waitFor(() =>
+      expect(mockedFetchMealPlan).toHaveBeenLastCalledWith(
+        '2026-11-01',
+        '2026-11-30',
+        expect.anything(),
+      ),
+    );
   });
 });
