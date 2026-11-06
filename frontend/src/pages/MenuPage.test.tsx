@@ -771,9 +771,7 @@ describe('MenuPage', () => {
     const user = userEvent.setup();
     renderMenu();
 
-    await user.click(
-      await screen.findByRole('button', { name: 'Planificar una comida' }),
-    );
+    await user.click(await screen.findByRole('button', { name: 'Planificar una comida' }));
 
     const dialog = await screen.findByRole('dialog');
     const select = within(dialog).getByLabelText(/tipo de comida/i);
