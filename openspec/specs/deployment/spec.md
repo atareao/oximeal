@@ -16,10 +16,7 @@ permisos, puerto, modo abierto vs OIDC y TLS/reverse-proxy) en `README.md` y
 
 ### Requirement: Imagen multi-stage reproducible
 
-El repositorio SHALL incluir un `Dockerfile` en la raíz (contexto de build = raíz
-del monorepo) con **tres stages**: `frontend` (Node + pnpm), `builder` (Rust) y
-`runtime` (imagen mínima). La imagen SHALL construirse como
-`ghcr.io/atareao/oximeal` (etiqueta por versión/commit).
+El repositorio SHALL incluir un `Dockerfile` en la raíz (contexto = raíz del monorepo) con tres stages: `frontend` (Node + pnpm), `builder` (Rust) y `runtime` (imagen mínima). La imagen SHALL publicarse como `ghcr.io/atareao/oximeal` etiquetada por versión/commit. El stage `runtime` SHALL contener el binario del código real, nunca el stub de caché; el build SHALL invalidar los artefactos del stub antes de compilar y SHALL fallar si el binario no supera la verificación de tamaño.
 
 #### Scenario: Build completo de la imagen
 
@@ -44,6 +41,21 @@ del monorepo) con **tres stages**: `frontend` (Node + pnpm), `builder` (Rust) y
 - WHEN se intenta construir la imagen
 - THEN `pnpm install --frozen-lockfile` falla y el build se detiene
 - AND no se genera una imagen parcial silenciosa
+
+#### Scenario: El binario final no es el stub de caché
+
+- GIVEN el stub compilado para calentar la caché de dependencias
+- WHEN el stage `builder` copia el código real y ejecuta la compilación definitiva
+- THEN los artefactos y fingerprints del stub se invalidan antes de compilar
+- AND el binario copiado al stage `runtime` corresponde al código real, con un tamaño muy superior al del stub
+- AND si el binario final no supera la verificación mínima de tamaño, el build falla
+
+#### Scenario: Contenedor servible
+
+- GIVEN la imagen construida
+- WHEN se inicia el contenedor y se consulta `/api/health`
+- THEN responde `200` con estado `ok`
+- AND los logs muestran el arranque del servidor
 
 ### Requirement: Cache de capas
 

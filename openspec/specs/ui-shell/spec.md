@@ -7,7 +7,7 @@ Define el shell responsive mobile-first de la PWA de OxiMeal: en desktop muestra
 
 ### Requirement: Shell responsive
 
-La aplicación SHALL usar una única barra de navegación superior fija en todos los tamaños de pantalla. SHALL eliminar el panel lateral (`Layout.Sider`) y la navegación inferior (`BottomNav`). La barra SHALL mostrar el logo de OxiMeal a la izquierda, las entradas Menú, Recetas y Compra, y a la derecha Configuración y Salir.
+La aplicación SHALL usar una única barra superior fija en todos los tamaños. SHALL eliminar el panel lateral (`Layout.Sider`) y la navegación inferior (`BottomNav`). La barra SHALL mostrar el logo a la izquierda, Menú, Recetas y Compra, y a la derecha Configuración y Salir. Por debajo de 480px el logo SHALL ser compacto, sin texto pero con nombre accesible, y los huecos SHALL reducirse para que Configuración y Salir queden dentro del viewport; el grupo de acciones SHALL ser no compresible.
 
 #### Scenario: Barra única
 
@@ -42,6 +42,14 @@ La aplicación SHALL usar una única barra de navegación superior fija en todos
 - GIVEN un viewport de 768px o más
 - WHEN se renderiza la barra superior
 - THEN cada entrada muestra icono y texto
+
+#### Scenario: Barra en móvil estrecha
+
+- GIVEN un viewport de 360px de ancho
+- WHEN se renderiza la barra superior
+- THEN el logo muestra la forma compacta con nombre accesible «OxiMeal»
+- AND Configuración y Salir son visibles y están dentro del viewport
+- AND el grupo de acciones no se comprime
 
 ### Requirement: Objetivos táctiles
 
