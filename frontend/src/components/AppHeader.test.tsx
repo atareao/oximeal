@@ -101,10 +101,7 @@ describe('AppHeader', () => {
   it('marca la entrada de la ruta activa con aria-current', () => {
     renderHeader('/recipes');
 
-    expect(screen.getByRole('link', { name: 'Recetas' })).toHaveAttribute(
-      'aria-current',
-      'page',
-    );
+    expect(screen.getByRole('link', { name: 'Recetas' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('link', { name: 'Menú' })).not.toHaveAttribute('aria-current');
     expect(screen.getByRole('link', { name: 'Compra' })).not.toHaveAttribute('aria-current');
   });

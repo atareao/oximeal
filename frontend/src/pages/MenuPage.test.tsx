@@ -683,9 +683,7 @@ describe('MenuPage', () => {
 
     await user.click(screen.getByRole('button', { name: /^hoy$/i }));
     await waitFor(() =>
-      expect(screen.getByTestId('location')).toHaveTextContent(
-        `date=${toDateString(new Date())}`,
-      ),
+      expect(screen.getByTestId('location')).toHaveTextContent(`date=${toDateString(new Date())}`),
     );
   });
 

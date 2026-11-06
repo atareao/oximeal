@@ -15,6 +15,28 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="OxiMeal" />
     <title>OxiMeal</title>
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('oximeal.theme');
+          var mode =
+            stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'dark';
+          var resolved = mode;
+          if (mode === 'system') {
+            resolved =
+              typeof window.matchMedia === 'function' &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light';
+          }
+          document.documentElement.dataset.theme = resolved;
+          document.documentElement.style.colorScheme = resolved;
+        } catch (error) {
+          document.documentElement.dataset.theme = 'dark';
+          document.documentElement.style.colorScheme = 'dark';
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

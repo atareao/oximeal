@@ -3,15 +3,15 @@
   flex-direction: column;
   gap: 12px;
   padding: 14px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border, #e2e8f0);
   border-radius: 12px;
-  background: #ffffff;
+  background: var(--surface, #ffffff);
   min-height: 100%;
 }
 
 .day-card--today {
-  border-color: #2f855a;
-  box-shadow: 0 0 0 1px #2f855a inset;
+  border-color: var(--accent, #2f855a);
+  box-shadow: 0 0 0 1px var(--accent, #2f855a) inset;
 }
 
 .day-card__header {
@@ -24,7 +24,7 @@
 .day-card__day {
   font-weight: 700;
   font-size: 15px;
-  color: #1a202c;
+  color: var(--text, #1a202c);
 }
 
 .day-card__today-badge {
@@ -33,7 +33,7 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: #ffffff;
-  background: #2f855a;
+  background: var(--accent, #2f855a);
   border-radius: 999px;
   padding: 2px 8px;
 }
@@ -49,7 +49,7 @@
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
-  color: #718096;
+  color: var(--text-muted, #718096);
 }
 
 .day-card__meals {
@@ -67,7 +67,7 @@
   align-items: center;
   gap: 6px;
   font-size: 14px;
-  color: #2d3748;
+  color: var(--text, #2d3748);
 }
 
 .day-card__meal-name {
@@ -76,7 +76,7 @@
 
 .day-card__meal-servings {
   font-size: 12px;
-  color: #718096;
+  color: var(--text-muted, #718096);
 }
 
 .day-card__meal-actions {
@@ -103,9 +103,9 @@
 .day-card__salad {
   font-size: 11px;
   font-weight: 600;
-  color: #276749;
-  background: #f0fff4;
-  border: 1px solid #c6f6d5;
+  color: var(--accent, #276749);
+  background: var(--accent-soft, #f0fff4);
+  border: 1px solid var(--border, #c6f6d5);
   border-radius: 999px;
   padding: 1px 6px;
 }
@@ -113,6 +113,6 @@
 .day-card__empty {
   margin: 0;
   font-size: 13px;
-  color: #a0aec0;
+  color: var(--text-muted, #a0aec0);
   font-style: italic;
 }
