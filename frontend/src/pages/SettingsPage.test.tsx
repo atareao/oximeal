@@ -80,9 +80,7 @@ describe('SettingsPage', () => {
   it('no muestra ningún botón ni control de cierre de sesión', () => {
     renderSettings();
 
-    expect(
-      screen.queryByRole('button', { name: /salir|cerrar sesión/i }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /salir|cerrar sesión/i })).not.toBeInTheDocument();
     expect(document.querySelector('.settings-page__logout')).toBeNull();
 
     const exitPattern = /salir|cerrar\s+sesi[oó]n|logout|log\s*out|sign\s*out/i;

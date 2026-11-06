@@ -62,7 +62,7 @@ entrada, editar raciones y selector de recetas).
 
 ### Requirement: Tema Antd y safe-area
 
-La aplicación SHALL configurar Ant Design mediante `ConfigProvider` con tokens dependientes del modo activo (claro u oscuro) y SHALL respetar los safe-area insets en la barra superior y en el contenido. En modo oscuro, la paleta SHALL ser **neutra** (negros y grises, sin tinte azulado perceptible) y SHALL garantizar contraste **AA** (ratio ≥ 4.5:1) entre el texto y sus fondos. El color del chrome (`color-scheme`, `<meta name="theme-color">` y `theme_color` del manifest) SHALL mantenerse coherente con el tema resuelto.
+La aplicación SHALL configurar Ant Design mediante `ConfigProvider` con tokens según el modo activo (claro u oscuro) y SHALL respetar los safe-area insets en la barra superior y el contenido. En modo oscuro la paleta SHALL ser neutra y SHALL alcanzar contraste AA (≥ 4.5:1) texto/fondo. El chrome (`color-scheme`, `theme-color` y `theme_color` del manifest) SHALL ser coherente con el tema resuelto.
 
 #### Scenario: Aplicación del tema
 
