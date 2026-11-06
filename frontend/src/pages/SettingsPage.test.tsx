@@ -77,14 +77,26 @@ describe('SettingsPage', () => {
     expect(screen.getByText('Ana')).toBeInTheDocument();
   });
 
-  it('el botón Salir invoca el logout de la sesión', async () => {
-    const logout = vi.fn().mockResolvedValue(undefined);
-    mockedUseSession.mockReturnValue(session({ logout }));
-    const user = userEvent.setup();
+  it('no muestra ningún botón ni control de cierre de sesión', () => {
     renderSettings();
 
-    await user.click(screen.getByRole('button', { name: /salir|cerrar sesión/i }));
+    expect(
+      screen.queryByRole('button', { name: /salir|cerrar sesión/i }),
+    ).not.toBeInTheDocument();
+    expect(document.querySelector('.settings-page__logout')).toBeNull();
 
-    expect(logout).toHaveBeenCalledTimes(1);
+    const exitPattern = /salir|cerrar\s+sesi[oó]n|logout|log\s*out|sign\s*out/i;
+    const exitControls = screen
+      .queryAllByRole('button')
+      .filter((element) => exitPattern.test(element.textContent ?? ''))
+      .concat(
+        Array.from(
+          document.querySelectorAll<HTMLElement>(
+            '[role="button"], a, [data-testid*="logout"], [data-testid*="salir"]',
+          ),
+        ).filter((element) => exitPattern.test(element.textContent ?? '')),
+      );
+
+    expect(exitControls).toHaveLength(0);
   });
 });
