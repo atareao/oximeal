@@ -18,8 +18,6 @@ export const MEAL_TYPE_LABELS: Readonly<Record<MealType, string>> = {
 export const MEAL_TYPE_OPTIONS: readonly { value: MealType; label: string }[] = [
   { value: 'lunch', label: 'Comida' },
   { value: 'dinner', label: 'Cena' },
-  { value: 'breakfast', label: 'Desayuno' },
-  { value: 'snack', label: 'Merienda' },
 ];
 
 /** Roles del plato en una comida, con su etiqueta en español. */
