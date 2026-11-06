@@ -726,13 +726,25 @@ describe('MenuPage', () => {
     );
   });
 
-  it('la vista diaria muestra desayuno, comida, cena y merienda', async () => {
+  it('la vista diaria muestra solo las franjas COMIDA y CENA y descarta desayuno y merienda', async () => {
     entries = [
       view({
         id: 'b',
         date: '2026-11-02',
         meal_type: 'breakfast',
         recipe: summary({ id: 'rb', name: 'Tostadas' }),
+      }),
+      view({
+        id: 'l',
+        date: '2026-11-02',
+        meal_type: 'lunch',
+        recipe: summary({ id: 'rl', name: 'Lentejas' }),
+      }),
+      view({
+        id: 'd',
+        date: '2026-11-02',
+        meal_type: 'dinner',
+        recipe: summary({ id: 'rd', name: 'Tortilla' }),
       }),
       view({
         id: 's',
@@ -744,11 +756,30 @@ describe('MenuPage', () => {
     renderMenuAt('/?view=day&date=2026-11-02');
 
     const card = await screen.findByTestId('day-card');
-    expect(within(card).getByText('DESAYUNO')).toBeInTheDocument();
     expect(within(card).getByText('COMIDA')).toBeInTheDocument();
     expect(within(card).getByText('CENA')).toBeInTheDocument();
-    expect(within(card).getByText('MERIENDA')).toBeInTheDocument();
-    expect(within(card).getByText('Tostadas')).toBeInTheDocument();
-    expect(within(card).getByText('Fruta')).toBeInTheDocument();
+    expect(within(card).queryByText('DESAYUNO')).not.toBeInTheDocument();
+    expect(within(card).queryByText('MERIENDA')).not.toBeInTheDocument();
+    expect(within(card).getByText('Lentejas')).toBeInTheDocument();
+    expect(within(card).getByText('Tortilla')).toBeInTheDocument();
+    expect(within(card).queryByText('Tostadas')).not.toBeInTheDocument();
+    expect(within(card).queryByText('Fruta')).not.toBeInTheDocument();
+  });
+
+  it('el selector de tipo de comida ofrece solo Comida y Cena', async () => {
+    entries = [];
+    const user = userEvent.setup();
+    renderMenu();
+
+    await user.click(await screen.findByRole('button', { name: 'Planificar una comida' }));
+
+    const dialog = await screen.findByRole('dialog');
+    const select = within(dialog).getByLabelText(/tipo de comida/i);
+    const options = within(select)
+      .getAllByRole('option')
+      .map((option) => option.textContent);
+    expect(options).toEqual(['Comida', 'Cena']);
+    expect(within(select).queryByRole('option', { name: 'Desayuno' })).not.toBeInTheDocument();
+    expect(within(select).queryByRole('option', { name: 'Merienda' })).not.toBeInTheDocument();
   });
 });
