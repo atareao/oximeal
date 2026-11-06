@@ -2,7 +2,7 @@ import { useId } from 'react';
 import { Button, Popconfirm } from 'antd';
 import type { MealPlanEntryView, MealType } from '../api/types';
 import { formatDayLabel, isToday } from '../lib/dates';
-import { mealTypeLabel } from '../lib/mealPlan';
+import { mealTypeLabel, PLANNED_MEAL_TYPES } from '../lib/mealPlan';
 import './DayCard.css';
 
 export interface DayCardProps {
@@ -104,7 +104,7 @@ function MealSlot({
   );
 }
 
-const DEFAULT_SLOTS: readonly MealType[] = ['lunch', 'dinner'];
+const DEFAULT_SLOTS: readonly MealType[] = PLANNED_MEAL_TYPES;
 
 /** Tarjeta de un día con sus franjas y acciones de planificación. */
 export function DayCard({

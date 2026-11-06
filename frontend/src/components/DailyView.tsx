@@ -15,7 +15,7 @@ export interface DailyViewProps {
   onToday: () => void;
 }
 
-/** Vista diaria: un único día con todas sus franjas y navegación entre días. */
+/** Vista diaria: un único día con COMIDA y CENA y navegación entre días. */
 export function DailyView({
   date,
   entries,

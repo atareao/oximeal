@@ -1,5 +1,6 @@
 import type { MealPlanEntryView } from '../api/types';
 import { parseDateString, toDateString } from '../lib/dates';
+import { PLANNED_MEAL_TYPES } from '../lib/mealPlan';
 import './MonthlyCalendar.css';
 
 export interface MonthlyCalendarProps {
@@ -56,7 +57,9 @@ export function MonthlyCalendar({ monthStart, entries, onSelectDay }: MonthlyCal
           />
         ))}
         {days.map((date) => {
-          const count = entries.filter((entry) => entry.date === date).length;
+          const count = entries.filter(
+            (entry) => entry.date === date && PLANNED_MEAL_TYPES.includes(entry.meal_type),
+          ).length;
           const dayNumber = parseDateString(date).getDate();
           const summary = count === 0 ? '—' : `${count} ${count === 1 ? 'comida' : 'comidas'}`;
           return (
