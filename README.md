@@ -164,6 +164,7 @@ administración de instancia. Sin credencial válida → **401** con
 | `GET /api/agent/recent-recipes`, `GET /api/agent/search-recipes` | `agent:read` |
 | `POST /api/agent/weekly-plan` | `agent:plan` |
 | `POST /api/agent/shopping-items`, `DELETE /api/agent/shopping/completed` | `agent:shopping` |
+| `POST /api/agent/recipes` | `agent:write` |
 | `GET /api/health`, `GET /api/openapi.json`, `/api/docs*`, `/auth/*` | **público** |
 
 Los permisos se leen del claim `scope` (modelo *APIs and permissions* de
@@ -202,7 +203,7 @@ curl -s -X POST "$TOKEN_ENDPOINT" \
   -d 'grant_type=client_credentials' \
   -d "client_id=$OIDC_CLIENT_ID" \
   -d "client_secret=$OIDC_CLIENT_SECRET" \
-  -d 'scope=agent:read agent:plan agent:shopping'
+  -d 'scope=agent:read agent:plan agent:shopping agent:write'
 ```
 
 Ejemplo de llamada a la Agent API con el token M2M:
