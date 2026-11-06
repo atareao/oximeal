@@ -16,6 +16,7 @@
 //! | `GET /api/agent/recent-recipes`, `GET /api/agent/search-recipes` | `agent:read` |
 //! | `POST /api/agent/weekly-plan` | `agent:plan` |
 //! | `POST /api/agent/shopping-items`, `DELETE /api/agent/shopping/completed` | `agent:shopping` |
+//! | `POST /api/agent/recipes` | `agent:write` |
 //! | `GET /api/health`, `/api/openapi.json`, `/api/docs*` | público |
 //!
 //! Los `agent:*` son permisos M2M (Valet); ningún cliente user-delegated los
@@ -58,7 +59,8 @@ pub fn router(state: &AppState) -> Router<AppState> {
             .merge(shopping_list::write_router())
             .merge(agent::read_router())
             .merge(agent::plan_router())
-            .merge(agent::shopping_router());
+            .merge(agent::shopping_router())
+            .merge(agent::write_router());
     }
 
     let protected = Router::new()
@@ -117,6 +119,11 @@ pub fn router(state: &AppState) -> Router<AppState> {
             agent::shopping_router(),
             state,
             "agent:shopping",
+        ))
+        .merge(require_permission(
+            agent::write_router(),
+            state,
+            "agent:write",
         ));
 
     public.merge(protected)
