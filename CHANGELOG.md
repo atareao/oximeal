@@ -12,6 +12,12 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [No publicado]
 
+## [0.6.1] - 2026-11-06
+
+### Corregido
+
+- **Imagen de contenedor:** la imagen publicada deja de incluir el stub de caché (285 KB) y pasa a contener el binario real (16,7 MB). El `Dockerfile` invalida los artefactos del stub (`cargo clean -p` + `touch` de fuentes) antes del build definitivo y falla si el binario resultante no supera 5 MB. Antes, el contenedor arrancaba y salía con código 0 sin servir peticiones.
+
 ## [0.6.0] - 2026-11-06
 
 ### Añadido

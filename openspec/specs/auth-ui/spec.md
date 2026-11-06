@@ -50,12 +50,7 @@ El cliente del frontend SHALL añadir la cabecera `X-CSRF-Token`, con el valor o
 
 ### Requirement: Identidad y cierre de sesión en la interfaz
 
-La aplicación SHALL mostrar el nombre del usuario en la página de ajustes. El
-cierre de sesión SHALL ofrecerse **únicamente** en la barra superior, como
-entrada `Salir` situada a la derecha de la entrada Configuración, e invocará
-`POST /auth/logout`. Al completarse, SHALL volver al login. La página de ajustes
-SHALL **no** ofrecer ningún control de cierre de sesión. No existen roles ni
-acciones de administración.
+La aplicación SHALL mostrar el nombre del usuario en ajustes. El cierre de sesión SHALL existir **únicamente** en la barra superior, como `Salir` a la derecha de Configuración, invocando `POST /auth/logout` y volviendo al login. Ajustes SHALL **no** ofrecer ningún control de cierre de sesión, y sin sesión autenticada SHALL **no** mostrarse `Salir`. No existen roles ni administración.
 
 #### Scenario: Se muestra el nombre del usuario
 
@@ -92,3 +87,9 @@ acciones de administración.
 - GIVEN un usuario autenticado
 - WHEN se abre `/settings`
 - THEN la página de ajustes no muestra ningún botón ni control de cierre de sesión
+
+#### Scenario: Sin sesión no hay Salir
+
+- GIVEN un estado de sesión distinto de `authenticated`
+- WHEN se renderiza la barra superior
+- THEN no se muestra la entrada Salir
