@@ -47,14 +47,14 @@ export const darkTheme: ThemeConfig = {
   algorithm: antdTheme.darkAlgorithm,
   token: {
     ...sharedToken,
-    colorBgBase: '#0f172a',
-    colorTextBase: '#e2e8f0',
+    colorBgBase: '#0a0a0a',
+    colorTextBase: '#e5e5e5',
   },
   components: {
     Layout: {
-      bodyBg: '#0f172a',
-      headerBg: '#111827',
-      siderBg: '#111827',
+      bodyBg: '#0a0a0a',
+      headerBg: '#141414',
+      siderBg: '#141414',
     },
     Button: {
       controlHeight: 48,
