@@ -516,6 +516,71 @@ async fn delete_completed_removes_checked_and_reports_count() {
     assert!(!id_b.is_empty());
 }
 
+// --- POST /api/agent/recipes -----------------------------------------------
+
+#[tokio::test]
+async fn create_recipe_returns_201_and_persists() {
+    let state = common::test_state().await;
+
+    let (status, body) = common::request(
+        state.clone(),
+        "POST",
+        "/api/agent/recipes",
+        Some(json!({
+            "name": "Tortilla",
+            "category": "main",
+            "ingredients": [{"name": "Huevo", "amount": 3.0, "unit": "ud"}]
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "body: {body}");
+
+    let id = body["id"].as_str().expect("id de receta").to_string();
+    assert_eq!(body["name"], "Tortilla");
+
+    let (status, detail) =
+        common::request(state, "GET", &format!("/api/recipes/{id}"), None).await;
+    assert_eq!(status, StatusCode::OK, "la receta debe persistirse");
+    assert_eq!(detail["id"], id);
+    assert_eq!(detail["name"], "Tortilla");
+}
+
+#[tokio::test]
+async fn create_recipe_rejects_invalid_category() {
+    let state = common::test_state().await;
+
+    let (status, _) = common::request(
+        state,
+        "POST",
+        "/api/agent/recipes",
+        Some(json!({
+            "name": "Tarta",
+            "category": "postre",
+            "ingredients": [{"name": "Huevo", "amount": 3.0, "unit": "ud"}]
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn create_recipe_rejects_empty_ingredients() {
+    let state = common::test_state().await;
+
+    let (status, _) = common::request(
+        state,
+        "POST",
+        "/api/agent/recipes",
+        Some(json!({
+            "name": "Tortilla",
+            "category": "main",
+            "ingredients": []
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
 // --- Documentación OpenAPI -------------------------------------------------
 
 #[tokio::test]
