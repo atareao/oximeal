@@ -4,6 +4,7 @@ import { useMediaQuery } from '../hooks/useMediaQuery';
 import './AppHeader.css';
 
 const DESKTOP_QUERY = '(min-width: 768px)';
+const WIDE_QUERY = '(min-width: 480px)';
 
 interface NavItem {
   to: string;
@@ -28,6 +29,7 @@ const TOUCH_STYLE = { minHeight: 48 } as const;
  */
 export function AppHeader() {
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
+  const isWide = useMediaQuery(WIDE_QUERY);
   const { status, logout } = useSession();
 
   const handleLogout = () => {
@@ -36,8 +38,20 @@ export function AppHeader() {
 
   return (
     <header className="app-header" data-testid="app-header">
-      <Link to="/" className="app-header__brand" aria-label="OxiMeal" style={TOUCH_STYLE}>
-        OxiMeal
+      <Link
+        to="/"
+        className="app-header__brand"
+        aria-label="OxiMeal"
+        title="OxiMeal"
+        style={TOUCH_STYLE}
+      >
+        {isWide ? (
+          'OxiMeal'
+        ) : (
+          <span className="app-header__brand-mark" aria-hidden="true">
+            OM
+          </span>
+        )}
       </Link>
 
       <nav className="app-header__nav" aria-label="Navegación principal">

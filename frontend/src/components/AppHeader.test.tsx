@@ -32,6 +32,16 @@ function LocationProbe() {
   return <div data-testid="location">{location.pathname}</div>;
 }
 
+/**
+ * Configura `useMediaQuery` por consulta: `wide` controla la query compacta
+ * `(min-width: 480px)` y `desktop` el resto (la query de escritorio de 768px).
+ */
+function mockViewport({ desktop, wide }: { desktop: boolean; wide: boolean }) {
+  mockedUseMediaQuery.mockImplementation((query: string) =>
+    query === '(min-width: 480px)' ? wide : desktop,
+  );
+}
+
 function renderHeader(initialEntry = '/') {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
@@ -139,5 +149,60 @@ describe('AppHeader', () => {
     for (const control of controls) {
       expect(control).toHaveStyle({ minHeight: '48px' });
     }
+  });
+
+  it('bajo 480px muestra el logo compacto sin el texto OxiMeal pero con nombre accesible', () => {
+    mockViewport({ desktop: false, wide: false });
+    renderHeader();
+
+    expect(screen.queryByText('OxiMeal')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'OxiMeal' })).toBeInTheDocument();
+  });
+
+  it('Configuración y Salir comparten el grupo de acciones y Salir es el último control', () => {
+    mockViewport({ desktop: false, wide: false });
+    renderHeader();
+
+    const settings = screen.getByRole('link', { name: 'Configuración' });
+    const logout = screen.getByRole('button', { name: 'Salir' });
+    const actions = settings.closest('.app-header__actions');
+
+    expect(actions).not.toBeNull();
+    expect(actions).toBe(logout.closest('.app-header__actions'));
+    expect(actions?.lastElementChild).toBe(logout);
+  });
+
+  it('sin sesión autenticada no renderiza el botón Salir', () => {
+    for (const status of ['loading', 'disabled', 'anonymous', 'degraded'] as const) {
+      mockedUseSession.mockReturnValue(session({ status }));
+      mockViewport({ desktop: false, wide: false });
+
+      const { unmount } = renderHeader();
+      expect(screen.queryByRole('button', { name: 'Salir' })).not.toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  it('con sesión autenticada y viewport estrecho la acción agrupa Configuración y Salir sin texto OxiMeal', () => {
+    mockViewport({ desktop: false, wide: false });
+    renderHeader();
+
+    const settings = screen.getByRole('link', { name: 'Configuración' });
+    const logout = screen.getByRole('button', { name: 'Salir' });
+    const actions = settings.closest('.app-header__actions');
+
+    expect(actions).not.toBeNull();
+    expect(actions).toBe(logout.closest('.app-header__actions'));
+    expect(actions).toContainElement(settings);
+    expect(actions).toContainElement(logout);
+    expect(screen.queryByText('OxiMeal')).not.toBeInTheDocument();
+  });
+
+  it('en viewport ancho el logo muestra el texto OxiMeal y no la marca compacta', () => {
+    mockViewport({ desktop: true, wide: true });
+    renderHeader();
+
+    expect(screen.getByText('OxiMeal')).toBeInTheDocument();
+    expect(document.querySelector('.app-header__brand-mark')).not.toBeInTheDocument();
   });
 });
