@@ -260,7 +260,11 @@ function RecipeFormFields({ initial, submitting, onClose, onSubmit }: RecipeForm
         <div className="recipe-form__auto-tags">
           <span className="recipe-form__auto-tags-label">Etiquetas sugeridas automáticamente</span>
           {/* eslint-disable-next-line jsx-a11y/no-redundant-roles -- el CSS list-style:none elimina el rol implícito en Safari/VoiceOver */}
-          <ul role="list" className="recipe-form__suggestions" aria-label="Etiquetas sugeridas automáticamente">
+          <ul
+            role="list"
+            className="recipe-form__suggestions"
+            aria-label="Etiquetas sugeridas automáticamente"
+          >
             {suggestions.map((tag) => (
               <li key={tag.id} className="recipe-form__suggestion">
                 <span>{tag.name}</span>

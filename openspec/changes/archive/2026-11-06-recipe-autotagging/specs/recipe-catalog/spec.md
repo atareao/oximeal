@@ -2,7 +2,7 @@
 
 ### Requirement: Alta y edición desde la UI
 
-La aplicación SHALL permitir crear y editar recetas desde la UI mediante un formulario que valide los campos requeridos y muestre los errores de validación del servidor, sin permitir guardar datos inválidos. El formulario SHALL incluir un selector de etiquetas con creación al vuelo (etiquetas existentes o nuevas, enviadas por nombre) y SHALL mostrar las etiquetas automáticas sugeridas de forma distinguible, permitiendo retirarlas —enviándolas en `suppressed_auto_tags`— y desactivar el etiquetado automático con `auto_tags`.
+La aplicación SHALL permitir crear y editar recetas desde la UI con un formulario que valide los campos requeridos y muestre los errores del servidor, sin guardar datos inválidos. El formulario SHALL incluir un selector de etiquetas con creación al vuelo (por nombre) y SHALL mostrar las etiquetas automáticas sugeridas de forma distinguible, permitiendo retirarlas (en `suppressed_auto_tags`) y desactivar el etiquetado automático con `auto_tags`.
 
 #### Scenario: Alta de receta
 

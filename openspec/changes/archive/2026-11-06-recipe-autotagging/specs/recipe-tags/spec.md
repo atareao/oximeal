@@ -141,7 +141,7 @@ El sistema SHALL exponer `POST /api/recipes/{id}/autotag`, con permiso `write:re
 
 ### Requirement: Etiquetas en el alta y la edición de recetas
 
-El contrato de `POST /api/recipes` y `PUT /api/recipes/{id}` SHALL aceptar un campo opcional `tags` con los nombres de las etiquetas manuales, creando al vuelo las que no existan por `slug`. Las etiquetas `manual` SHALL reemplazar el conjunto manual anterior y SHALL tener precedencia sobre la heurística automática, que SHALL añadir sus etiquetas `auto` en la misma operación salvo que `auto_tags` sea `false`. Las respuestas `Recipe` y `RecipeSummary` SHALL incluir las etiquetas con `id`, `name`, `slug` y `source`.
+El contrato de `POST /api/recipes` y `PUT /api/recipes/{id}` SHALL aceptar un campo opcional `tags` con los nombres de las etiquetas manuales, creándolas al vuelo por `slug`. Las etiquetas `manual` SHALL reemplazar el conjunto manual anterior y SHALL tener precedencia sobre la heurística automática, que SHALL añadir sus etiquetas `auto` en la misma operación salvo que `auto_tags` sea `false`. `Recipe` y `RecipeSummary` SHALL incluir sus etiquetas con `id`, `name`, `slug` y `source`.
 
 #### Scenario: Alta con etiquetas nuevas
 
