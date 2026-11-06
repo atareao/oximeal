@@ -77,3 +77,11 @@
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* Sugerida automáticamente: estilo atenuado y discontinuo. */
+.recipe-card__tag--auto {
+  border-style: dashed;
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  font-style: italic;
+}

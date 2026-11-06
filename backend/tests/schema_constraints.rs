@@ -273,15 +273,16 @@ async fn migration_0007_creates_tags_schema() {
         "falta idx_recipe_tags_tag_id: {indexes:?}"
     );
 
-    // `tags.slug` tiene una restricción UNIQUE: un slug duplicado debe ser rechazado.
-    sqlx::query("INSERT INTO tags (id, name, slug) VALUES ('t1', 'Vegano', 'vegano')")
+    // `tags.slug` tiene una restricción UNIQUE: un slug duplicado debe ser
+    // rechazado. Se usa un slug libre (el catálogo automático de `0009` ya ocupa
+    // los canónicos).
+    sqlx::query("INSERT INTO tags (id, name, slug) VALUES ('t1', 'Libre', 'libre')")
         .execute(&state.pool)
         .await
         .expect("insert tag");
-    let duplicate =
-        sqlx::query("INSERT INTO tags (id, name, slug) VALUES ('t2', 'Otro', 'vegano')")
-            .execute(&state.pool)
-            .await;
+    let duplicate = sqlx::query("INSERT INTO tags (id, name, slug) VALUES ('t2', 'Otro', 'libre')")
+        .execute(&state.pool)
+        .await;
     assert!(
         duplicate.is_err(),
         "tags.slug debe ser UNIQUE (rechaza duplicados)"

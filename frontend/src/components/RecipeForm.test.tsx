@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App as AntdApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -62,14 +62,14 @@ function renderForm(overrides: Partial<Parameters<typeof RecipeForm>[0]> = {}) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
   });
-  render(
+  const { rerender } = render(
     <QueryClientProvider client={queryClient}>
       <AntdApp>
         <RecipeForm open initial={null} onClose={onClose} onSubmit={onSubmit} {...overrides} />
       </AntdApp>
     </QueryClientProvider>,
   );
-  return { onSubmit, onClose };
+  return { onSubmit, onClose, rerender, queryClient };
 }
 
 async function fillRequiredFields(user: ReturnType<typeof userEvent.setup>) {
@@ -190,5 +190,100 @@ describe('RecipeForm', () => {
     expect(submit).toHaveClass('recipe-form__submit');
 
     expect(recipeFormCss).toMatch(/\.recipe-form__submit\s*\{[^}]*min-height:\s*48px/);
+  });
+
+  it('muestra las etiquetas automáticas sugeridas de forma distinguible', async () => {
+    renderForm({
+      initial: recipe({
+        tags: [
+          { id: 't1', name: 'Vegano', slug: 'vegano', source: 'manual' },
+          { id: 't2', name: 'Sin gluten', slug: 'sin-gluten', source: 'auto' },
+        ],
+      }),
+    });
+
+    const suggestions = await screen.findByRole('list', { name: /sugeridas/i });
+    expect(within(suggestions).getByText('Sin gluten')).toBeInTheDocument();
+  });
+
+  it('retirar una sugerencia la envía en suppressed_auto_tags', async () => {
+    const user = userEvent.setup();
+    const { onSubmit } = renderForm({
+      initial: recipe({
+        tags: [
+          { id: 't1', name: 'Vegano', slug: 'vegano', source: 'manual' },
+          { id: 't2', name: 'Sin gluten', slug: 'sin-gluten', source: 'auto' },
+        ],
+      }),
+    });
+
+    await user.click(await screen.findByRole('button', { name: /retirar sin gluten/i }));
+    await user.click(screen.getByRole('button', { name: /guardar/i }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining<Partial<RecipeInput>>({
+        suppressed_auto_tags: ['sin-gluten'],
+      }),
+    );
+  });
+
+  it('permite desactivar el etiquetado automático y lo envía como auto_tags: false', async () => {
+    const user = userEvent.setup();
+    const { onSubmit } = renderForm();
+
+    await fillRequiredFields(user);
+    await user.click(screen.getByRole('checkbox', { name: /etiquetado automático/i }));
+    await user.click(screen.getByRole('button', { name: /guardar/i }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining<Partial<RecipeInput>>({ auto_tags: false }),
+    );
+  });
+
+  it('reinicia el estado local al reabrir el formulario con otra receta', async () => {
+    const user = userEvent.setup();
+    const first = recipe({
+      id: 'r1',
+      tags: [
+        { id: 't1', name: 'Vegano', slug: 'vegano', source: 'manual' },
+        { id: 't2', name: 'Sin gluten', slug: 'sin-gluten', source: 'auto' },
+      ],
+    });
+    const second = recipe({ id: 'r2', name: 'Paella' });
+
+    const { onSubmit, onClose, rerender, queryClient } = renderForm({ initial: first });
+
+    // La primera receta muestra su sugerencia automática.
+    expect(await screen.findByRole('list', { name: /sugeridas/i })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /retirar sin gluten/i }));
+    await user.click(screen.getByRole('checkbox', { name: /etiquetado automático/i }));
+    expect(screen.queryByRole('list', { name: /sugeridas/i })).not.toBeInTheDocument();
+
+    // Reabrir con otra receta remonta el cuerpo y reinicia el estado local.
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <AntdApp>
+          <RecipeForm open initial={second} onClose={onClose} onSubmit={onSubmit} />
+        </AntdApp>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByRole('list', { name: /sugeridas/i })).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole('checkbox', { name: /etiquetado automático/i })).toBeChecked();
+
+    await user.click(screen.getByRole('button', { name: /guardar/i }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    // No arrastra la sugerencia retirada ni el toggle desactivado de la receta previa.
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining<Partial<RecipeInput>>({
+        auto_tags: true,
+        suppressed_auto_tags: [],
+      }),
+    );
   });
 });

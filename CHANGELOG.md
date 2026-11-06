@@ -22,6 +22,8 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 - **Interfaz (navegación):** barra superior fija única con el logo, Menú, Recetas, Compra, Configuración y Salir; en móvil solo iconos con nombre accesible y objetivos táctiles de 48px. Se eliminan el panel lateral y la navegación inferior.
 - **Interfaz (tema):** selector Oscuro / Claro / Sistema en `/settings`, con Oscuro por defecto, persistencia en `localStorage` y sin destello al cargar.
 - **Interfaz (menú):** vistas Diaria, Semanal y Mensual, con Semanal por defecto; la mensual muestra una rejilla con resumen por día y abre la vista diaria al tocar un día.
+- **Recetas (etiquetas automáticas):** el sistema sugiere automáticamente un vocabulario cerrado de etiquetas de dieta e intolerancias (`vegetariano`, `vegano`, `sin-gluten`, `sin-lactosa`, `picante`) a partir de los ingredientes, con coincidencia por token; el usuario puede retirar sugerencias por receta y desactivar el etiquetado automático. Nuevo `POST /api/recipes/{id}/autotag` para recalcular (#55).
+- **Recetas (etiquetas):** nuevo campo `source` (`manual`|`auto`) en las etiquetas devueltas, y campos `auto_tags`/`suppressed_auto_tags` en el alta y la edición (#55).
 
 ### Cambiado
 
@@ -33,6 +35,7 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 - **Interfaz (menú):** la vista diaria muestra las cuatro franjas (desayuno, comida, cena y merienda).
 - **Interfaz (Valet):** el acceso a Valet se mantiene desde las acciones del menú; desaparece la pestaña Asistente de la navegación.
 - **Interfaz (tema oscuro):** la paleta oscura pasa de la escala azulada *slate* a una escala neutra de negros y grises (`#0a0a0a`, `#141414`, `#1f1f1f`, `#e5e5e5`, `#a3a3a3`, `#3f3f3f`) con contraste AA (≥ 4.5:1) entre texto y fondos; el acento verde se mantiene y el `theme-color`/manifest se alinean con el modo por defecto (`#0a0a0a`).
+- **Recetas (datos):** la migración `0009` añade `recipe_tags.source`, la tabla `recipe_tag_suppressions` y el catálogo automático; un backfill idempotente etiqueta las recetas existentes al arrancar (#55).
 
 ## [0.5.1] - 2026-11-04
 

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -286,5 +286,26 @@ describe('RecipeDetailPage', () => {
 
     expect(recipeDetailCss).toMatch(/\.recipe-detail__add-to-list\s*\{[^}]*min-height:\s*48px/);
     expect(recipeDetailCss).toMatch(/\.recipe-detail__servings\s*\{[^}]*min-height:\s*48px/);
+  });
+
+  it('distingue visualmente la etiqueta manual de la automática', async () => {
+    mockedFetchRecipe.mockResolvedValue(
+      recipe({
+        tags: [
+          { id: 't1', name: 'Vegano', slug: 'vegano', source: 'manual' },
+          { id: 't2', name: 'Sin gluten', slug: 'sin-gluten', source: 'auto' },
+        ],
+      }),
+    );
+    renderDetail();
+
+    await screen.findByRole('heading', { name: 'Tortilla' });
+    const list = screen.getByRole('list', { name: /etiquetas/i });
+    const manual = within(list).getByText('Vegano');
+    const auto = within(list).getByText('Sin gluten');
+
+    expect(manual).toHaveClass('recipe-detail__tag--manual');
+    expect(auto).toHaveClass('recipe-detail__tag--auto');
+    expect(manual.className).not.toEqual(auto.className);
   });
 });

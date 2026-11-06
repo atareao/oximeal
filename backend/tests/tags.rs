@@ -75,7 +75,6 @@ async fn list_tags_returns_all_with_recipe_count() {
     assert_eq!(status, StatusCode::OK);
 
     let tags = body.as_array().expect("array de etiquetas");
-    assert_eq!(tags.len(), 2, "deben listarse todas las etiquetas");
 
     let vegano = tags
         .iter()
@@ -99,14 +98,14 @@ async fn create_tag_returns_201_with_zero_count() {
         state,
         "POST",
         "/api/tags",
-        Some(json!({"name": "Sin gluten"})),
+        Some(json!({"name": "Desayuno"})),
     )
     .await;
 
     assert_eq!(status, StatusCode::CREATED, "body: {body}");
     assert!(body["id"].is_string(), "debe devolver id");
-    assert_eq!(body["name"], "Sin gluten");
-    assert_eq!(body["slug"], "sin gluten");
+    assert_eq!(body["name"], "Desayuno");
+    assert_eq!(body["slug"], "desayuno");
     assert_eq!(body["recipe_count"], 0);
 }
 
@@ -118,7 +117,7 @@ async fn create_tag_duplicate_returns_200_with_existing() {
         state.clone(),
         "POST",
         "/api/tags",
-        Some(json!({"name": "Sin gluten"})),
+        Some(json!({"name": "Desayuno"})),
     )
     .await;
     assert_eq!(status, StatusCode::CREATED);
@@ -129,7 +128,7 @@ async fn create_tag_duplicate_returns_200_with_existing() {
         state.clone(),
         "POST",
         "/api/tags",
-        Some(json!({"name": "  SIN   GLUTEN  "})),
+        Some(json!({"name": "  DESAYUNO  "})),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "body: {second}");
@@ -140,11 +139,60 @@ async fn create_tag_duplicate_returns_200_with_existing() {
 
     let (status, body) = common::request(state, "GET", "/api/tags", None).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(
-        body.as_array().map(Vec::len),
-        Some(1),
-        "no debe crear una segunda etiqueta"
-    );
+    let count = body
+        .as_array()
+        .expect("array")
+        .iter()
+        .filter(|t| t["slug"] == "desayuno")
+        .count();
+    assert_eq!(count, 1, "no debe crear una segunda etiqueta");
+}
+
+#[tokio::test]
+async fn create_tag_uses_automatic_catalog_canonical_slug() {
+    let state = test_state().await;
+
+    // Una receta sin gluten hace que la heurística cree la etiqueta `auto`
+    // canónica `sin-gluten`.
+    let recipe_id = seed_recipe(&state, "Arroz blanco", &[]).await;
+    let (status, recipe) = common::request(
+        state.clone(),
+        "GET",
+        &format!("/api/recipes/{recipe_id}"),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "detalle de receta: {recipe}");
+    let auto_tag = recipe["tags"]
+        .as_array()
+        .expect("tags de receta")
+        .iter()
+        .find(|t| t["slug"] == "sin-gluten")
+        .expect("el catálogo automático debe crear sin-gluten");
+    let auto_id = auto_tag["id"].as_str().expect("id auto").to_string();
+
+    // El alta manual con el nombre de presentación resuelve al mismo `slug`
+    // canónico y devuelve la etiqueta ya existente (no crea una segunda).
+    let (status, body) = common::request(
+        state.clone(),
+        "POST",
+        "/api/tags",
+        Some(json!({"name": "Sin gluten"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert_eq!(body["slug"], "sin-gluten");
+    assert_eq!(body["id"], auto_id);
+
+    let (status, tags) = common::request(state, "GET", "/api/tags", None).await;
+    assert_eq!(status, StatusCode::OK);
+    let count = tags
+        .as_array()
+        .expect("array")
+        .iter()
+        .filter(|t| t["slug"] == "sin-gluten")
+        .count();
+    assert_eq!(count, 1, "no debe duplicarse en el catálogo");
 }
 
 #[tokio::test]
@@ -164,7 +212,13 @@ async fn create_tag_empty_name_returns_400() {
 
     let (status, body) = common::request(state, "GET", "/api/tags", None).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body.as_array().map(Vec::len), Some(0), "nada persistido");
+    assert!(
+        body.as_array()
+            .expect("array")
+            .iter()
+            .all(|t| t["slug"].as_str().is_some_and(|slug| !slug.is_empty())),
+        "nada con slug vacío debe persistirse: {body}"
+    );
 }
 
 #[tokio::test]
@@ -175,7 +229,15 @@ async fn delete_tag_with_recipes_returns_204_and_keeps_recipes() {
 
     let (status, tags) = common::request(state.clone(), "GET", "/api/tags", None).await;
     assert_eq!(status, StatusCode::OK);
-    let tag_id = tags[0]["id"].as_str().expect("id de etiqueta").to_string();
+    let tag_id = tags
+        .as_array()
+        .expect("array")
+        .iter()
+        .find(|t| t["slug"] == "vegano")
+        .expect("etiqueta vegano")["id"]
+        .as_str()
+        .expect("id de etiqueta")
+        .to_string();
 
     let (status, body) = common::request(
         state.clone(),
@@ -189,13 +251,24 @@ async fn delete_tag_with_recipes_returns_204_and_keeps_recipes() {
     // La etiqueta desaparece del catálogo...
     let (status, tags) = common::request(state.clone(), "GET", "/api/tags", None).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(tags.as_array().map(Vec::len), Some(0));
+    assert!(
+        tags.as_array()
+            .expect("array")
+            .iter()
+            .all(|t| t["slug"] != "vegano")
+    );
 
-    // ...pero la receta permanece intacta y sin etiquetas.
+    // ...pero la receta permanece y ya no tiene la etiqueta borrada.
     let (status, detail) =
         common::request(state, "GET", &format!("/api/recipes/{recipe_id}"), None).await;
     assert_eq!(status, StatusCode::OK, "la receta debe permanecer");
-    assert_eq!(detail["tags"].as_array().map(Vec::len), Some(0));
+    assert!(
+        detail["tags"]
+            .as_array()
+            .expect("tags de la receta")
+            .iter()
+            .all(|t| t["slug"] != "vegano")
+    );
 }
 
 #[tokio::test]

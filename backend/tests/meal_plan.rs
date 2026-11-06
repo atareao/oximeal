@@ -539,9 +539,9 @@ async fn list_entries_include_recipe_tags() {
     assert_eq!(recipe["id"], recipe_id);
 
     let tags = recipe["tags"].as_array().expect("array de etiquetas");
-    assert_eq!(tags.len(), 2, "la receta embebida devuelve sus etiquetas");
+    assert_eq!(tags.len(), 5, "la receta embebida devuelve sus etiquetas");
 
-    // Cada etiqueta expone `id`, `name` y `slug`.
+    // Cada etiqueta expone `id`, `name`, `slug` y `source`.
     for tag in tags {
         assert!(
             tag["id"].as_str().is_some_and(|id| !id.is_empty()),
@@ -549,9 +549,10 @@ async fn list_entries_include_recipe_tags() {
         );
         assert!(tag["name"].is_string(), "name de etiqueta: {tag}");
         assert!(tag["slug"].is_string(), "slug de etiqueta: {tag}");
+        assert!(tag["source"].is_string(), "source de etiqueta: {tag}");
     }
 
-    // Comprobación por conjunto (orden por nombre): slugs y nombres esperados.
+    // Comprobación por conjunto: las dos manuales y las tres automáticas.
     let mut got: Vec<(String, String)> = tags
         .iter()
         .map(|tag| {
@@ -566,7 +567,10 @@ async fn list_entries_include_recipe_tags() {
         got,
         vec![
             ("rápido".to_string(), "Rápido".to_string()),
+            ("sin-gluten".to_string(), "Sin gluten".to_string()),
+            ("sin-lactosa".to_string(), "Sin lactosa".to_string()),
             ("vegano".to_string(), "Vegano".to_string()),
+            ("vegetariano".to_string(), "Vegetariano".to_string()),
         ]
     );
 }

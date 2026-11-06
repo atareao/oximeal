@@ -26,7 +26,9 @@ export function RecipeCard({ recipe, onSelectTag }: RecipeCardProps) {
             <li key={tag.id}>
               <button
                 type="button"
-                className="recipe-card__tag"
+                className={`recipe-card__tag recipe-card__tag--${
+                  tag.source === 'auto' ? 'auto' : 'manual'
+                }`}
                 aria-label={`Filtrar por etiqueta ${tag.name}`}
                 onClick={() => onSelectTag?.(tag.slug)}
               >

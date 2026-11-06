@@ -41,6 +41,7 @@ pub fn write_router() -> Router<AppState> {
             "/api/recipes/{id}",
             put(update_recipe).delete(delete_recipe),
         )
+        .route("/api/recipes/{id}/autotag", post(autotag_recipe))
 }
 
 /// `POST /api/recipes/import` — importa una receta desde una URL (Schema.org).
@@ -203,6 +204,30 @@ pub async fn update_recipe(
 
     let recipe = repo::recipes::update(&state.pool, &id, &input).await?;
 
+    Ok(Json(recipe))
+}
+
+/// `POST /api/recipes/{id}/autotag` — recalcula las etiquetas automáticas.
+///
+/// Conserva las etiquetas `manual` y las supresiones registradas, y devuelve la
+/// `Recipe` actualizada con sus etiquetas `auto` recalculadas.
+#[utoipa::path(
+    post,
+    path = "/api/recipes/{id}/autotag",
+    tag = "recipes",
+    params(("id" = String, Path, description = "Identificador de la receta")),
+    responses(
+        (status = 200, description = "Etiquetas automáticas recalculadas", body = Recipe),
+        (status = 401, description = "Sin sesión"),
+        (status = 403, description = "Falta el permiso write:recipes"),
+        (status = 404, description = "Receta no encontrada"),
+    )
+)]
+pub async fn autotag_recipe(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> AppResult<Json<Recipe>> {
+    let recipe = repo::recipes::recalculate_autotags(&state.pool, &id).await?;
     Ok(Json(recipe))
 }
 

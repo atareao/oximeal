@@ -10,8 +10,19 @@ export interface Tag {
   slug: string;
 }
 
-/** Etiqueta tal y como viaja dentro de `Recipe`/`RecipeSummary`. */
-export type RecipeTag = Tag;
+/** Procedencia de una etiqueta asociada a una receta. */
+export type TagSource = 'manual' | 'auto';
+
+/**
+ * Etiqueta tal y como viaja dentro de `Recipe`/`RecipeSummary`.
+ *
+ * `source` distingue la etiqueta elegida por el usuario (`manual`) de la
+ * sugerida por la heurística de etiquetado automático (`auto`). Puede faltar
+ * en respuestas antiguas o fixtures, en cuyo caso se asume `manual`.
+ */
+export interface RecipeTag extends Tag {
+  source?: TagSource;
+}
 
 /** Etiqueta del catálogo con su recuento de recetas (`GET /api/tags`). */
 export interface TagWithCount extends Tag {
@@ -54,6 +65,10 @@ export interface RecipeInput {
   source_url?: string | null;
   /** Nombres de las etiquetas; el backend crea al vuelo las que no existan. */
   tags: string[];
+  /** Activa el etiquetado automático por heurística (por defecto `true`). */
+  auto_tags?: boolean;
+  /** Slugs de sugerencias retiradas que no deben reasignarse. */
+  suppressed_auto_tags?: string[];
 }
 
 /** Cuerpo de `POST /api/recipes/import` (espejo de `ImportRecipeRequest`). */
