@@ -993,3 +993,39 @@ Notas del usuario tras revisar el shell mobile-first. **No implementadas todaví
 4. **Salir fuera de Configuración**: el botón Salir debe vivir solo en la barra superior, a la derecha de Configuración. Eliminar el bloque de cierre de sesión de `SettingsPage` (la identidad puede quedarse) y ajustar la spec `auth-ui` y los tests.
 
 Orden sugerido: 2 y 4 (pequeños, corrigen lo recién entregado) → 1 (visual) → 3 (feature con backend).
+
+---
+
+## 22. Backlog UI — Bloque A: logout en barra (#4) y tema neutro (#1) (2026-11-06)
+
+> Metodología: SDD + TDD estricto (RED → GREEN → REFACTOR) bloque a bloque, con auditoría por bloque.
+> Dos changes independientes, **una rama/PR por issue** desde `development`. Orden acordado: **#4 → #1**, luego #2 y #3.
+
+### 22.1 (#4) Salir fuera de Configuración
+
+- **Estado actual (explorado):** el logout **ya existe** en la barra superior: `frontend/src/components/AppHeader.tsx`, botón `className="app-header__logout"`, `aria-label="Salir"`, visible solo si `status === 'authenticated'`. `SettingsPage` tiene además un bloque **duplicado** («Cuenta» → botón `Salir`).
+- **Objetivo:** que el logout viva SOLO en la barra superior, a la derecha de Configuración. Eliminar el bloque de cierre de sesión de `SettingsPage` manteniendo la identidad (nombre del usuario).
+- **Ficheros afectados:**
+  - `frontend/src/pages/SettingsPage.tsx` — eliminar sección «Cuenta» y `handleLogout`; conservar `name`.
+  - `frontend/src/pages/SettingsPage.test.tsx` — retirar el test «el botón Salir invoca el logout de la sesión»; conservar «muestra el nombre del usuario».
+  - `openspec/specs/auth-ui/spec.md` — ajustar `Requirement: Identidad y cierre de sesión en la interfaz` (dejar el cierre solo en barra) y escenarios `Cierre de sesión` / `Salir desde la barra superior`.
+- **No cambia:** `AppHeader.tsx` (ya cumple), `SessionProvider`/`client.ts` (logout real intacto).
+- **Rama:** `feature/settings-logout`.
+- **Estado:** ✅ implementado y auditado. Rama `feature/settings-logout`, PR #93 (pendiente de merge).
+
+### 22.2 (#1) Tema oscuro en negros
+
+- **Objetivo:** sustituir la paleta azulada (`#0f172a`, `#111827`, `#1e293b`) por una escala de negros y grises neutros con contraste **AA**.
+- **Puntos de edición (exhaustivos):**
+  - `frontend/src/index.css` — bloque `:root[data-theme='dark']`: `--bg`, `--surface`, `--surface-muted`, `--text`, `--text-muted`, `--border`, `--accent`, `--accent-soft`.
+  - `frontend/src/components/theme.ts` — `darkTheme` (`colorBgBase`, `colorTextBase`, Layout `bodyBg`/`headerBg`/`siderBg`).
+  - `frontend/src/theme/ThemeProvider.tsx` — `THEME_COLORS.dark` (meta `theme-color`).
+  - Consistencia PWA (si cambia el color): `frontend/index.html` `<meta name="theme-color">` y `frontend/public/manifest.webmanifest` `theme_color`. **`manifest.test.ts` exige coincidencia exacta.**
+- **Spec:** `openspec/specs/ui-shell/spec.md` (`Requirement: Tema Antd y safe-area`), sin fijar hex concretos salvo presupuesto de contraste AA.
+- **Tests:** ninguno comprueba hex; añadir verificación de contraste AA si se decide presupuestarlo.
+- **Rama:** `feature/dark-theme-neutral`.
+- **Estado:** ✅ implementado y auditado. Rama `feature/dark-theme-neutral`, PR #94 (pendiente de merge).
+
+### 22.3 Pendiente del backlog (siguiente turno)
+
+Próximo: #2 Solo comida y cena y #3 Etiquetas de recetas (siguiente sesión).
