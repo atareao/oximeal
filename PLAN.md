@@ -982,3 +982,14 @@ código».
   (27 specs) y CI del PR (4/4) en verde. PR #87 → `development` (`68cde0c`).
 - **Pendiente del backlog #81**: cifrado en reposo (11), RP-initiated logout
   (12d) y SSRF del import (1, 2, 4, 5, 6, 7).
+
+## 21. Backlog UI — próxima sesión (2026-11-06)
+
+Notas del usuario tras revisar el shell mobile-first. **No implementadas todavía.**
+
+1. **Tema oscuro en negros**: sustituir la paleta azulada actual (`#0f172a`, `#111827`, `#1e293b`) por una escala de negros y grises neutros con contraste AA. Afecta a `frontend/src/index.css`, `frontend/src/components/theme.ts` y los `.css` que consumen las variables.
+2. **Solo comida y cena**: retirar desayuno y merienda de la planificación. Afecta a `DayCard` (volver a `lunch`/`dinner`), `DailyView`, `AddMealPlanDialog`/`MEAL_TYPE_OPTIONS`, la spec `weekly-menu` (revertir el escenario de cuatro franjas añadido en `ui-mobile-first-shell`) y los tests.
+3. **Etiquetas de recetas**: además del filtro existente, poder **añadir etiquetas manualmente** y **etiquetar automáticamente** las recetas. Requiere change SDD con backend (modelo, repositorio, endpoints y heurística de autotagging) y frontend (formulario y detalle de receta). Decidir en la propuesta: catálogo de etiquetas, reglas automáticas, precedencia manual vs. automática y migración de recetas existentes.
+4. **Salir fuera de Configuración**: el botón Salir debe vivir solo en la barra superior, a la derecha de Configuración. Eliminar el bloque de cierre de sesión de `SettingsPage` (la identidad puede quedarse) y ajustar la spec `auth-ui` y los tests.
+
+Orden sugerido: 2 y 4 (pequeños, corrigen lo recién entregado) → 1 (visual) → 3 (feature con backend).
