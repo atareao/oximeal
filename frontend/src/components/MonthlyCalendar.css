@@ -18,6 +18,10 @@
   color: var(--text-muted, #718096);
 }
 
+.monthly-calendar__blank {
+  min-height: 44px;
+}
+
 .monthly-calendar__day {
   display: flex;
   flex-direction: column;

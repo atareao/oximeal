@@ -67,6 +67,20 @@ function monthStartOf(date: string): string {
   return `${date.slice(0, 7)}-01`;
 }
 
+function formatMonthLabel(monthStart: string): string {
+  return new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' }).format(
+    parseDateString(monthStart),
+  );
+}
+
+function formatDayLabel(date: string): string {
+  return new Intl.DateTimeFormat('es-ES', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  }).format(parseDateString(date));
+}
+
 function monthEndOf(monthStart: string): string {
   const base = parseDateString(monthStart);
   return toDateString(new Date(base.getFullYear(), base.getMonth() + 1, 0));
@@ -135,9 +149,14 @@ export function MenuPage() {
     if (next === 'week') {
       setSearchParams({ view: 'week', week: startOfWeek(referenceDate) });
     } else if (next === 'day') {
-      setSearchParams({ view: 'day', date: referenceDate });
+      let date = referenceDate;
+      if (view === 'week') {
+        const today = toDateString(new Date());
+        date = today >= weekStart && today <= weekEnd ? today : weekStart;
+      }
+      setSearchParams({ view: 'day', date });
     } else {
-      setSearchParams({ view: 'month', date: referenceDate });
+      setSearchParams({ view: 'month', date: monthStartOf(referenceDate) });
     }
   };
 
@@ -206,8 +225,8 @@ export function MenuPage() {
     view === 'week'
       ? formatWeekRange(weekStart, weekEnd)
       : view === 'month'
-        ? monthStart.slice(0, 7)
-        : referenceDate;
+        ? formatMonthLabel(monthStart)
+        : formatDayLabel(referenceDate);
 
   const header = (
     <header className="menu-page__header">

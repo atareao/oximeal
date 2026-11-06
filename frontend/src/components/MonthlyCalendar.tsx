@@ -24,6 +24,9 @@ function daysInMonth(monthStart: string): string[] {
 /** Rejilla mensual: una celda por día con el resumen de comidas planificadas. */
 export function MonthlyCalendar({ monthStart, entries, onSelectDay }: MonthlyCalendarProps) {
   const days = daysInMonth(monthStart);
+  // getDay(): 0 = domingo … 6 = sábado. Desplazamos para que lunes = 0.
+  const leadingBlanks = (parseDateString(monthStart).getDay() + 6) % 7;
+  const trailingBlanks = (7 - ((leadingBlanks + days.length) % 7)) % 7;
 
   return (
     <div className="monthly-calendar" data-testid="monthly-calendar">
@@ -35,6 +38,13 @@ export function MonthlyCalendar({ monthStart, entries, onSelectDay }: MonthlyCal
         ))}
       </div>
       <div className="monthly-calendar__grid">
+        {Array.from({ length: leadingBlanks }, (_, index) => (
+          <span
+            key={`blank-start-${index}`}
+            aria-hidden="true"
+            className="monthly-calendar__blank"
+          />
+        ))}
         {days.map((date) => {
           const count = entries.filter((entry) => entry.date === date).length;
           const dayNumber = parseDateString(date).getDate();
@@ -53,6 +63,9 @@ export function MonthlyCalendar({ monthStart, entries, onSelectDay }: MonthlyCal
             </button>
           );
         })}
+        {Array.from({ length: trailingBlanks }, (_, index) => (
+          <span key={`blank-end-${index}`} aria-hidden="true" className="monthly-calendar__blank" />
+        ))}
       </div>
     </div>
   );

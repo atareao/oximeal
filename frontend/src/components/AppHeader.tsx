@@ -31,7 +31,7 @@ export function AppHeader() {
   const { logout } = useSession();
 
   const handleLogout = () => {
-    void logout();
+    void logout().catch(() => undefined);
   };
 
   return (
