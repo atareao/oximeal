@@ -217,7 +217,12 @@ export function RecipeDetailPage() {
       {data.tags.length > 0 && (
         <ul className="recipe-detail__tags" aria-label="Etiquetas">
           {data.tags.map((tag) => (
-            <li key={tag.id} className="recipe-detail__tag">
+            <li
+              key={tag.id}
+              className={`recipe-detail__tag recipe-detail__tag--${
+                tag.source === 'auto' ? 'auto' : 'manual'
+              }`}
+            >
               {tag.name}
             </li>
           ))}

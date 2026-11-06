@@ -12,6 +12,37 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [No publicado]
 
+## [0.6.0] - 2026-11-06
+
+### Añadido
+
+- **Agent API:** nuevo `POST /api/agent/recipes` con permiso M2M `agent:write` para que Valet cree recetas reutilizando el mismo `RecipeInput` y la misma validación que la API de usuario.
+- **Lista de la compra:** la categoría de cada ítem se puede corregir desde su fila con un selector de pasillo; `PATCH /api/shopping-list/{id}` acepta `category` y la valida contra las ocho categorías canónicas (#81).
+- **Lista de la compra:** la heurística de categorización cubre más frutas y verduras (`melocotón`, `nectarina`, `albaricoque`, `ciruela`, `mango`, `aguacate`, `higo`, `mora`, `mandarina`, `pomelo`, `coco`, `boniato`, `repollo`, `maíz`, `espárrago`…), con reglas específicas para evitar colisiones (`morcilla`/`mora`, `hígado`/`higo`, `limonada`/`limón`, `manzanilla`/`manzana`) (#81).
+- **Seguridad (sesión):** vida absoluta de la sesión (`SESSION_ABSOLUTE_TTL_SECS`, 12 h por defecto) medida desde el login. El refresco de tokens ya no puede extenderla indefinidamente: superado el plazo, las rutas protegidas responden `401` y `/auth/me` devuelve `authenticated: false` (#81).
+- **Seguridad (API):** las respuestas a peticiones autenticadas (cookie de sesión o `Bearer`) llevan `Cache-Control: no-store` para evitar que datos privados queden en cachés intermedias (#81).
+- **Interfaz (navegación):** barra superior fija única con el logo, Menú, Recetas, Compra, Configuración y Salir; en móvil solo iconos con nombre accesible y objetivos táctiles de 48px. Se eliminan el panel lateral y la navegación inferior.
+- **Interfaz (tema):** selector Oscuro / Claro / Sistema en `/settings`, con Oscuro por defecto, persistencia en `localStorage` y sin destello al cargar.
+- **Interfaz (menú):** vistas Diaria, Semanal y Mensual, con Semanal por defecto; la mensual muestra una rejilla con resumen por día y abre la vista diaria al tocar un día.
+- **Recetas (etiquetas automáticas):** el sistema sugiere automáticamente un vocabulario cerrado de etiquetas de dieta e intolerancias (`vegetariano`, `vegano`, `sin-gluten`, `sin-lactosa`, `picante`) a partir de los ingredientes, con coincidencia por token; el usuario puede retirar sugerencias por receta y desactivar el etiquetado automático. Nuevo `POST /api/recipes/{id}/autotag` para recalcular (#55).
+- **Recetas (etiquetas):** nuevo campo `source` (`manual`|`auto`) en las etiquetas devueltas, y campos `auto_tags`/`suppressed_auto_tags` en el alta y la edición (#55).
+
+### Cambiado
+
+- **Seguridad (cookie):** el nombre por defecto de la cookie de sesión pasa a `__Host-oximeal_session`. El prefijo `__Host-` obliga a `Secure`, `Path=/` y sin `Domain`, y el arranque falla si se combina con `SESSION_COOKIE_SECURE=false`. **Impacto de despliegue:** al actualizar se invalidan las sesiones existentes y cada usuario vuelve a iniciar sesión una vez (#81).
+- **Seguridad (configuración):** con `OIDC_ENABLED=true`, `SESSION_COOKIE_SECURE=false` ya no solo avisa: impide arrancar salvo que se defina `ALLOW_INSECURE_COOKIE=true` (escape explícito para desarrollo en localhost) (#81).
+- **Seguridad (OIDC):** la validación del ID token rechaza `nbf` en el futuro y un `azp` distinto del `client_id` (#81).
+- **Seguridad (logs):** `Debug` de `Config`, `OidcConfig` y `SessionConfig` redacta `client_secret` y `SESSION_SECRET` como `[REDACTED]` (#81).
+- **Despliegue:** `deploy/README.md` documenta el prefijo `__Host-`, la vida absoluta, el escape `ALLOW_INSECURE_COOKIE` y que HSTS/`Referrer-Policy` corresponden al reverse-proxy (#81).
+- **Interfaz (menú):** la vista diaria muestra las cuatro franjas (desayuno, comida, cena y merienda).
+- **Interfaz (Valet):** el acceso a Valet se mantiene desde las acciones del menú; desaparece la pestaña Asistente de la navegación.
+- **Interfaz (tema oscuro):** la paleta oscura pasa de la escala azulada *slate* a una escala neutra de negros y grises (`#0a0a0a`, `#141414`, `#1f1f1f`, `#e5e5e5`, `#a3a3a3`, `#3f3f3f`) con contraste AA (≥ 4.5:1) entre texto y fondos; el acento verde se mantiene y el `theme-color`/manifest se alinean con el modo por defecto (`#0a0a0a`).
+- **Recetas (datos):** la migración `0009` añade `recipe_tags.source`, la tabla `recipe_tag_suppressions` y el catálogo automático; un backfill idempotente etiqueta las recetas existentes al arrancar (#55).
+
+### Corregido
+
+- **Interfaz (barra superior):** `Configuración` y `Salir` ya no se salen de la pantalla en móviles estrechos. El logo pasa a forma compacta por debajo de 480px, el grupo de acciones deja de comprimirse y se reducen huecos y padding; el ancho mínimo de la barra baja de ~440px a ~300px y todos los controles conservan 48px de objetivo táctil.
+
 ## [0.5.1] - 2026-11-04
 
 ### Añadido

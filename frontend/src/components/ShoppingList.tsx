@@ -7,10 +7,11 @@ import './ShoppingList.css';
 export interface ShoppingListProps {
   groups: readonly ShoppingListGroup[];
   onToggle: (item: ShoppingItem) => void;
+  onCategoryChange?: (item: ShoppingItem, category: string) => void;
 }
 
 /** Lista de la compra agrupada por pasillo, respetando el orden del backend. */
-export function ShoppingList({ groups, onToggle }: ShoppingListProps) {
+export function ShoppingList({ groups, onToggle, onCategoryChange }: ShoppingListProps) {
   const baseId = useId();
 
   return (
@@ -31,7 +32,12 @@ export function ShoppingList({ groups, onToggle }: ShoppingListProps) {
             </h2>
             <ul className="shopping-list__items">
               {sortShoppingItems(group.items).map((item) => (
-                <ShoppingRow key={item.id} item={item} onToggle={onToggle} />
+                <ShoppingRow
+                  key={item.id}
+                  item={item}
+                  onToggle={onToggle}
+                  onCategoryChange={onCategoryChange}
+                />
               ))}
             </ul>
           </section>

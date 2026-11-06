@@ -954,3 +954,120 @@ atendido por SDD + TDD.
 - **Estado**: `main` y `development` con árbol idéntico (0 ficheros), #80
   cerrado, pendiente solo el backlog de endurecimiento #81 y la reconciliación
   de las PRs de Dependabot.
+
+### 20.13 — Endurecimiento del BFF de sesión y cliente OIDC (#81)
+
+Primer change del backlog de endurecimiento, aprobado por el usuario con
+alcance **BFF de sesión/OIDC** y las notas (3) y (12e) como «documentar, sin
+código».
+
+- **Change `security-hardening-auth`** (SDD): 5 requisitos tocados en
+  `auth-session` (MODIFIED callback + ADDED vida absoluta), `api-authorization`
+  (ADDED `no-store`), `oidc-config` (MODIFIED entorno + ADDED secretos fuera de
+  logs) y `deployment` (MODIFIED entorno). 18 escenarios. Archivado como
+  `2026-11-05-security-hardening-auth`.
+- **TDD**: RED con 8 tests unitarios y 5 de integración fallando por la causa
+  esperada (22 tests de auth previos en verde); GREEN mínimo; `clippy -D
+  warnings` limpio; suite con y sin `embed-ui` en verde.
+- **Implementación**: `Debug` manual con `[REDACTED]`; cookie por defecto
+  `__Host-oximeal_session` con validación del prefijo; fail-closed de
+  `SESSION_COOKIE_SECURE` con escape `ALLOW_INSECURE_COOKIE`; vida absoluta
+  `SESSION_ABSOLUTE_TTL_SECS` (12 h) comprobada antes de `ensure_fresh` en
+  middleware y `/auth/me`; `nbf`/`azp` en `verify_id_token`; capa
+  `Cache-Control: no-store` para peticiones con cookie o `Bearer`.
+- **Docs**: `deploy/README.md` (prefijo, TTL absoluto, escape y HSTS/
+  `Referrer-Policy` en el proxy), `.env.example`, `deploy/.env.example`,
+  `deploy/oidc-dev.md` y `README.md`.
+- **Puertas**: `just ci`, `just ci-ui`, `openspec validate --all --strict`
+  (27 specs) y CI del PR (4/4) en verde. PR #87 → `development` (`68cde0c`).
+- **Pendiente del backlog #81**: cifrado en reposo (11), RP-initiated logout
+  (12d) y SSRF del import (1, 2, 4, 5, 6, 7).
+
+## 21. Backlog UI — próxima sesión (2026-11-06)
+
+Notas del usuario tras revisar el shell mobile-first. Estado: #1, #2 y #4 **entregados** (ver §22–§23); #3 pendiente.
+
+1. **Tema oscuro en negros**: sustituir la paleta azulada actual (`#0f172a`, `#111827`, `#1e293b`) por una escala de negros y grises neutros con contraste AA. Afecta a `frontend/src/index.css`, `frontend/src/components/theme.ts` y los `.css` que consumen las variables. **✅ Entregado** (§22.2, PR #94).
+2. **Solo comida y cena**: retirar desayuno y merienda de la planificación. Afecta a `DayCard` (volver a `lunch`/`dinner`), `DailyView`, `AddMealPlanDialog`/`MEAL_TYPE_OPTIONS`, la spec `weekly-menu` (revertir el escenario de cuatro franjas añadido en `ui-mobile-first-shell`) y los tests. **✅ Entregado** (§23.1, PR #96).
+3. **Etiquetas de recetas**: además del filtro existente, poder **añadir etiquetas manualmente** y **etiquetar automáticamente** las recetas. Requiere change SDD con backend (modelo, repositorio, endpoints y heurística de autotagging) y frontend (formulario y detalle de receta). Decidir en la propuesta: catálogo de etiquetas, reglas automáticas, precedencia manual vs. automática y migración de recetas existentes. **✅ Entregado** (§24, PR pendiente).
+4. **Salir fuera de Configuración**: el botón Salir debe vivir solo en la barra superior, a la derecha de Configuración. Eliminar el bloque de cierre de sesión de `SettingsPage` (la identidad puede quedarse) y ajustar la spec `auth-ui` y los tests. **✅ Entregado** (§22.1, PR #93).
+
+Orden sugerido: 2 y 4 (pequeños, corrigen lo recién entregado) → 1 (visual) → 3 (feature con backend). Ejecutado: #4, #1, #2 y #3 ✅.
+
+---
+
+## 22. Backlog UI — Bloque A: logout en barra (#4) y tema neutro (#1) (2026-11-06)
+
+> Metodología: SDD + TDD estricto (RED → GREEN → REFACTOR) bloque a bloque, con auditoría por bloque.
+> Dos changes independientes, **una rama/PR por issue** desde `development`. Orden acordado: **#4 → #1**, luego #2 y #3.
+
+### 22.1 (#4) Salir fuera de Configuración
+
+- **Estado actual (explorado):** el logout **ya existe** en la barra superior: `frontend/src/components/AppHeader.tsx`, botón `className="app-header__logout"`, `aria-label="Salir"`, visible solo si `status === 'authenticated'`. `SettingsPage` tiene además un bloque **duplicado** («Cuenta» → botón `Salir`).
+- **Objetivo:** que el logout viva SOLO en la barra superior, a la derecha de Configuración. Eliminar el bloque de cierre de sesión de `SettingsPage` manteniendo la identidad (nombre del usuario).
+- **Ficheros afectados:**
+  - `frontend/src/pages/SettingsPage.tsx` — eliminar sección «Cuenta» y `handleLogout`; conservar `name`.
+  - `frontend/src/pages/SettingsPage.test.tsx` — retirar el test «el botón Salir invoca el logout de la sesión»; conservar «muestra el nombre del usuario».
+  - `openspec/specs/auth-ui/spec.md` — ajustar `Requirement: Identidad y cierre de sesión en la interfaz` (dejar el cierre solo en barra) y escenarios `Cierre de sesión` / `Salir desde la barra superior`.
+- **No cambia:** `AppHeader.tsx` (ya cumple), `SessionProvider`/`client.ts` (logout real intacto).
+- **Rama:** `feature/settings-logout`.
+- **Estado:** ✅ implementado y auditado. Rama `feature/settings-logout`, PR #93 (pendiente de merge).
+
+### 22.2 (#1) Tema oscuro en negros
+
+- **Objetivo:** sustituir la paleta azulada (`#0f172a`, `#111827`, `#1e293b`) por una escala de negros y grises neutros con contraste **AA**.
+- **Puntos de edición (exhaustivos):**
+  - `frontend/src/index.css` — bloque `:root[data-theme='dark']`: `--bg`, `--surface`, `--surface-muted`, `--text`, `--text-muted`, `--border`, `--accent`, `--accent-soft`.
+  - `frontend/src/components/theme.ts` — `darkTheme` (`colorBgBase`, `colorTextBase`, Layout `bodyBg`/`headerBg`/`siderBg`).
+  - `frontend/src/theme/ThemeProvider.tsx` — `THEME_COLORS.dark` (meta `theme-color`).
+  - Consistencia PWA (si cambia el color): `frontend/index.html` `<meta name="theme-color">` y `frontend/public/manifest.webmanifest` `theme_color`. **`manifest.test.ts` exige coincidencia exacta.**
+- **Spec:** `openspec/specs/ui-shell/spec.md` (`Requirement: Tema Antd y safe-area`), sin fijar hex concretos salvo presupuesto de contraste AA.
+- **Tests:** ninguno comprueba hex; añadir verificación de contraste AA si se decide presupuestarlo.
+- **Rama:** `feature/dark-theme-neutral`.
+- **Estado:** ✅ implementado y auditado. Rama `feature/dark-theme-neutral`, PR #94 (pendiente de merge).
+
+### 22.3 Pendiente del backlog (siguiente turno)
+
+✅ #4, #1 y #2 entregados. Próximo: **#3 Etiquetas de recetas** (nueva sesión; feature con backend).
+
+---
+
+## 23. Backlog UI — Bloque B: #2 Solo comida y cena (2026-11-06)
+
+> Metodología: SDD + TDD (RED → GREEN → REFACTOR), auditoría por bloque. Rama `feature/meal-types-lunch-dinner`, PR #96.
+
+### 23.1 (#2) Solo comida y cena
+
+- **Alcance:** SOLO UI. Se retiran desayuno y merienda del planificador; la planificación queda en COMIDA y CENA. Backend/API/BD intactos.
+- **Decisión:** `MealType` (`frontend/src/api/types.ts`) conserva los 4 valores como contrato de datos de la API; solo se recortan las opciones y los slots mostrados. Las filas legacy con desayuno/merienda siguen siendo válidas (no se muestran).
+- **Change SDD:** `meal-types-lunch-dinner` (archivado en `openspec/changes/archive/2026-11-06-meal-types-lunch-dinner/`). Modifica la capability `weekly-menu`: escenarios de vista diaria, semanal y resumen mensual limitados a COMIDA y CENA.
+- **Cambios:**
+  - `frontend/src/components/DailyView.tsx` — deja de pasar las 4 franjas (hereda el default `['lunch','dinner']` de `DayCard`).
+  - `frontend/src/lib/mealPlan.ts` — `MEAL_TYPE_OPTIONS` reducido a Comida/Cena; nueva fuente única `PLANNED_MEAL_TYPES = ['lunch','dinner']`.
+  - `frontend/src/components/DayCard.tsx` — usa `PLANNED_MEAL_TYPES` como `DEFAULT_SLOTS`.
+  - `frontend/src/components/MonthlyCalendar.tsx` — el resumen de cada celda cuenta solo `PLANNED_MEAL_TYPES` (fix de auditoría).
+- **Tests:** RED→GREEN de vista diaria (excluye entradas legacy), selector solo Comida/Cena y resumen mensual. `just ci-ui` verde (332 tests).
+- **Auditoría `@react-reviewer`:** 1 blocker (el resumen mensual contaba las 4 franjas) detectado y resuelto; re-auditado sin blockers.
+- **Estado:** ✅ implementado, auditado y mergeado (PR #96).
+
+### 23.2 (#97) Fix de CI preexistente de `development`
+
+- Dos checks estaban en rojo desde #94/#95, ajenos a #2:
+  - OpenSpec: el `Requirement: Tema Antd y safe-area` de `ui-shell` (523 caracteres) rechazado por `validate --all --strict` (CLI 1.16.0).
+  - Frontend: `frontend/src/pages/SettingsPage.test.tsx` sin formatear (prettier).
+- **Fix:** rama `hotfix/openspec-ui-shell-strict`, PR #97, mergeado. `development` en verde (4/4).
+
+---
+
+## 24. Backlog UI — Bloque C: #3 Etiquetas automáticas de recetas (2026-11-06)
+
+> Metodología: SDD + TDD estricto (RED → GREEN → REFACTOR), auditoría por bloque (`@rust-reviewer` y `@react-reviewer`), gitflow con gitmoji.
+
+### 24.1 (#3) Etiquetado automático
+
+- **Change SDD:** `recipe-autotagging` (propuesta, diseño y deltas de `recipe-tags`, `recipes` y `recipe-catalog`).
+- **Decisiones:** vocabulario cerrado de etiquetas automáticas (`vegetariano`, `vegano`, `sin-gluten`, `sin-lactosa`, `picante`); heurística determinista sobre ingredientes con normalización sin diacríticos y match por token completo (exclusión por ausencia, `picante` por presencia); procedencia por asociación (`recipe_tags.source`, manual gana); supresión por receta (`recipe_tag_suppressions`) y `PUT` reemplaza supresiones; migración aditiva `0009` + backfill idempotente en arranque con marcador `PRAGMA user_version` que NO avanza si alguna receta falla.
+- **Backend:** `backend/migrations/0009_recipe_tag_provenance.sql`, `backend/src/services/autotag.rs`, `models/tag.rs`, `models/recipe.rs`, `repo/tags.rs`, `repo/recipes.rs`, `routes/recipes.rs` (`POST /api/recipes/{id}/autotag`), `routes/openapi.rs`, `main.rs`; tests `backend/tests/autotag.rs` y ajustes en `tags.rs`/`recipes.rs`/`meal_plan.rs`/`schema_constraints.rs`.
+- **Frontend:** `api/types.ts`, `components/RecipeForm.tsx`, `components/RecipeCard.tsx`, `pages/RecipeDetailPage.tsx` (+ CSS) y sus tests; sugerencias retirables (`suppressed_auto_tags`) y toggle `auto_tags`.
+- **Rama:** `feature/recipe-autotagging`.
+- **Estado:** ✅ implementado y auditado (backend PASS con avisos cerrados; frontend PASS).

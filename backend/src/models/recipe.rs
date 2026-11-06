@@ -84,6 +84,19 @@ pub struct RecipeInput {
     /// reemplazan el conjunto anterior; por defecto, vacío).
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Activa el etiquetado automático de la receta (por defecto, `true`).
+    #[serde(default = "default_auto_tags")]
+    pub auto_tags: bool,
+    /// Nombres o `slug` de etiquetas automáticas que no deben asignarse a esta
+    /// receta (por defecto, vacío).
+    #[serde(default)]
+    pub suppressed_auto_tags: Vec<String>,
+}
+
+/// Valor por defecto de [`RecipeInput::auto_tags`]: el etiquetado automático
+/// está activo salvo que el cliente lo desactive explícitamente.
+fn default_auto_tags() -> bool {
+    true
 }
 
 /// Parámetros de consulta del listado de recetas.

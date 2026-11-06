@@ -13,23 +13,23 @@
 .add-meal-plan__label {
   font-size: 14px;
   font-weight: 600;
-  color: #2d3748;
+  color: var(--text);
 }
 
 .add-meal-plan__select {
   width: 100%;
   min-height: 48px;
   padding: 8px 12px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--border);
   border-radius: 10px;
-  background: #ffffff;
-  color: #1a202c;
+  background: var(--surface);
+  color: var(--text);
   font-size: 16px;
   font-family: inherit;
 }
 
 .add-meal-plan__select:focus-visible {
-  outline: 2px solid #2f855a;
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 
@@ -53,19 +53,19 @@
   min-height: 48px;
   padding: 8px 12px;
   text-align: left;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border);
   border-radius: 10px;
-  background: #ffffff;
-  color: #1a202c;
+  background: var(--surface);
+  color: var(--text);
   font-size: 15px;
   font-family: inherit;
   cursor: pointer;
 }
 
 .add-meal-plan__recipe--selected {
-  border-color: #2f855a;
-  box-shadow: 0 0 0 1px #2f855a inset;
-  background: #f0fff4;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+  background: var(--accent-soft);
 }
 
 .add-meal-plan__row {

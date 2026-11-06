@@ -6,10 +6,18 @@
 
 import type { MealRole, MealType } from '../api/types';
 
+/**
+ * Franjas planificables (COMIDA y CENA). Fuente única de verdad para la UI:
+ * el resumen del calendario y los slots por defecto del día.
+ */
+export const PLANNED_MEAL_TYPES: readonly MealType[] = ['lunch', 'dinner'];
+
 /** Etiquetas de las franjas de comida, en mayúsculas como en el calendario. */
 export const MEAL_TYPE_LABELS: Readonly<Record<MealType, string>> = {
   lunch: 'COMIDA',
   dinner: 'CENA',
+  // `breakfast`/`snack` se conservan solo para cumplir el contrato
+  // `Record<MealType, string>`; la UI no los ofrece.
   breakfast: 'DESAYUNO',
   snack: 'MERIENDA',
 };
@@ -18,8 +26,6 @@ export const MEAL_TYPE_LABELS: Readonly<Record<MealType, string>> = {
 export const MEAL_TYPE_OPTIONS: readonly { value: MealType; label: string }[] = [
   { value: 'lunch', label: 'Comida' },
   { value: 'dinner', label: 'Cena' },
-  { value: 'breakfast', label: 'Desayuno' },
-  { value: 'snack', label: 'Merienda' },
 ];
 
 /** Roles del plato en una comida, con su etiqueta en español. */

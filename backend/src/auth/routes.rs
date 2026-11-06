@@ -215,6 +215,7 @@ pub async fn callback(
         refresh_token: tokens.refresh_token,
         id_token: Some(id_token),
         access_token_expires_at: now + tokens.expires_in.unwrap_or(3600),
+        started_at: now,
     };
 
     let return_to = flow.return_to.unwrap_or_else(|| "/".to_string());
@@ -253,6 +254,17 @@ pub async fn me(State(state): State<AppState>, session: Session) -> AuthResult<R
         };
 
     if session_state.auth.is_none() {
+        return Ok(Json(MeResponse::anonymous()).into_response());
+    }
+
+    // Vida absoluta: se mide desde el login y el refresco no la extiende.
+    let absolute_ttl = state.config.session.absolute_ttl;
+    if let Some(authenticated) = session_state.auth.as_ref()
+        && authenticated.is_past_absolute_ttl(absolute_ttl)
+    {
+        if session.flush().await.is_err() {
+            tracing::warn!("no se pudo destruir la sesión caducada");
+        }
         return Ok(Json(MeResponse::anonymous()).into_response());
     }
 

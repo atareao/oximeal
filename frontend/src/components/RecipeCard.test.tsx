@@ -73,4 +73,22 @@ describe('RecipeCard', () => {
     );
     expect(recipeCardCss).toMatch(/\.recipe-card__tag[\s\S]*?min-height:\s*48px/);
   });
+
+  it('distingue visualmente la etiqueta manual de la automática', () => {
+    renderCard({
+      recipe: summary({
+        tags: [
+          { id: 't1', name: 'Vegano', slug: 'vegano', source: 'manual' },
+          { id: 't2', name: 'Sin gluten', slug: 'sin-gluten', source: 'auto' },
+        ],
+      }),
+    });
+
+    const manual = screen.getByRole('button', { name: /filtrar por etiqueta vegano/i });
+    const auto = screen.getByRole('button', { name: /filtrar por etiqueta sin gluten/i });
+
+    expect(manual).toHaveClass('recipe-card__tag--manual');
+    expect(auto).toHaveClass('recipe-card__tag--auto');
+    expect(manual.className).not.toEqual(auto.className);
+  });
 });

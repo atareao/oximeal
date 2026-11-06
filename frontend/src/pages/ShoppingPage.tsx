@@ -55,6 +55,11 @@ export function ShoppingPage() {
     toggleItem.mutate({ id: item.id, patch: { checked: !item.checked } });
   };
 
+  const handleCategoryChange = (item: ShoppingItem, category: string) => {
+    haptics(10);
+    toggleItem.mutate({ id: item.id, patch: { category } });
+  };
+
   const handleSync = () => {
     setIsSyncing(true);
     void syncShoppingQueue(queryClient).finally(() => {
@@ -179,7 +184,13 @@ export function ShoppingPage() {
         </Empty>
       )}
 
-      {!isLoading && groups.length > 0 && <ShoppingList groups={groups} onToggle={handleToggle} />}
+      {!isLoading && groups.length > 0 && (
+        <ShoppingList
+          groups={groups}
+          onToggle={handleToggle}
+          onCategoryChange={handleCategoryChange}
+        />
+      )}
     </section>
   );
 }

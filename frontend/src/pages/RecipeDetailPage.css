@@ -42,12 +42,21 @@
 
 .recipe-detail__tag {
   padding: 4px 12px;
-  border: 1px solid #9ae6b4;
+  border: 1px solid var(--border, #9ae6b4);
   border-radius: 999px;
-  background: #f0fff4;
-  color: #22543d;
+  background: var(--accent-soft, #f0fff4);
+  color: var(--accent, #22543d);
   font-size: 13px;
   font-weight: 600;
+}
+
+/* Sugerida automáticamente: estilo atenuado y discontinuo. */
+.recipe-detail__tag--auto {
+  border-style: dashed;
+  background: var(--surface-muted, #f7fafc);
+  color: var(--text-muted, #718096);
+  font-weight: 500;
+  font-style: italic;
 }
 
 .recipe-detail__actions {
@@ -92,7 +101,7 @@
   margin: 0;
   font-size: 16px;
   font-weight: 600;
-  color: #22543d;
+  color: var(--text, #22543d);
 }
 
 .recipe-detail__ingredients {
@@ -112,8 +121,8 @@
   min-height: 48px;
   padding: 8px 12px;
   border-radius: 10px;
-  background: #f7fafc;
-  border: 1px solid #e2e8f0;
+  background: var(--surface-muted, #f7fafc);
+  border: 1px solid var(--border, #e2e8f0);
 }
 
 .recipe-detail__ingredient-name {
@@ -124,7 +133,7 @@
 .recipe-detail__ingredient-amount {
   flex: 0 0 auto;
   font-size: 14px;
-  color: #718096;
+  color: var(--text-muted, #718096);
   white-space: nowrap;
 }
 
@@ -136,5 +145,5 @@
 .recipe-detail__source {
   align-self: flex-start;
   font-weight: 600;
-  color: #2f855a;
+  color: var(--accent, #2f855a);
 }

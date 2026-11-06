@@ -9,7 +9,7 @@
   background: transparent;
   text-align: left;
   font-size: 16px;
-  color: #1a202c;
+  color: var(--text);
   cursor: pointer;
   transition:
     background-color 0.15s ease,
@@ -17,11 +17,44 @@
 }
 
 .shopping-row:hover {
-  background: #f7fafc;
+  background: var(--surface-muted);
+}
+
+.shopping-row__main {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.shopping-row__category {
+  flex: 0 0 auto;
+  max-width: 42%;
+  min-height: 36px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+@media (max-width: 480px) {
+  .shopping-row {
+    flex-wrap: wrap;
+  }
+
+  .shopping-row__category {
+    max-width: 100%;
+    margin-left: 36px;
+  }
 }
 
 .shopping-row:focus-within {
-  outline: 2px solid #2f855a;
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 
@@ -38,7 +71,7 @@
   width: 24px;
   height: 24px;
   margin: 0;
-  accent-color: #2f855a;
+  accent-color: var(--accent);
   cursor: pointer;
 }
 
@@ -51,7 +84,7 @@
 .shopping-row__amount {
   flex: 0 0 auto;
   font-size: 14px;
-  color: #718096;
+  color: var(--text-muted);
   white-space: nowrap;
 }
 

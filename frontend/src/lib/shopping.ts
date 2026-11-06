@@ -14,6 +14,9 @@ const CATEGORY_EMOJI: Readonly<Record<string, string>> = {
 
 const FALLBACK_EMOJI = '🛒';
 
+/** Pasillos canónicos en el orden en que se muestran en los selectores. */
+export const SHOPPING_CATEGORIES: readonly string[] = Object.keys(CATEGORY_EMOJI);
+
 /** Emoji del encabezado de un pasillo (fallback 🛒). */
 export function categoryEmoji(category: string): string {
   return CATEGORY_EMOJI[category] ?? FALLBACK_EMOJI;

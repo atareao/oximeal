@@ -5,13 +5,17 @@
 use axum::Json;
 use axum::Router;
 use axum::extract::{Query, State};
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
 use axum::routing::{delete, get, post};
+use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
 use crate::models::agent::{
     AgentShoppingItemsInput, RecentRecipesQuery, RecentRecipesResponse, RemovedResponse,
     SearchRecipesQuery, SearchRecipesResponse, StructuredPlan, WeeklyPlanResponse,
 };
+use crate::models::recipe::{Recipe, RecipeInput};
 use crate::models::shopping_list::ShoppingListGroup;
 use crate::repo;
 use crate::routes::validation;
@@ -41,6 +45,37 @@ pub fn shopping_router() -> Router<AppState> {
     Router::new()
         .route("/api/agent/shopping-items", post(add_shopping_items))
         .route("/api/agent/shopping/completed", delete(delete_completed))
+}
+
+/// Router de la Agent API de escritura de recetas (permiso `agent:write`).
+pub fn write_router() -> Router<AppState> {
+    Router::new().route("/api/agent/recipes", post(create_recipe))
+}
+
+/// `POST /api/agent/recipes` — alta de receta desde el agente.
+///
+/// Aplica exactamente la misma validación que `POST /api/recipes` y persiste
+/// con el mismo repositorio, de modo que el contrato de datos es idéntico.
+#[utoipa::path(
+    post,
+    path = "/api/agent/recipes",
+    tag = "agent",
+    request_body = RecipeInput,
+    responses(
+        (status = 201, description = "Receta creada", body = Recipe),
+        (status = 400, description = "Datos inválidos"),
+    )
+)]
+pub async fn create_recipe(
+    State(state): State<AppState>,
+    Json(input): Json<RecipeInput>,
+) -> AppResult<impl IntoResponse> {
+    validation::validate_recipe(&input)?;
+
+    let id = Uuid::new_v4().to_string();
+    let recipe = repo::recipes::create(&state.pool, &id, &input).await?;
+
+    Ok((StatusCode::CREATED, Json(recipe)))
 }
 
 /// `GET /api/agent/recent-recipes` — recetas planificadas recientemente.

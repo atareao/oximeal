@@ -92,7 +92,7 @@
 
 .recipes-page__page-info {
   font-size: 14px;
-  color: #718096;
+  color: var(--text-muted, #718096);
 }
 
 @media (min-width: 640px) {

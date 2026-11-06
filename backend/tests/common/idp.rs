@@ -38,6 +38,18 @@ pub const ACCESS_NO_GROUPS_REFRESH: &str = "refresh-access-no-groups";
 /// Refresh que no devuelve ni `id_token` ni un access token verificable.
 pub const NO_ID_TOKEN_REFRESH: &str = "refresh-no-id-token";
 
+/// Variante del ID token que emite el token endpoint (tests de validación).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum IdTokenVariant {
+    /// Token correcto (comportamiento por defecto).
+    #[default]
+    Normal,
+    /// `nbf` en el futuro: el token todavía no es válido.
+    NbfInFuture,
+    /// `azp` distinto del `client_id` esperado.
+    ForeignAzp,
+}
+
 /// Clave privada RSA estática de test (solo tests).
 pub const PRIVATE_KEY_PEM: &str = r#"-----BEGIN PRIVATE KEY-----
 MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDQ0Q0vxiLNBtSA
@@ -87,8 +99,13 @@ pub struct MockIdp {
 }
 
 impl MockIdp {
-    /// Arranca el mock y monta discovery, JWKS y token endpoint.
+    /// Arranca el mock con ID tokens correctos.
     pub async fn start() -> Self {
+        Self::start_with(IdTokenVariant::Normal).await
+    }
+
+    /// Arranca el mock emitiendo la variante de ID token indicada.
+    pub async fn start_with(variant: IdTokenVariant) -> Self {
         let server = MockServer::start().await;
         let issuer = server.uri();
         let authorization_endpoint = format!("{issuer}/authorize");
@@ -118,7 +135,7 @@ impl MockIdp {
         let token_issuer = issuer.clone();
         Mock::given(method("POST"))
             .and(path("/token"))
-            .respond_with(move |request: &Request| token_response(request, &token_issuer))
+            .respond_with(move |request: &Request| token_response(request, &token_issuer, variant))
             .mount(&server)
             .await;
 
@@ -177,7 +194,9 @@ impl MockIdp {
         let token_issuer = issuer.clone();
         Mock::given(method("POST"))
             .and(path("/token"))
-            .respond_with(move |request: &Request| token_response(request, &token_issuer))
+            .respond_with(move |request: &Request| {
+                token_response(request, &token_issuer, IdTokenVariant::Normal)
+            })
             .mount(&server)
             .await;
 
@@ -206,7 +225,7 @@ fn test_jwks() -> serde_json::Value {
 }
 
 /// Responde al token endpoint según el `grant_type`.
-fn token_response(request: &Request, issuer: &str) -> ResponseTemplate {
+fn token_response(request: &Request, issuer: &str, variant: IdTokenVariant) -> ResponseTemplate {
     let params = parse_form(&request.body);
     let grant = params
         .get("grant_type")
@@ -234,7 +253,7 @@ fn token_response(request: &Request, issuer: &str) -> ResponseTemplate {
 
         match refresh_token {
             NO_GROUPS_REFRESH => {
-                body["id_token"] = json!(sign_id_token(issuer, "", &["other-group"]));
+                body["id_token"] = json!(sign_id_token_with(issuer, "", &["other-group"], variant));
             }
             ACCESS_GROUPS_REFRESH => {
                 body["access_token"] = json!(signed_access_token(
@@ -253,7 +272,7 @@ fn token_response(request: &Request, issuer: &str) -> ResponseTemplate {
             // Sin `id_token` ni access token verificable: grupos desconocidos.
             NO_ID_TOKEN_REFRESH => {}
             _ => {
-                body["id_token"] = json!(sign_id_token(issuer, "", USER_GROUPS));
+                body["id_token"] = json!(sign_id_token_with(issuer, "", USER_GROUPS, variant));
             }
         }
 
@@ -262,7 +281,7 @@ fn token_response(request: &Request, issuer: &str) -> ResponseTemplate {
 
     // authorization_code: el `code` transporta el nonce que debe llevar el ID token.
     let nonce = params.get("code").cloned().unwrap_or_default();
-    let id_token = sign_id_token(issuer, &nonce, USER_GROUPS);
+    let id_token = sign_id_token_with(issuer, &nonce, USER_GROUPS, variant);
 
     ResponseTemplate::new(200).set_body_json(json!({
         "access_token": fake_access_token("openid read:recipes write:recipes"),
@@ -281,6 +300,16 @@ fn signed_access_token(issuer: &str, scope: &str, groups: &[&str]) -> String {
 
 /// Firma un ID token RS256 con la clave de test y los grupos dados.
 fn sign_id_token(issuer: &str, nonce: &str, groups: &[&str]) -> String {
+    sign_id_token_with(issuer, nonce, groups, IdTokenVariant::Normal)
+}
+
+/// Firma un ID token RS256 con la variante indicada.
+fn sign_id_token_with(
+    issuer: &str,
+    nonce: &str,
+    groups: &[&str],
+    variant: IdTokenVariant,
+) -> String {
     #[derive(Serialize)]
     struct Claims<'a> {
         sub: &'a str,
@@ -292,9 +321,18 @@ fn sign_id_token(issuer: &str, nonce: &str, groups: &[&str]) -> String {
         aud: &'a str,
         exp: i64,
         iat: i64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        nbf: Option<i64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        azp: Option<&'a str>,
     }
 
     let now = chrono::Utc::now().timestamp();
+    let (nbf, azp) = match variant {
+        IdTokenVariant::Normal => (None, None),
+        IdTokenVariant::NbfInFuture => (Some(now + 3600), None),
+        IdTokenVariant::ForeignAzp => (None, Some("other-client")),
+    };
     let claims = Claims {
         sub: "user-123",
         name: "Test User",
@@ -305,6 +343,8 @@ fn sign_id_token(issuer: &str, nonce: &str, groups: &[&str]) -> String {
         aud: CLIENT_ID,
         exp: now + 3600,
         iat: now,
+        nbf,
+        azp,
     };
 
     let mut header = Header::new(Algorithm::RS256);

@@ -16,6 +16,9 @@ const RecipesPage = lazy(() =>
 const RecipeDetailPage = lazy(() =>
   import('./pages/RecipeDetailPage').then((module) => ({ default: module.RecipeDetailPage })),
 );
+const SettingsPage = lazy(() =>
+  import('./pages/SettingsPage').then((module) => ({ default: module.SettingsPage })),
+);
 
 function PageFallback() {
   return (
@@ -35,6 +38,7 @@ export function App() {
             <Route path="shopping" element={<ShoppingPage />} />
             <Route path="recipes" element={<RecipesPage />} />
             <Route path="recipes/:id" element={<RecipeDetailPage />} />
+            <Route path="settings" element={<SettingsPage />} />
           </Route>
           <Route
             path="*"

@@ -98,7 +98,7 @@ you'll reference them in the backend environment.
 | **Type** | Confidential – *Client access* (M2M) |
 | **Client name** | `Oximeal Valet` |
 | **Audience** | `https://oximeal.local/api` |
-| **Permission scopes** | `agent.read agent.plan agent.shopping` |
+| **Permission scopes** | `agent.read agent.plan agent.shopping agent.write` |
 
 Note that **public** clients are **not** allowed to obtain M2M tokens.
 
@@ -125,7 +125,10 @@ SESSION_SECRET=YOUR_SESSION_SECRET          # 32+ ASCII chars
 SESSION_TTL_SECS=2592000
 SESSION_REFRESH_MARGIN_SECS=300
 SESSION_COOKIE_SECURE=false
+# HTTP en localhost: sin prefijo __Host- y con el escape explícito.
 SESSION_COOKIE_NAME=oximeal_session
+ALLOW_INSECURE_COOKIE=true
+SESSION_ABSOLUTE_TTL_SECS=43200
 ```
 
 > **Tip** – For the `SESSION_SECRET` you can reuse the same key as

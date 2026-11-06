@@ -1,0 +1,27 @@
+.daily-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.daily-view__nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.daily-view__button {
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 10px;
+  background: var(--surface, #ffffff);
+  color: var(--text, #1a202c);
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.daily-view__button:hover {
+  background: var(--surface-muted, #f7fafc);
+}
