@@ -19,6 +19,9 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 - **Lista de la compra:** la heurística de categorización cubre más frutas y verduras (`melocotón`, `nectarina`, `albaricoque`, `ciruela`, `mango`, `aguacate`, `higo`, `mora`, `mandarina`, `pomelo`, `coco`, `boniato`, `repollo`, `maíz`, `espárrago`…), con reglas específicas para evitar colisiones (`morcilla`/`mora`, `hígado`/`higo`, `limonada`/`limón`, `manzanilla`/`manzana`) (#81).
 - **Seguridad (sesión):** vida absoluta de la sesión (`SESSION_ABSOLUTE_TTL_SECS`, 12 h por defecto) medida desde el login. El refresco de tokens ya no puede extenderla indefinidamente: superado el plazo, las rutas protegidas responden `401` y `/auth/me` devuelve `authenticated: false` (#81).
 - **Seguridad (API):** las respuestas a peticiones autenticadas (cookie de sesión o `Bearer`) llevan `Cache-Control: no-store` para evitar que datos privados queden en cachés intermedias (#81).
+- **Interfaz (navegación):** barra superior fija única con el logo, Menú, Recetas, Compra, Configuración y Salir; en móvil solo iconos con nombre accesible y objetivos táctiles de 48px. Se eliminan el panel lateral y la navegación inferior.
+- **Interfaz (tema):** selector Oscuro / Claro / Sistema en `/settings`, con Oscuro por defecto, persistencia en `localStorage` y sin destello al cargar.
+- **Interfaz (menú):** vistas Diaria, Semanal y Mensual, con Semanal por defecto; la mensual muestra una rejilla con resumen por día y abre la vista diaria al tocar un día.
 
 ### Cambiado
 
@@ -27,6 +30,8 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 - **Seguridad (OIDC):** la validación del ID token rechaza `nbf` en el futuro y un `azp` distinto del `client_id` (#81).
 - **Seguridad (logs):** `Debug` de `Config`, `OidcConfig` y `SessionConfig` redacta `client_secret` y `SESSION_SECRET` como `[REDACTED]` (#81).
 - **Despliegue:** `deploy/README.md` documenta el prefijo `__Host-`, la vida absoluta, el escape `ALLOW_INSECURE_COOKIE` y que HSTS/`Referrer-Policy` corresponden al reverse-proxy (#81).
+- **Interfaz (menú):** la vista diaria muestra las cuatro franjas (desayuno, comida, cena y merienda).
+- **Interfaz (Valet):** el acceso a Valet se mantiene desde las acciones del menú; desaparece la pestaña Asistente de la navegación.
 
 ## [0.5.1] - 2026-11-04
 
