@@ -9,6 +9,11 @@ import { describe, expect, it } from 'vitest';
 const baseUrl = import.meta.url;
 const indexCss = readFileSync(new URL('../index.css', baseUrl), 'utf8');
 const themeSource = readFileSync(new URL('../components/theme.ts', baseUrl), 'utf8');
+const themeProviderSource = readFileSync(new URL('./ThemeProvider.tsx', baseUrl), 'utf8');
+const indexHtml = readFileSync(new URL('../../index.html', baseUrl), 'utf8');
+const manifest = JSON.parse(
+  readFileSync(new URL('../../public/manifest.webmanifest', baseUrl), 'utf8'),
+) as { theme_color: string };
 
 const darkCssBlock = (() => {
   const match = indexCss.match(/:root\[data-theme='dark'\]\s*\{([\s\S]*?)\}/);
@@ -41,6 +46,15 @@ function tokenHex(block: string, prop: string): string {
   }
   return match[1];
 }
+
+/** Extrae `THEME_COLORS.dark` de ThemeProvider sin importar el módulo (evita React/JSX). */
+const themeColorsDark = (() => {
+  const match = themeProviderSource.match(/THEME_COLORS[\s\S]*?dark:\s*'(#[0-9a-fA-F]{3,8})'/);
+  if (!match) {
+    throw new Error('No se encontró THEME_COLORS.dark en ThemeProvider.tsx');
+  }
+  return match[1];
+})();
 
 function toRgb(hex: string): [number, number, number] {
   const clean = hex.replace('#', '');
@@ -109,6 +123,7 @@ describe('paleta oscura neutra (index.css)', () => {
       ['--text', darkPalette.text, darkPalette.surfaceMuted],
       ['--text-muted', darkPalette.textMuted, darkPalette.bg],
       ['--text-muted', darkPalette.textMuted, darkPalette.surface],
+      ['--text-muted', darkPalette.textMuted, darkPalette.surfaceMuted],
       ['--text sobre --accent-soft', darkPalette.text, darkPalette.accentSoft],
       ['--accent sobre --bg', darkPalette.accent, darkPalette.bg],
     ];
@@ -132,5 +147,21 @@ describe('darkTheme de Ant Design (components/theme.ts)', () => {
     expect(tokenHex(darkThemeBlock, 'headerBg')).toBe(darkPalette.surface);
     expect(tokenHex(darkThemeBlock, 'siderBg')).toBe(darkPalette.surface);
     expect(tokenHex(darkThemeBlock, 'colorTextBase')).toBe(darkPalette.text);
+  });
+});
+
+describe('coherencia de theme-color (ThemeProvider / index.html / manifest)', () => {
+  it('THEME_COLORS.dark coincide con el meta theme-color de index.html', () => {
+    const match = indexHtml.match(/<meta name="theme-color" content="([^"]+)"/);
+    expect(match?.[1]).toBe(themeColorsDark);
+  });
+
+  it('THEME_COLORS.dark coincide con theme_color del manifest', () => {
+    expect(manifest.theme_color).toBe(themeColorsDark);
+  });
+
+  it('el meta theme-color y theme_color del manifest coinciden entre sí', () => {
+    const match = indexHtml.match(/<meta name="theme-color" content="([^"]+)"/);
+    expect(match?.[1]).toBe(manifest.theme_color);
   });
 });
