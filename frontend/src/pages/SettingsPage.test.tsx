@@ -77,14 +77,11 @@ describe('SettingsPage', () => {
     expect(screen.getByText('Ana')).toBeInTheDocument();
   });
 
-  it('el botón Salir invoca el logout de la sesión', async () => {
-    const logout = vi.fn().mockResolvedValue(undefined);
-    mockedUseSession.mockReturnValue(session({ logout }));
-    const user = userEvent.setup();
+  it('no muestra ningún control de cierre de sesión', () => {
     renderSettings();
 
-    await user.click(screen.getByRole('button', { name: /salir|cerrar sesión/i }));
-
-    expect(logout).toHaveBeenCalledTimes(1);
+    expect(
+      screen.queryByRole('button', { name: /salir|cerrar sesión/i }),
+    ).not.toBeInTheDocument();
   });
 });

@@ -41,22 +41,10 @@
   justify-content: center;
 }
 
-.settings-page__identity {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 48px;
-}
-
 .settings-page__name {
   font-weight: 600;
   color: var(--text, #1a202c);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.settings-page__logout {
-  min-height: 48px;
 }
