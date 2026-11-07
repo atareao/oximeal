@@ -12,9 +12,28 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [No publicado]
 
+## [0.8.0] - 2026-11-07
+
+### Añadido
+
+- **Recetas (importación):** el desglose de ingredientes reconoce sinónimos de unidades al importar (`gramos`/`g`, `kilos`/`kg`, `mililitros`/`ml`, `litros`/`l`, `unidades`/`ud`, cucharadas y cucharaditas…), normalizando a la forma canónica sin convertir magnitudes.
+- **Recetas (edición):** botón «Corregir ingredientes» en el detalle para editar nombre, cantidad y unidad sin abrir el modal completo; guarda con `PUT /api/recipes/{id}` reenviando el `RecipeInput` completo, valida en cliente y respeta el escalado de raciones y el modo sin conexión.
+- **Lista de la compra:** botón «Marcar todo» que marca en serie todos los ítems pendientes, con soporte sin conexión (cola idempotente), estado de carga y guard para no solapar mutaciones del usuario.
+
+### Cambiado
+
+- **Interfaz (menú):** el selector de vista y la fecha se centran, y la fecha pasa a mostrarse bajo el selector.
+
 ### Corregido
 
 - **Interfaz (barra superior):** `Salir` siempre visible en la barra superior una vez conocido el estado de sesión, no solo con sesión autenticada; sin sesión reinicia la aplicación con una recarga completa. Los encabezados de vista (Menú, Recetas, Lista de la compra y Configuración) pasan a estar ocultos visualmente pero accesibles por lectores de pantalla, y dejan de duplicar la navegación.
+
+## [0.7.0] - 2026-11-07
+
+### Añadido
+
+- **Ajustes (comensales):** preferencia de comensales habituales (1..20, por defecto 2) persistida en el servidor mediante la migración `0010` y `GET/PUT /api/settings` (permisos `read:recipes`/`write:recipes`, `422` fuera de rango). Se edita en `/settings` y se cachea en IndexedDB para uso sin red.
+- **Recetas (escalado):** el detalle escala las cantidades a las raciones seleccionadas (1..20), con la preferencia como valor inicial, aviso «Receta para 8 · cantidades para 2» y opción de ver las originales. Las recetas importadas sin cantidades reales (`amount = 1`, `unit = "ud"`) no se escalan y se avisa. La lista de la compra mantiene su propio cálculo.
 
 ## [0.6.1] - 2026-11-06
 
