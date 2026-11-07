@@ -168,7 +168,7 @@ export function RecipesPage() {
   return (
     <section aria-labelledby="recipes-title" className="recipes-page">
       <header className="recipes-page__header">
-        <Title id="recipes-title" level={2} className="recipes-page__title">
+        <Title id="recipes-title" level={2} className="visually-hidden">
           Recetas
         </Title>
         <div className="recipes-page__actions">

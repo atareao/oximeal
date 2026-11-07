@@ -570,4 +570,10 @@ describe('RecipesPage', () => {
     expect(await screen.findByTestId('recipes-offline')).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: /filtrar por etiqueta/i })).toBeDisabled();
   });
+
+  it('expone el encabezado de la vista oculto para lectores de pantalla', () => {
+    renderRecipes();
+
+    expect(screen.getByRole('heading', { name: 'Recetas' })).toHaveClass('visually-hidden');
+  });
 });

@@ -250,7 +250,7 @@ export function MenuPage() {
   const header = (
     <header className="menu-page__header">
       <div className="menu-page__heading">
-        <Title id="menu-title" level={2} className="menu-page__title">
+        <Title id="menu-title" level={2} className="visually-hidden">
           Menú
         </Title>
         <Paragraph className="menu-page__range" type="secondary">

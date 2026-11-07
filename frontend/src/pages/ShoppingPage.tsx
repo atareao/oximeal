@@ -99,7 +99,7 @@ export function ShoppingPage() {
   return (
     <section aria-labelledby="shopping-title" className="shopping-page">
       <header className="shopping-page__header">
-        <Title id="shopping-title" level={2} className="shopping-page__title">
+        <Title id="shopping-title" level={2} className="visually-hidden">
           Lista de la compra
         </Title>
         <div className="shopping-page__actions">

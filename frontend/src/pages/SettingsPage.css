@@ -5,10 +5,6 @@
   max-width: 640px;
 }
 
-.settings-page__title {
-  margin: 0 !important;
-}
-
 .settings-page__section {
   display: flex;
   flex-direction: column;

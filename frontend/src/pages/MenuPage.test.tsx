@@ -782,4 +782,10 @@ describe('MenuPage', () => {
     expect(within(select).queryByRole('option', { name: 'Desayuno' })).not.toBeInTheDocument();
     expect(within(select).queryByRole('option', { name: 'Merienda' })).not.toBeInTheDocument();
   });
+
+  it('expone el encabezado de la vista oculto para lectores de pantalla', () => {
+    renderMenu();
+
+    expect(screen.getByRole('heading', { name: 'Menú' })).toHaveClass('visually-hidden');
+  });
 });

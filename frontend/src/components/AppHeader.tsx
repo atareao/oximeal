@@ -1,5 +1,6 @@
 import { Link, NavLink } from 'react-router-dom';
 import { useSession } from '../auth/session';
+import { reloadApp } from '../auth/reload';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import './AppHeader.css';
 
@@ -33,7 +34,11 @@ export function AppHeader() {
   const { status, logout } = useSession();
 
   const handleLogout = () => {
-    void logout().catch(() => undefined);
+    if (status === 'authenticated') {
+      void logout().catch(() => undefined);
+      return;
+    }
+    reloadApp();
   };
 
   return (
@@ -86,21 +91,19 @@ export function AppHeader() {
           </span>
           {isDesktop && <span className="app-header__label">{SETTINGS_ITEM.label}</span>}
         </NavLink>
-        {status === 'authenticated' && (
-          <button
-            type="button"
-            className="app-header__logout"
-            aria-label="Salir"
-            title="Salir"
-            style={TOUCH_STYLE}
-            onClick={handleLogout}
-          >
-            <span className="app-header__icon" aria-hidden="true">
-              🚪
-            </span>
-            {isDesktop && <span className="app-header__label">Salir</span>}
-          </button>
-        )}
+        <button
+          type="button"
+          className="app-header__logout"
+          aria-label="Salir"
+          title="Salir"
+          style={TOUCH_STYLE}
+          onClick={handleLogout}
+        >
+          <span className="app-header__icon" aria-hidden="true">
+            🚪
+          </span>
+          {isDesktop && <span className="app-header__label">Salir</span>}
+        </button>
       </div>
     </header>
   );
