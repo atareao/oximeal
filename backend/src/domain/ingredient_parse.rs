@@ -32,22 +32,45 @@ const CONNECTOR: &str = "de";
 /// presentación)` compartida; queda como follow-up para no arriesgar la
 /// canonicalización (17 tests) en este cambio.
 const KNOWN_UNITS: &[(&str, &str)] = &[
+    // Masa
     ("g", "g"),
     // `gr` es el alias idiomático de gramos en español; necesario además para
     // reconocer variantes en mayúsculas («40 GR» → «g»).
     ("gr", "g"),
+    ("gramo", "g"),
+    ("gramos", "g"),
     ("kg", "kg"),
+    ("kilo", "kg"),
+    ("kilos", "kg"),
+    ("kilogramo", "kg"),
+    ("kilogramos", "kg"),
+    // Volumen
     ("ml", "ml"),
+    ("mililitro", "ml"),
+    ("mililitros", "ml"),
     ("l", "l"),
+    ("lt", "l"),
+    ("litro", "l"),
+    ("litros", "l"),
     ("cl", "cl"),
+    // Recuento
     ("ud", "ud"),
     ("uds", "ud"),
-    ("taza", "taza"),
-    ("tazas", "taza"),
+    ("u", "ud"),
+    ("unidad", "ud"),
+    ("unidades", "ud"),
+    ("docena", "docena"),
+    ("docenas", "docena"),
+    // Cucharas
+    ("cda", "cucharada"),
     ("cucharada", "cucharada"),
     ("cucharadas", "cucharada"),
+    ("cdta", "cucharadita"),
     ("cucharadita", "cucharadita"),
     ("cucharaditas", "cucharadita"),
+    // Otras
+    ("taza", "taza"),
+    ("tazas", "taza"),
     ("pizca", "pizca"),
     ("pizcas", "pizca"),
 ];
@@ -258,5 +281,70 @@ mod tests {
     #[test]
     fn conector_de_con_plural() {
         assert_parse("2 tazas de arroz", "arroz", 2.0, "taza");
+    }
+
+    #[test]
+    fn sinonimo_masa_forma_larga() {
+        assert_parse(
+            "150 gramos de pechuga de pollo",
+            "pechuga de pollo",
+            150.0,
+            "g",
+        );
+    }
+
+    #[test]
+    fn sinonimo_masa_brocoli() {
+        assert_parse("60 gramos de brócoli", "brócoli", 60.0, "g");
+    }
+
+    #[test]
+    fn cantidad_sin_unidad_zanahoria() {
+        assert_parse("1 zanahoria", "zanahoria", 1.0, "ud");
+    }
+
+    #[test]
+    fn sinonimo_masa_queso_crema() {
+        assert_parse("50 gramos de queso crema", "queso crema", 50.0, "g");
+    }
+
+    #[test]
+    fn sinonimo_masa_copos_de_maiz() {
+        assert_parse("50 gramos de copos de maíz", "copos de maíz", 50.0, "g");
+    }
+
+    #[test]
+    fn sinonimo_masa_kilo() {
+        assert_parse("1 kilo de patatas", "patatas", 1.0, "kg");
+    }
+
+    #[test]
+    fn sinonimo_volumen_litros() {
+        assert_parse("2 litros de leche", "leche", 2.0, "l");
+    }
+
+    #[test]
+    fn sinonimo_volumen_mililitros() {
+        assert_parse("500 mililitros de agua", "agua", 500.0, "ml");
+    }
+
+    #[test]
+    fn sinonimo_recuento_unidades() {
+        assert_parse("3 unidades de huevo", "huevo", 3.0, "ud");
+    }
+
+    #[test]
+    fn sinonimo_recuento_docenas() {
+        assert_parse("2 docenas de huevos", "huevos", 2.0, "docena");
+    }
+
+    #[test]
+    fn sinonimo_cucharada_cda() {
+        assert_parse("2 cda de aceite", "aceite", 2.0, "cucharada");
+    }
+
+    #[test]
+    fn sinonimo_cucharadita_cdta() {
+        assert_parse("1 cdta de sal", "sal", 1.0, "cucharadita");
     }
 }

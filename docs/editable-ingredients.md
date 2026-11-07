@@ -13,7 +13,7 @@ Dos mejoras sobre los ingredientes de las recetas:
 - `frontend/src/pages/RecipeDetailPage.tsx` / `.css` / `.test.tsx` — integración en el detalle.
 
 ## Cómo funciona
-- **Import**: `parse_ingredient` reconoce una cantidad inicial (entero, decimal con punto o coma, fracción `a/b` y mixta `a b/c`), una unidad conocida (lista blanca normalizada, plural→singular) y elimina el conector «de». Sin cantidad detectable ⇒ `amount=1`, `unit="ud"`, nombre íntegro. Unidad no reconocida ⇒ se conserva la cantidad y `unit="ud"` (el resto pasa al nombre).
+- **Import**: `parse_ingredient` reconoce una cantidad inicial (entero, decimal con punto o coma, fracción `a/b` y mixta `a b/c`), una unidad conocida por sinónimos (lista blanca normalizada sin conversión de magnitud: `gramos`→`g`, `kilos`→`kg`, `mililitros`→`ml`, `litros`→`l`, `unidades`→`ud`, `cda`, `cdta`, …) y elimina el conector «de». Sin cantidad detectable ⇒ `amount=1`, `unit="ud"`, nombre íntegro. Unidad no reconocida ⇒ se conserva la cantidad y `unit="ud"` (el resto pasa al nombre).
 - **Detalle**: el botón «Corregir ingredientes» conmuta la sección a modo edición; valida en cliente (nombre no vacío, cantidad finita ≥ 0) y guarda con `PUT /api/recipes/{id}` reenviando el `RecipeInput` completo (preserva el resto de campos y las etiquetas manuales; `auto_tags: true`). Respeta el escalado de raciones y se deshabilita/degradar sin conexión.
 
 ## Configuración y despliegue
