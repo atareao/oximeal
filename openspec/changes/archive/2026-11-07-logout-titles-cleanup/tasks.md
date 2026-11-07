@@ -27,6 +27,6 @@
 
 ## 5. Cierre
 
-- [ ] 5.1 `openspec validate logout-titles-cleanup --strict` en verde.
+- [x] 5.1 `openspec validate logout-titles-cleanup --strict` en verde.
 - [x] 5.2 Actualizar `CHANGELOG.md` (sección Corregido).
-- [ ] 5.3 `just ci-ui` en verde; PR a `development` y archivar el change.
+- [x] 5.3 `just ci-ui` en verde; PR a `development` y archivar el change.
