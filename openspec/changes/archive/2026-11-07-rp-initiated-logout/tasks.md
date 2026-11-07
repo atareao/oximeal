@@ -52,5 +52,5 @@
 - [x] 3.2 Auditoría `@rust-reviewer` sobre los cambios de backend.
 - [x] 3.3 Auditoría `@react-reviewer` sobre los cambios de frontend.
 - [x] 3.4 Preparar release 0.8.1.
-- [ ] 3.5 Desplegar en co1 con Dockge Update y verificar el cierre de sesión completo (IdP incluido).
+- [x] 3.5 Desplegar en co1 con Dockge Update y verificar el cierre de sesión completo (IdP incluido). Verificado el 2026-11-07: tras `Salir` se vuelve al login pasando por Pocket ID, sin reentrada automática.
 - [x] 3.6 Actualizar `docs/` y archivar el change.
