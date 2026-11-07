@@ -10,10 +10,6 @@
   gap: 12px;
 }
 
-.recipes-page__title {
-  margin: 0 !important;
-}
-
 .recipes-page__actions {
   display: flex;
   flex-wrap: wrap;
