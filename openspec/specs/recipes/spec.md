@@ -301,7 +301,7 @@ pero sin JSON-LD de receta SHALL responder `422`; un fallo del origen
 - THEN se responde `400` sin intentar conectar
 
 ### Requirement: Desglose de cantidad y unidad al importar
-Al importar, SHALL interpretar cada `recipeIngredient` para separar cantidad, unidad y nombre: SHALL reconocer una cantidad inicial (entero, decimal o fracción) y una unidad conocida por sus sinónimos normalizados sin conversión de magnitud (masa `g`/`gramos`, `kg`/`kilogramos`/`kilos`; volumen `ml`/`mililitros`, `l`/`litros`; recuento `ud`/`unidad`/`unidades`/`u`; y `taza`, `cucharada`/`cda`, `cucharadita`/`cdta`, `pizca`), guardando `amount` numérico, `unit` normalizada y un `name` sin la cantidad; sin cantidad detectable, SHALL usar `amount = 1`, `unit` "ud" y el nombre completo.
+Al importar, SHALL interpretar cada `recipeIngredient` para separar cantidad, unidad y nombre: SHALL reconocer una cantidad inicial (entero, decimal o fracción) y una unidad conocida por sus sinónimos normalizados sin conversión de magnitud (masa, volumen, recuento, `taza`, `cucharada`, `cucharadita`, `pizca`), guardando `amount` numérico, `unit` normalizada y un `name` sin la cantidad; sin cantidad detectable, SHALL usar `amount = 1`, `unit` "ud" y el nombre completo.
 
 #### Scenario: Cantidad con unidad
 - GIVEN un `recipeIngredient` «40 g de queso parmesano»
