@@ -355,14 +355,15 @@ impl OidcClient {
     }
 
     /// Construye la URL de autorización con los parámetros dados.
+    ///
+    /// Rechaza endpoints cuyo esquema no sea `http`/`https` (defensa en
+    /// profundidad frente a un discovery malicioso o corrupto).
     pub fn build_authorize_url(
         &self,
         endpoint: &str,
         params: &[(&str, &str)],
     ) -> AuthResult<String> {
-        let mut url = Url::parse(endpoint).map_err(|error| {
-            AuthError::Upstream(format!("authorization_endpoint inválido: {error}"))
-        })?;
+        let mut url = endpoint_url(endpoint, "authorization_endpoint")?;
         {
             let mut pairs = url.query_pairs_mut();
             for (key, value) in params {
@@ -371,6 +372,49 @@ impl OidcClient {
         }
         Ok(url.to_string())
     }
+}
+
+/// Parsea un endpoint OIDC exigiendo un esquema `http`/`https`.
+///
+/// Un esquema distinto (p. ej. `file`, `data`) o una URL inválida es un fallo de
+/// configuración/upstream malformado, no de red: se mapea a
+/// [`AuthError::Internal`] y nunca se devuelve la URL.
+fn endpoint_url(endpoint: &str, name: &str) -> AuthResult<Url> {
+    let url = Url::parse(endpoint)
+        .map_err(|error| AuthError::Internal(format!("{name} inválido: {error}")))?;
+    match url.scheme() {
+        "http" | "https" => Ok(url),
+        other => Err(AuthError::Internal(format!(
+            "{name} con esquema no permitido: {other}"
+        ))),
+    }
+}
+
+/// Construye la URL de RP-initiated logout a partir del `end_session_endpoint`.
+///
+/// Añade `id_token_hint` (solo si la sesión tiene ID token), `client_id` y
+/// `post_logout_redirect_uri`; la codificación de la query la resuelve
+/// [`Url::query_pairs_mut`]. El ID token viaja únicamente en la URL hacia el
+/// IdP: no se registra en logs ni se añade al cuerpo de la respuesta.
+///
+/// Rechaza endpoints cuyo esquema no sea `http`/`https` (defensa en
+/// profundidad): en tal caso devuelve [`AuthError::Internal`] sin la URL.
+pub fn logout_url(
+    endpoint: &str,
+    client_id: &str,
+    post_logout_redirect_uri: &str,
+    id_token: Option<&str>,
+) -> AuthResult<String> {
+    let mut url = endpoint_url(endpoint, "end_session_endpoint")?;
+    {
+        let mut pairs = url.query_pairs_mut();
+        if let Some(id_token) = id_token {
+            pairs.append_pair("id_token_hint", id_token);
+        }
+        pairs.append_pair("client_id", client_id);
+        pairs.append_pair("post_logout_redirect_uri", post_logout_redirect_uri);
+    }
+    Ok(url.to_string())
 }
 
 /// Indica si una clave del JWKS es apta para verificar un token.
@@ -509,5 +553,77 @@ mod tests {
         let client = OidcClient::new(server.uri(), reqwest::Client::new());
         let document = client.discovery().await.expect("issuer con barra final");
         assert_eq!(document.issuer, announced);
+    }
+
+    #[test]
+    fn logout_url_rejects_non_http_scheme() {
+        let error = logout_url("file:///etc/passwd", "c", "https://app.example/", None)
+            .expect_err("esquema no permitido");
+        assert!(matches!(error, AuthError::Internal(_)), "{error:?}");
+
+        // Misma defensa en profundidad para el authorization_endpoint.
+        let client = OidcClient::new("https://issuer.example", reqwest::Client::new());
+        let error = client
+            .build_authorize_url("data:text/html,<script>", &[])
+            .expect_err("esquema no permitido");
+        assert!(matches!(error, AuthError::Internal(_)), "{error:?}");
+    }
+
+    #[test]
+    fn logout_url_encodes_query_parameters() {
+        let url = logout_url(
+            "https://idp.example/logout?tenant=acme",
+            "cliente&raro",
+            "https://app.example/cb?from=a&next=b c",
+            Some("id-token"),
+        )
+        .expect("URL de logout");
+
+        // Conserva la query previa del endpoint y añade los parámetros.
+        assert!(url.starts_with("https://idp.example/logout?tenant=acme&"));
+
+        let parsed = Url::parse(&url).expect("URL válida");
+        let param = |key: &str| {
+            parsed
+                .query_pairs()
+                .find(|(name, _)| name == key)
+                .map(|(_, value)| value.into_owned())
+        };
+        assert_eq!(param("tenant").as_deref(), Some("acme"));
+        assert_eq!(param("id_token_hint").as_deref(), Some("id-token"));
+        assert_eq!(param("client_id").as_deref(), Some("cliente&raro"));
+        assert_eq!(
+            param("post_logout_redirect_uri").as_deref(),
+            Some("https://app.example/cb?from=a&next=b c")
+        );
+
+        // Los caracteres especiales van percent-encoded: la query no se rompe.
+        assert!(!url.contains(' '), "sin espacios literales: {url}");
+        assert!(url.contains("%3F"), "`?` codificado: {url}");
+        assert!(url.contains("%26"), "`&` codificado: {url}");
+        assert!(
+            url.contains("post_logout_redirect_uri=https%3A%2F%2F"),
+            "la redirect URI debe ir codificada: {url}"
+        );
+    }
+
+    #[test]
+    fn logout_url_omits_id_token_hint_without_token() {
+        let url = logout_url(
+            "https://idp.example/logout",
+            "oximeal-spa",
+            "https://app.example/",
+            None,
+        )
+        .expect("URL de logout");
+
+        assert!(!url.contains("id_token_hint"), "{url}");
+        let parsed = Url::parse(&url).expect("URL válida");
+        assert!(
+            parsed
+                .query_pairs()
+                .any(|(key, value)| key == "client_id" && value == "oximeal-spa"),
+            "{url}"
+        );
     }
 }

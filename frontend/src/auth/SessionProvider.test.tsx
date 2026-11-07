@@ -11,6 +11,7 @@ import {
 } from '../api/client';
 import { isOnline, useOnline } from '../offline/connectivity';
 import { clearPersistedQueries, hasCachedData } from '../offline/queryPersist';
+import { navigateTo } from './navigate';
 import { SessionProvider } from './SessionProvider';
 import { useSession } from './session';
 
@@ -35,6 +36,10 @@ vi.mock('../offline/queryPersist', () => ({
   clearPersistedQueries: vi.fn(async () => undefined),
 }));
 
+vi.mock('./navigate', () => ({
+  navigateTo: vi.fn(),
+}));
+
 const mockedFetchAuthMe = vi.mocked(fetchAuthMe);
 const mockedLogoutAuth = vi.mocked(logoutAuth);
 const mockedSetCsrfToken = vi.mocked(setCsrfToken);
@@ -43,6 +48,7 @@ const mockedIsOnline = vi.mocked(isOnline);
 const mockedUseOnline = vi.mocked(useOnline);
 const mockedHasCachedData = vi.mocked(hasCachedData);
 const mockedClearPersistedQueries = vi.mocked(clearPersistedQueries);
+const mockedNavigateTo = vi.mocked(navigateTo);
 
 function Probe() {
   const session = useSession();
@@ -89,8 +95,9 @@ describe('SessionProvider', () => {
     mockedUseOnline.mockReset();
     mockedHasCachedData.mockReset();
     mockedClearPersistedQueries.mockReset();
+    mockedNavigateTo.mockReset();
 
-    mockedLogoutAuth.mockResolvedValue(undefined);
+    mockedLogoutAuth.mockResolvedValue({ logout_url: null });
     mockedIsOnline.mockReturnValue(true);
     mockedUseOnline.mockReturnValue(true);
     mockedHasCachedData.mockReturnValue(false);
@@ -246,7 +253,73 @@ describe('SessionProvider', () => {
     expect(client.getQueryCache().getAll()).toHaveLength(0);
   });
 
-  it('queda anónimo aunque el logout falle (500/red): la rama finally limpia la sesión', async () => {
+  it('con logout_url limpia el estado y la caché y navega a la URL del IdP', async () => {
+    mockedFetchAuthMe.mockResolvedValue({ authenticated: true, name: 'Ana', csrf_token: 'csrf-1' });
+    const logoutUrl = 'https://idp.example/logout?id_token_hint=abc&client_id=oximeal';
+    mockedLogoutAuth.mockResolvedValue({ logout_url: logoutUrl });
+    const user = userEvent.setup();
+    const { queryClient: client } = renderProvider();
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('authenticated'));
+
+    client.setQueryData(['shopping-list'], [{ id: '1' }]);
+
+    await user.click(screen.getByRole('button', { name: 'salir' }));
+
+    expect(mockedLogoutAuth).toHaveBeenCalledTimes(1);
+    expect(mockedSetCsrfToken).toHaveBeenCalledWith(null);
+    expect(mockedClearPersistedQueries).toHaveBeenCalledTimes(1);
+    expect(client.getQueryCache().getAll()).toHaveLength(0);
+    expect(mockedNavigateTo).toHaveBeenCalledTimes(1);
+    expect(mockedNavigateTo).toHaveBeenCalledWith(logoutUrl);
+
+    // La navegación es lo último: el token CSRF y el estado se limpian antes
+    // (el `setState` anónimo es síncrono con el `setCsrfToken(null)`).
+    const navigationOrder = mockedNavigateTo.mock.invocationCallOrder[0] ?? 0;
+    expect(navigationOrder).toBeGreaterThan(
+      mockedSetCsrfToken.mock.invocationCallOrder.at(-1) ?? 0,
+    );
+    expect(navigationOrder).toBeGreaterThan(
+      mockedClearPersistedQueries.mock.invocationCallOrder[0] ?? 0,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('anonymous'));
+  });
+
+  it('un fallo al borrar la persistencia no impide el estado anónimo ni la navegación', async () => {
+    mockedFetchAuthMe.mockResolvedValue({ authenticated: true, name: 'Ana', csrf_token: 'csrf-1' });
+    const logoutUrl = 'https://idp.example/logout?id_token_hint=abc';
+    mockedLogoutAuth.mockResolvedValue({ logout_url: logoutUrl });
+    mockedClearPersistedQueries.mockRejectedValue(new Error('almacenamiento no disponible'));
+    const user = userEvent.setup();
+    renderProvider();
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('authenticated'));
+
+    await user.click(screen.getByRole('button', { name: 'salir' }));
+
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('anonymous'));
+    expect(mockedSetCsrfToken).toHaveBeenCalledWith(null);
+    expect(mockedNavigateTo).toHaveBeenCalledWith(logoutUrl);
+  });
+
+  it('con logout_url null limpia el estado y queda anónimo sin navegar', async () => {
+    mockedFetchAuthMe.mockResolvedValue({ authenticated: true, name: 'Ana', csrf_token: 'csrf-1' });
+    mockedLogoutAuth.mockResolvedValue({ logout_url: null });
+    const user = userEvent.setup();
+    const { queryClient: client } = renderProvider();
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('authenticated'));
+
+    client.setQueryData(['shopping-list'], [{ id: '1' }]);
+
+    await user.click(screen.getByRole('button', { name: 'salir' }));
+
+    expect(mockedSetCsrfToken).toHaveBeenCalledWith(null);
+    expect(mockedClearPersistedQueries).toHaveBeenCalledTimes(1);
+    expect(client.getQueryCache().getAll()).toHaveLength(0);
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('anonymous'));
+    expect(mockedNavigateTo).not.toHaveBeenCalled();
+  });
+
+  it('queda anónimo aunque el logout falle (500/red): la rama finally limpia la sesión y no navega', async () => {
     mockedFetchAuthMe.mockResolvedValue({ authenticated: true, name: 'Ana', csrf_token: 'csrf-1' });
     mockedLogoutAuth.mockRejectedValue(new ApiError(500, 'http_error', 'boom'));
     const user = userEvent.setup();
@@ -256,7 +329,9 @@ describe('SessionProvider', () => {
     await user.click(screen.getByRole('button', { name: 'salir' }));
 
     expect(mockedSetCsrfToken).toHaveBeenCalledWith(null);
+    expect(mockedClearPersistedQueries).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('anonymous'));
+    expect(mockedNavigateTo).not.toHaveBeenCalled();
   });
 
   it('pasa un AbortSignal a fetchAuthMe y lo cancela al desmontar', () => {

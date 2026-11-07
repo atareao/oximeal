@@ -66,6 +66,7 @@ describe('AppHeader', () => {
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -191,6 +192,8 @@ describe('AppHeader', () => {
   });
 
   it('sin sesión autenticada, pulsar Salir recarga la app y no invoca el logout', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
     const logout = vi.fn().mockResolvedValue(undefined);
     mockedUseSession.mockReturnValue(session({ status: 'disabled', logout }));
     const user = userEvent.setup();
@@ -200,6 +203,8 @@ describe('AppHeader', () => {
 
     expect(mockedReloadApp).toHaveBeenCalledTimes(1);
     expect(logout).not.toHaveBeenCalled();
+    // Sin `logout()` delegado no hay `POST /auth/logout`.
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('con sesión autenticada y viewport estrecho la acción agrupa Configuración y Salir sin texto OxiMeal', () => {
