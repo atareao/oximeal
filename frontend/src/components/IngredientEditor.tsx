@@ -223,7 +223,10 @@ export function IngredientEditor({
       )}
       <ul className="recipe-detail__ingredients recipe-detail__ingredients--editing">
         {drafts.map((draft, index) => (
-          <li key={draft.id} className="recipe-detail__ingredient recipe-detail__ingredient--editing">
+          <li
+            key={draft.id}
+            className="recipe-detail__ingredient recipe-detail__ingredient--editing"
+          >
             <Input
               ref={(node) => {
                 if (node) {
