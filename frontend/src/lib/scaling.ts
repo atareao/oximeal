@@ -13,12 +13,7 @@
  * - resultado < 1 → dos decimales
  */
 export function scaleAmount(amount: number, factor: number): number {
-  if (
-    !Number.isFinite(amount) ||
-    !Number.isFinite(factor) ||
-    amount < 0 ||
-    factor < 0
-  ) {
+  if (!Number.isFinite(amount) || !Number.isFinite(factor) || amount < 0 || factor < 0) {
     return 0;
   }
   const result = amount * factor;
