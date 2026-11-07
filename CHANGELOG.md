@@ -12,6 +12,14 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [No publicado]
 
+### Añadido
+
+- **Autenticación (cierre de sesión):** `POST /auth/logout` responde `200` con `{"logout_url": string|null}`; construye la URL de *RP-initiated logout* del IdP (`end_session_endpoint` + `id_token_hint`, `client_id` y `post_logout_redirect_uri`) y el SPA navega a ella tras limpiar estado y caché, de modo que se cierra también la sesión SSO de Pocket ID. Sin endpoint publicado (o con discovery caída, acotada a 3 s) devuelve `null` y conserva el comportamiento anterior. La sesión y la cookie se destruyen **antes** de cualquier I/O.
+
+### Cambiado
+
+- **Autenticación (cliente OIDC):** el cliente HTTP usa `connect_timeout` 5 s y `timeout` 10 s; las URLs de fin de sesión y de autorización exigen esquema `http`/`https`.
+
 ## [0.8.0] - 2026-11-07
 
 ### Añadido

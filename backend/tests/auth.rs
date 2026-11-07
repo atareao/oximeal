@@ -6,10 +6,10 @@ mod common;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use common::idp::{
-    ACCESS_GROUPS_REFRESH, ACCESS_NO_GROUPS_REFRESH, API_AUDIENCE, INVALID_REFRESH, IdTokenVariant,
-    MockIdp, NO_GROUPS_REFRESH, NO_ID_TOKEN_REFRESH, USER_GROUPS, access_token,
+    ACCESS_GROUPS_REFRESH, ACCESS_NO_GROUPS_REFRESH, API_AUDIENCE, CLIENT_ID, INVALID_REFRESH,
+    IdTokenVariant, MockIdp, NO_GROUPS_REFRESH, NO_ID_TOKEN_REFRESH, USER_GROUPS, access_token,
 };
-use common::{send, test_state_oidc};
+use common::{send, test_state, test_state_oidc};
 use oximeal_backend::state::AppState;
 use serde_json::json;
 
@@ -163,6 +163,33 @@ async fn age_session(state: &AppState, secs: i64) {
     auth["started_at"] = json!(chrono::Utc::now().timestamp() - secs);
 
     let new_data = serde_json::to_vec(&value).expect("serializar sesión");
+    sqlx::query("UPDATE sessions SET data = ?1 WHERE id = ?2")
+        .bind(new_data)
+        .bind(id)
+        .execute(&state.pool)
+        .await
+        .expect("actualizar sesión");
+}
+
+/// Elimina el `id_token` de la sesión autenticada guardada.
+///
+/// Simula una sesión sin ID token (camino de URL sin `id_token_hint`).
+async fn remove_id_token(state: &AppState) {
+    let (id, data): (String, Vec<u8>) = sqlx::query_as("SELECT id, data FROM sessions LIMIT 1")
+        .fetch_one(&state.pool)
+        .await
+        .expect("hay una sesión guardada");
+
+    let mut value: serde_json::Value = serde_json::from_slice(&data).expect("data es JSON");
+    let auth = value
+        .get_mut("state")
+        .and_then(|state| state.get_mut("auth"))
+        .expect("la sesión tiene auth");
+    auth.as_object_mut()
+        .expect("auth es un objeto")
+        .remove("id_token");
+
+    let new_data = serde_json::to_vec(&value).expect("serializar data");
     sqlx::query("UPDATE sessions SET data = ?1 WHERE id = ?2")
         .bind(new_data)
         .bind(id)
@@ -377,18 +404,182 @@ async fn logout_destroys_session_and_clears_cookie() {
         .header("x-csrf-token", csrf)
         .body(Body::empty())
         .unwrap();
-    let (status, headers, _) = send(state.clone(), request).await;
+    let (status, headers, body) = send(state.clone(), request).await;
 
-    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(status, StatusCode::OK);
     let cleared = set_cookie(&headers);
     assert!(
         cleared.contains("Max-Age=0") || cleared.contains("oximeal_session=;"),
         "la cookie debe limpiarse: {cleared}"
     );
 
+    let endpoint = idp
+        .end_session_endpoint
+        .as_deref()
+        .expect("el mock publica end_session_endpoint");
+    let logout_url = body["logout_url"]
+        .as_str()
+        .expect("logout_url en la respuesta");
+    assert!(
+        logout_url.starts_with(endpoint),
+        "debe apuntar al end_session_endpoint ({endpoint}): {logout_url}"
+    );
+
+    let url = reqwest::Url::parse(logout_url).expect("logout_url es URL");
+    let param = |key: &str| {
+        url.query_pairs()
+            .find(|(name, _)| name == key)
+            .map(|(_, value)| value.into_owned())
+            .unwrap_or_else(|| panic!("falta el parámetro {key} en {logout_url}"))
+    };
+    assert_eq!(param("client_id"), CLIENT_ID);
+    assert_eq!(param("post_logout_redirect_uri"), "http://localhost/");
+    assert!(
+        !param("id_token_hint").is_empty(),
+        "la sesión tiene id_token: {logout_url}"
+    );
+    assert!(
+        logout_url.contains("post_logout_redirect_uri=http%3A%2F%2Flocalhost%2F"),
+        "la redirect URI debe ir codificada: {logout_url}"
+    );
+
+    // El cuerpo expone únicamente `logout_url`: nunca tokens como campos.
+    let object = body.as_object().expect("objeto JSON");
+    assert_eq!(object.len(), 1, "solo logout_url en el cuerpo: {body}");
+
     let (status, body) = get_me(&state, Some(&cookie)).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["authenticated"], false);
+}
+
+#[tokio::test]
+async fn logout_without_session_returns_null_url() {
+    let idp = MockIdp::start().await;
+    let state = test_state_oidc(&idp.issuer, USER_GROUPS).await;
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/auth/logout")
+        .body(Body::empty())
+        .unwrap();
+    let (status, _headers, body) = send(state, request).await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body["logout_url"].is_null(),
+        "sin sesión no hay URL: {body}"
+    );
+}
+
+#[tokio::test]
+async fn logout_without_end_session_endpoint_returns_null_url() {
+    // El discovery del mock no publica `end_session_endpoint`.
+    let idp = MockIdp::start_without_end_session().await;
+    let state = test_state_oidc(&idp.issuer, USER_GROUPS).await;
+
+    let cookie = complete_login(&state).await;
+    let (_status, me) = get_me(&state, Some(&cookie)).await;
+    let csrf = me["csrf_token"].as_str().expect("csrf token").to_string();
+    let request = Request::builder()
+        .method("POST")
+        .uri("/auth/logout")
+        .header("cookie", cookie.clone())
+        .header("x-csrf-token", csrf)
+        .body(Body::empty())
+        .unwrap();
+    let (status, _headers, body) = send(state.clone(), request).await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body["logout_url"].is_null(),
+        "sin end_session_endpoint no hay URL: {body}"
+    );
+
+    // La sesión local se destruye igualmente.
+    let (status, body) = get_me(&state, Some(&cookie)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["authenticated"], false);
+}
+
+#[tokio::test]
+async fn logout_with_dead_discovery_still_destroys_session() {
+    let idp = MockIdp::start().await;
+    let (pool, database_url) = common::test_pool().await;
+    let state = common::oidc_state(&pool, &database_url, &idp.issuer, USER_GROUPS, &[]);
+
+    let cookie = complete_login(&state).await;
+    let (_status, me) = get_me(&state, Some(&cookie)).await;
+    let csrf = me["csrf_token"].as_str().expect("csrf token").to_string();
+
+    // "Reinicio" con el issuer caído: el discovery falla al hacer logout.
+    let dead = common::oidc_state(&pool, &database_url, "http://127.0.0.1:1", USER_GROUPS, &[]);
+    let request = Request::builder()
+        .method("POST")
+        .uri("/auth/logout")
+        .header("cookie", cookie.clone())
+        .header("x-csrf-token", csrf)
+        .body(Body::empty())
+        .unwrap();
+    let (status, headers, body) = send(dead.clone(), request).await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert!(
+        body["logout_url"].is_null(),
+        "sin discovery no hay URL: {body}"
+    );
+    let cleared = set_cookie(&headers);
+    assert!(
+        cleared.contains("Max-Age=0") || cleared.contains("oximeal_session=;"),
+        "la cookie debe limpiarse igualmente: {cleared}"
+    );
+
+    let (status, body) = get_me(&dead, Some(&cookie)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["authenticated"], false);
+}
+
+#[tokio::test]
+async fn logout_without_oidc_returns_404() {
+    // Sin OIDC no hay capa de sesión ni rutas `/auth/*`.
+    let state = test_state().await;
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/auth/logout")
+        .body(Body::empty())
+        .unwrap();
+    let (status, _headers, _body) = send(state, request).await;
+
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn logout_without_id_token_returns_url_without_hint() {
+    let idp = MockIdp::start().await;
+    let state = test_state_oidc(&idp.issuer, USER_GROUPS).await;
+
+    let cookie = complete_login(&state).await;
+    let (_status, me) = get_me(&state, Some(&cookie)).await;
+    let csrf = me["csrf_token"].as_str().expect("csrf token").to_string();
+
+    // Sesión sin `id_token`: no debe aparecer `id_token_hint`.
+    remove_id_token(&state).await;
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/auth/logout")
+        .header("cookie", cookie)
+        .header("x-csrf-token", csrf)
+        .body(Body::empty())
+        .unwrap();
+    let (status, _headers, body) = send(state, request).await;
+
+    assert_eq!(status, StatusCode::OK);
+    let logout_url = body["logout_url"]
+        .as_str()
+        .expect("logout_url en la respuesta");
+    assert!(!logout_url.contains("id_token_hint"), "{logout_url}");
+    assert!(logout_url.contains("client_id="), "{logout_url}");
 }
 
 #[tokio::test]

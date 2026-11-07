@@ -96,6 +96,8 @@ pub struct MockIdp {
     pub token_endpoint: String,
     /// URI del JWKS.
     pub jwks_uri: String,
+    /// Endpoint de fin de sesión (`end_session_endpoint`), si se publica.
+    pub end_session_endpoint: Option<String>,
 }
 
 impl MockIdp {
@@ -106,19 +108,46 @@ impl MockIdp {
 
     /// Arranca el mock emitiendo la variante de ID token indicada.
     pub async fn start_with(variant: IdTokenVariant) -> Self {
+        Self::start_with_options(variant, true, false).await
+    }
+
+    /// Arranca el mock sin publicar `end_session_endpoint` en el discovery.
+    pub async fn start_without_end_session() -> Self {
+        Self::start_with_options(IdTokenVariant::Normal, false, false).await
+    }
+
+    /// Arranca el mock sirviendo primero un JWKS **vacío** y, a partir de la
+    /// segunda petición, el JWKS con la clave real.
+    ///
+    /// Sirve para ejercitar el refresco de JWKS ante un `kid` desconocido: el
+    /// primer `signing_key` no encuentra la clave en el JWKS cacheado (vacío) y
+    /// fuerza un refresco que sí la trae.
+    pub async fn start_with_rotating_jwks() -> Self {
+        Self::start_with_options(IdTokenVariant::Normal, true, true).await
+    }
+
+    /// Montaje único del mock: discovery, JWKS (estático o rotatorio) y token.
+    async fn start_with_options(
+        variant: IdTokenVariant,
+        with_end_session: bool,
+        rotating_jwks: bool,
+    ) -> Self {
         let server = MockServer::start().await;
         let issuer = server.uri();
         let authorization_endpoint = format!("{issuer}/authorize");
         let token_endpoint = format!("{issuer}/token");
         let jwks_uri = format!("{issuer}/jwks");
+        let end_session_endpoint = with_end_session.then(|| format!("{issuer}/logout"));
 
-        let discovery = json!({
+        let mut discovery = json!({
             "issuer": issuer,
             "authorization_endpoint": authorization_endpoint,
             "token_endpoint": token_endpoint,
             "jwks_uri": jwks_uri,
-            "end_session_endpoint": format!("{issuer}/logout"),
         });
+        if let Some(endpoint) = &end_session_endpoint {
+            discovery["end_session_endpoint"] = json!(endpoint);
+        }
 
         Mock::given(method("GET"))
             .and(path("/.well-known/openid-configuration"))
@@ -126,11 +155,27 @@ impl MockIdp {
             .mount(&server)
             .await;
 
-        Mock::given(method("GET"))
-            .and(path("/jwks"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(test_jwks()))
-            .mount(&server)
-            .await;
+        if rotating_jwks {
+            let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            Mock::given(method("GET"))
+                .and(path("/jwks"))
+                .respond_with(move |_request: &Request| {
+                    let call = calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    if call == 0 {
+                        ResponseTemplate::new(200).set_body_json(json!({ "keys": [] }))
+                    } else {
+                        ResponseTemplate::new(200).set_body_json(test_jwks())
+                    }
+                })
+                .mount(&server)
+                .await;
+        } else {
+            Mock::given(method("GET"))
+                .and(path("/jwks"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(test_jwks()))
+                .mount(&server)
+                .await;
+        }
 
         let token_issuer = issuer.clone();
         Mock::given(method("POST"))
@@ -145,67 +190,7 @@ impl MockIdp {
             authorization_endpoint,
             token_endpoint,
             jwks_uri,
-        }
-    }
-}
-
-impl MockIdp {
-    /// Arranca el mock sirviendo primero un JWKS **vacío** y, a partir de la
-    /// segunda petición, el JWKS con la clave real.
-    ///
-    /// Sirve para ejercitar el refresco de JWKS ante un `kid` desconocido: el
-    /// primer `signing_key` no encuentra la clave en el JWKS cacheado (vacío) y
-    /// fuerza un refresco que sí la trae.
-    pub async fn start_with_rotating_jwks() -> Self {
-        let server = MockServer::start().await;
-        let issuer = server.uri();
-        let authorization_endpoint = format!("{issuer}/authorize");
-        let token_endpoint = format!("{issuer}/token");
-        let jwks_uri = format!("{issuer}/jwks");
-
-        let discovery = json!({
-            "issuer": issuer,
-            "authorization_endpoint": authorization_endpoint,
-            "token_endpoint": token_endpoint,
-            "jwks_uri": jwks_uri,
-            "end_session_endpoint": format!("{issuer}/logout"),
-        });
-
-        Mock::given(method("GET"))
-            .and(path("/.well-known/openid-configuration"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(discovery))
-            .mount(&server)
-            .await;
-
-        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        Mock::given(method("GET"))
-            .and(path("/jwks"))
-            .respond_with(move |_request: &Request| {
-                let call = calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                if call == 0 {
-                    ResponseTemplate::new(200).set_body_json(json!({ "keys": [] }))
-                } else {
-                    ResponseTemplate::new(200).set_body_json(test_jwks())
-                }
-            })
-            .mount(&server)
-            .await;
-
-        let token_issuer = issuer.clone();
-        Mock::given(method("POST"))
-            .and(path("/token"))
-            .respond_with(move |request: &Request| {
-                token_response(request, &token_issuer, IdTokenVariant::Normal)
-            })
-            .mount(&server)
-            .await;
-
-        Self {
-            server,
-            issuer,
-            authorization_endpoint,
-            token_endpoint,
-            jwks_uri,
+            end_session_endpoint,
         }
     }
 }

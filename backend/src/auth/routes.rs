@@ -3,23 +3,34 @@
 //! `GET /auth/login` → `GET /auth/callback` → `GET /auth/me` / `POST /auth/logout`.
 //! Estas rutas no exigen credencial; el navegador solo maneja la cookie opaca.
 
+use std::time::Duration;
+
 use axum::extract::{Query, Request, State};
 use axum::http::{HeaderValue, Method, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tower_sessions::Session;
+use utoipa::ToSchema;
 
 use crate::state::AppState;
 
 use super::error::{AuthError, AuthResult};
+use super::oidc::logout_url as build_logout_url;
 use super::session::{AuthenticatedSession, PreAuthFlow, SESSION_KEY, SessionState};
 use super::{
     AuthService, BASE_SCOPES, MeResponse, SPA_PERMISSIONS, code_challenge_s256, csrf,
     permissions_of, random_token, sanitize_return_to,
 };
+
+/// Tiempo máximo para el descubrimiento del IdP durante el logout.
+///
+/// La sesión ya está destruida cuando se evalúa, así que un IdP lento solo
+/// pierde el cierre remoto: la petición responde igualmente con `logout_url:
+/// null`.
+const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// Parámetros de `GET /auth/login`.
 #[derive(Debug, Deserialize)]
@@ -36,6 +47,16 @@ pub struct CallbackParams {
     pub code: String,
     /// Valor `state` devuelto por el proveedor.
     pub state: String,
+}
+
+/// Respuesta de `POST /auth/logout`.
+///
+/// Contiene únicamente la URL de fin de sesión del IdP (o `null` si no aplica);
+/// nunca expone tokens como campos.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct LogoutResponse {
+    /// URL de RP-initiated logout del proveedor, o `null` si no aplica.
+    pub logout_url: Option<String>,
 }
 
 /// Router de las rutas `/auth/*` (solo se monta con OIDC activado).
@@ -292,17 +313,69 @@ pub async fn me(State(state): State<AppState>, session: Session) -> AuthResult<R
     }
 }
 
-/// `POST /auth/logout` — destruye la sesión, limpia la cookie y responde 204.
+/// `POST /auth/logout` — destruye la sesión, limpia la cookie y devuelve la URL
+/// de fin de sesión del IdP (si aplica).
 #[utoipa::path(
     post,
     path = "/auth/logout",
     tag = "auth",
-    responses((status = 204, description = "Sesión cerrada")),
+    responses(
+        (status = 200, description = "Sesión cerrada", body = LogoutResponse),
+        (status = 403, description = "CSRF inválido o ausente con sesión cookie"),
+    ),
 )]
 pub async fn logout(State(state): State<AppState>, session: Session) -> AuthResult<Response> {
-    let _auth = service(&state)?;
+    // El guard CSRF ya validó la sesión; se copia antes de destruirla para poder
+    // construir el `id_token_hint`. Sin sesión autenticada no hay URL remota.
+    let authenticated = session
+        .get::<SessionState>(SESSION_KEY)
+        .await
+        .map_err(session_error)?
+        .and_then(|session_state| session_state.auth);
+
+    // Destruye la sesión y limpia la cookie *antes* de cualquier I/O de red: un
+    // IdP lento o colgado no puede mantener viva la sesión local.
     session.flush().await.map_err(session_error)?;
-    Ok(StatusCode::NO_CONTENT.into_response())
+
+    let logout_url = match (state.auth.as_ref(), authenticated) {
+        (Some(auth), Some(authenticated)) => {
+            let discovery = tokio::time::timeout(DISCOVERY_TIMEOUT, auth.oidc().discovery()).await;
+            match discovery {
+                Ok(Ok(discovery)) => match discovery.end_session_endpoint.as_deref() {
+                    Some(endpoint) => {
+                        let oidc_config = auth.oidc_config();
+                        match build_logout_url(
+                            endpoint,
+                            &oidc_config.client_id,
+                            &oidc_config.post_logout_redirect_uri,
+                            authenticated.id_token.as_deref(),
+                        ) {
+                            Ok(url) => Some(url),
+                            Err(error) => {
+                                tracing::warn!(
+                                    error = %error,
+                                    "no se pudo construir la URL de fin de sesión"
+                                );
+                                None
+                            }
+                        }
+                    }
+                    None => None,
+                },
+                Ok(Err(error)) => {
+                    tracing::warn!(error = %error, "no se pudo descubrir el end_session_endpoint");
+                    None
+                }
+                Err(_) => {
+                    tracing::warn!("el descubrimiento del IdP agotó el tiempo");
+                    None
+                }
+            }
+        }
+        _ => None,
+    };
+
+    Ok((StatusCode::OK, Json(LogoutResponse { logout_url })).into_response())
 }
 
 /// Middleware anti-CSRF para mutaciones autenticadas por cookie.
