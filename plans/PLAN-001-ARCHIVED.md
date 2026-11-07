@@ -1,7 +1,7 @@
 # PLAN-001 — Comensales habituales y escalado en el detalle
 
 - **Change SDD:** `household-servings`
-- **Estado:** implementado, auditado y pendiente de merge
+- **Estado:** entregado (PR #104 mergeado)
 - **Fecha:** 2026-11-07
 
 ## Objetivo
@@ -22,7 +22,7 @@ lista de la compra.
 - [x] Tests frontend: escalado, ajustes, detalle, navegación A→B, clamp.
 - [x] Auditorías `@rust-reviewer` (PASS) y `@react-reviewer` (FAIL → corregido).
 - [x] Documentación `docs/household-servings.md`.
-- [ ] PR a `development` y merge.
+- [x] PR a `development` y merge (#104).
 
 ## Puertas
 

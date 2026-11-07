@@ -69,7 +69,7 @@ El sistema SHALL exponer `POST /api/recipes` que valida categoría (main|salad|s
 
 ### Requirement: Detalle de receta
 
-El sistema SHALL exponer `GET /api/recipes/{id}` devolviendo la receta completa con ingredientes y etiquetas, cada etiqueta con `id`, `name`, `slug` y `source`.
+El sistema SHALL exponer `GET /api/recipes/{id}` con la receta completa, sus ingredientes y etiquetas (`id`, `name`, `slug`, `source`). El detalle SHALL escalar las cantidades a las raciones seleccionadas (1..20), usando la preferencia de comensales como valor inicial, con aviso del cálculo y opción de ver las originales. Si la receta no trae cantidades reales (todas `amount = 1` y `unit = "ud"`), SHALL mostrar las originales con aviso y no escalar.
 
 #### Scenario: No encontrada
 
@@ -82,6 +82,34 @@ El sistema SHALL exponer `GET /api/recipes/{id}` devolviendo la receta completa 
 - GIVEN una receta con etiquetas manuales y automáticas
 - WHEN se consulta `GET /api/recipes/{id}`
 - THEN la respuesta incluye las etiquetas con `id`, `name`, `slug` y `source`
+
+#### Scenario: Escalado por defecto
+
+- GIVEN una receta para 8 y una preferencia de 2 comensales
+- WHEN se abre el detalle
+- THEN el selector muestra 2
+- AND las cantidades se multiplican por 1/4
+- AND se muestra «Receta para 8 · cantidades para 2»
+
+#### Scenario: Cambio manual de raciones
+
+- GIVEN el detalle abierto
+- WHEN el usuario selecciona 6 raciones
+- THEN las cantidades se recalculan con factor 6/8
+- AND el aviso refleja 6
+
+#### Scenario: Ver cantidades originales
+
+- GIVEN el detalle con cantidades escaladas
+- WHEN el usuario activa «Ver originales»
+- THEN se muestran las cantidades de la receta sin factor
+
+#### Scenario: Receta importada sin cantidades
+
+- GIVEN una receta importada con todos los ingredientes en `amount = 1` y `unit = "ud"`
+- WHEN se abre el detalle
+- THEN se muestran las cantidades originales
+- AND se avisa de que la importación no trae cantidades y no se escala
 
 ### Requirement: Actualización de receta
 
