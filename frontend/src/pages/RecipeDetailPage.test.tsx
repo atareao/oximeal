@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -81,7 +81,7 @@ function renderDetail(id = 'r1') {
       mutations: { retry: false },
     },
   });
-  return render(
+  const tree = () => (
     <QueryClientProvider client={queryClient}>
       <AntdApp>
         <MemoryRouter initialEntries={[`/recipes/${id}`]}>
@@ -91,8 +91,12 @@ function renderDetail(id = 'r1') {
           </Routes>
         </MemoryRouter>
       </AntdApp>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+  const result = render(tree());
+  // Permite forzar un re-render conservando el estado (p. ej. simular que la
+  // conexión cae en mitad de una edición).
+  return { ...result, rerenderTree: () => result.rerender(tree()) };
 }
 
 function renderWithNavigation() {
@@ -535,5 +539,173 @@ describe('RecipeDetailPage', () => {
     await screen.findByRole('heading', { name: 'Paella' });
     expect(screen.getByRole('spinbutton', { name: /raciones/i })).toHaveValue('4');
     expect(screen.getByRole('checkbox', { name: /ver originales/i })).not.toBeChecked();
+  });
+
+  describe('edición en línea de ingredientes', () => {
+    it('corrige la cantidad y la unidad y refleja el resultado', async () => {
+      const user = userEvent.setup();
+      const original = recipe({
+        servings: 4,
+        ingredients: [{ name: 'queso parmesano', amount: 1, unit: 'ud' }],
+        tags: [{ id: 't1', name: 'Vegano', slug: 'vegano', source: 'manual' }],
+      });
+      const updated = recipe({
+        servings: 4,
+        ingredients: [{ name: 'queso parmesano', amount: 40, unit: 'g' }],
+        tags: [{ id: 't1', name: 'Vegano', slug: 'vegano', source: 'manual' }],
+      });
+      mockedFetchRecipe.mockResolvedValueOnce(original).mockResolvedValue(updated);
+      mockedUpdateRecipe.mockResolvedValue(updated);
+      renderDetail();
+
+      await screen.findByRole('heading', { name: 'Tortilla' });
+      expect(screen.getByText(/1\s*ud/)).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: /corregir ingredientes/i }));
+
+      const amount = screen.getByLabelText('Cantidad del ingrediente 1');
+      const unit = screen.getByLabelText('Unidad del ingrediente 1');
+      await user.clear(amount);
+      await user.type(amount, '40');
+      await user.clear(unit);
+      await user.type(unit, 'g');
+
+      await user.click(screen.getByRole('button', { name: /guardar ingredientes/i }));
+
+      await waitFor(() => expect(mockedUpdateRecipe).toHaveBeenCalledTimes(1));
+      // El `PUT` reemplaza la receta completa: conserva nombre, categoría y
+      // etiquetas manuales, cambia solo el ingrediente editado.
+      expect(mockedUpdateRecipe).toHaveBeenCalledWith('r1', {
+        name: 'Tortilla',
+        category: 'main',
+        diet_type: 'mediterranean',
+        prep_time_minutes: 25,
+        servings: 4,
+        instructions: 'Pelar y freír.',
+        source_url: null,
+        ingredients: [{ name: 'queso parmesano', amount: 40, unit: 'g' }],
+        tags: ['Vegano'],
+        auto_tags: true,
+        suppressed_auto_tags: [],
+      });
+      expect(await screen.findByText(/40\s*g/)).toBeInTheDocument();
+    });
+
+    it('añade un ingrediente nuevo y lo persiste', async () => {
+      const user = userEvent.setup();
+      const original = recipe({ ingredients: [{ name: 'Patata', amount: 500, unit: 'g' }] });
+      const updated = recipe({
+        ingredients: [
+          { name: 'Patata', amount: 500, unit: 'g' },
+          { name: 'Cebolla', amount: 1, unit: 'ud' },
+        ],
+      });
+      mockedFetchRecipe.mockResolvedValueOnce(original).mockResolvedValue(updated);
+      mockedUpdateRecipe.mockResolvedValue(updated);
+      renderDetail();
+
+      await screen.findByRole('heading', { name: 'Tortilla' });
+      await user.click(screen.getByRole('button', { name: /corregir ingredientes/i }));
+      await user.click(screen.getByRole('button', { name: /añadir ingrediente/i }));
+
+      await user.type(screen.getByLabelText('Nombre del ingrediente 2'), 'Cebolla');
+      await user.type(screen.getByLabelText('Cantidad del ingrediente 2'), '1');
+      await user.type(screen.getByLabelText('Unidad del ingrediente 2'), 'ud');
+
+      await user.click(screen.getByRole('button', { name: /guardar ingredientes/i }));
+
+      await waitFor(() =>
+        expect(mockedUpdateRecipe).toHaveBeenCalledWith(
+          'r1',
+          expect.objectContaining({
+            ingredients: [
+              { name: 'Patata', amount: 500, unit: 'g' },
+              { name: 'Cebolla', amount: 1, unit: 'ud' },
+            ],
+          }),
+        ),
+      );
+    });
+
+    it('quita un ingrediente existente y lo persiste', async () => {
+      const user = userEvent.setup();
+      const original = recipe({
+        ingredients: [
+          { name: 'Patata', amount: 500, unit: 'g' },
+          { name: 'Sal', amount: 1, unit: 'ud' },
+        ],
+      });
+      const updated = recipe({ ingredients: [{ name: 'Patata', amount: 500, unit: 'g' }] });
+      mockedFetchRecipe.mockResolvedValueOnce(original).mockResolvedValue(updated);
+      mockedUpdateRecipe.mockResolvedValue(updated);
+      renderDetail();
+
+      await screen.findByRole('heading', { name: 'Tortilla' });
+      await user.click(screen.getByRole('button', { name: /corregir ingredientes/i }));
+      await user.click(screen.getByRole('button', { name: /eliminar ingrediente 2/i }));
+      await user.click(screen.getByRole('button', { name: /guardar ingredientes/i }));
+
+      await waitFor(() =>
+        expect(mockedUpdateRecipe).toHaveBeenCalledWith(
+          'r1',
+          expect.objectContaining({ ingredients: [{ name: 'Patata', amount: 500, unit: 'g' }] }),
+        ),
+      );
+    });
+
+    it('no envía la edición si el nombre está vacío', async () => {
+      const user = userEvent.setup();
+      renderDetail();
+
+      await screen.findByRole('heading', { name: 'Tortilla' });
+      await user.click(screen.getByRole('button', { name: /corregir ingredientes/i }));
+      await user.clear(screen.getByLabelText('Nombre del ingrediente 1'));
+      await user.click(screen.getByRole('button', { name: /guardar ingredientes/i }));
+
+      expect(
+        await screen.findByText(/el nombre del ingrediente no puede estar vacío/i),
+      ).toBeInTheDocument();
+      expect(mockedUpdateRecipe).not.toHaveBeenCalled();
+    });
+
+    it('no envía la edición si la cantidad es negativa', async () => {
+      const user = userEvent.setup();
+      renderDetail();
+
+      await screen.findByRole('heading', { name: 'Tortilla' });
+      await user.click(screen.getByRole('button', { name: /corregir ingredientes/i }));
+      const amount = screen.getByLabelText('Cantidad del ingrediente 1');
+      fireEvent.change(amount, { target: { value: '-3' } });
+      await user.click(screen.getByRole('button', { name: /guardar ingredientes/i }));
+
+      expect(await screen.findByText(/la cantidad no puede ser negativa/i)).toBeInTheDocument();
+      expect(mockedUpdateRecipe).not.toHaveBeenCalled();
+    });
+
+    it('sin conexión deshabilita la edición en línea', async () => {
+      mockedUseOnline.mockReturnValue(false);
+      renderDetail();
+
+      await screen.findByRole('heading', { name: 'Tortilla' });
+      expect(screen.getByRole('button', { name: /corregir ingredientes/i })).toBeDisabled();
+    });
+
+    it('si la conexión cae durante la edición, deshabilita añadir, quitar y guardar', async () => {
+      const user = userEvent.setup();
+      const { rerenderTree } = renderDetail();
+
+      await screen.findByRole('heading', { name: 'Tortilla' });
+      await user.click(screen.getByRole('button', { name: /corregir ingredientes/i }));
+      expect(screen.getByRole('button', { name: /añadir ingrediente/i })).toBeEnabled();
+
+      // La conexión cae a mitad de la edición y la vista se vuelve a renderizar.
+      mockedUseOnline.mockReturnValue(false);
+      rerenderTree();
+
+      expect(await screen.findByTestId('ingredient-editor-offline')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /añadir ingrediente/i })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /guardar ingredientes/i })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /eliminar ingrediente 1/i })).toBeDisabled();
+    });
   });
 });
