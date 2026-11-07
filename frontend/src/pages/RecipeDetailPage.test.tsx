@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App as AntdApp } from 'antd';
 import type { Recipe } from '../api/types';
@@ -10,6 +10,7 @@ import {
   addRecipeToShoppingList,
   deleteRecipe,
   fetchRecipe,
+  getSettings,
   fetchTags,
   updateRecipe,
 } from '../api/client';
@@ -25,6 +26,7 @@ vi.mock('../api/client', async (importOriginal) => {
     updateRecipe: vi.fn(),
     deleteRecipe: vi.fn(),
     fetchTags: vi.fn(),
+    getSettings: vi.fn(),
     addRecipeToShoppingList: vi.fn(),
   };
 });
@@ -38,6 +40,7 @@ const mockedFetchRecipe = vi.mocked(fetchRecipe);
 const mockedUpdateRecipe = vi.mocked(updateRecipe);
 const mockedDeleteRecipe = vi.mocked(deleteRecipe);
 const mockedFetchTags = vi.mocked(fetchTags);
+const mockedFetchSettings = vi.mocked(getSettings);
 const mockedAddFromRecipe = vi.mocked(addRecipeToShoppingList);
 const mockedUseOnline = vi.mocked(useOnline);
 
@@ -92,6 +95,34 @@ function renderDetail(id = 'r1') {
   );
 }
 
+function renderWithNavigation() {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, gcTime: 0 },
+      mutations: { retry: false },
+    },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <AntdApp>
+        <MemoryRouter initialEntries={['/recipes/r1']}>
+          <Routes>
+            <Route
+              path="/recipes/:id"
+              element={
+                <>
+                  <Link to="/recipes/r2">ir a r2</Link>
+                  <RecipeDetailPage />
+                </>
+              }
+            />
+          </Routes>
+        </MemoryRouter>
+      </AntdApp>
+    </QueryClientProvider>,
+  );
+}
+
 describe('RecipeDetailPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -100,6 +131,7 @@ describe('RecipeDetailPage', () => {
     mockedFetchRecipe.mockResolvedValue(recipe());
     mockedDeleteRecipe.mockResolvedValue(undefined);
     mockedFetchTags.mockResolvedValue([]);
+    mockedFetchSettings.mockResolvedValue({ default_servings: 4 });
     mockedAddFromRecipe.mockResolvedValue([]);
   });
 
@@ -203,7 +235,7 @@ describe('RecipeDetailPage', () => {
     renderDetail();
 
     await screen.findByRole('heading', { name: 'Tortilla' });
-    const servings = screen.getByRole('spinbutton', { name: /raciones para la lista/i });
+    const servings = screen.getByRole('spinbutton', { name: /raciones/i });
     expect(servings).toHaveValue('4');
 
     await user.click(screen.getByRole('button', { name: /añadir a la lista/i }));
@@ -219,7 +251,7 @@ describe('RecipeDetailPage', () => {
     const user = userEvent.setup();
     renderDetail();
 
-    const servings = await screen.findByRole('spinbutton', { name: /raciones para la lista/i });
+    const servings = await screen.findByRole('spinbutton', { name: /raciones/i });
     await user.clear(servings);
     await user.type(servings, '6');
     await user.click(screen.getByRole('button', { name: /añadir a la lista/i }));
@@ -264,7 +296,7 @@ describe('RecipeDetailPage', () => {
 
     await screen.findByRole('heading', { name: 'Tortilla' });
     const addButton = screen.getByRole('button', { name: /añadir a la lista/i });
-    const servings = screen.getByRole('spinbutton', { name: /raciones para la lista/i });
+    const servings = screen.getByRole('spinbutton', { name: /raciones/i });
 
     expect(addButton).toBeDisabled();
     expect(servings).toBeDisabled();
@@ -278,7 +310,7 @@ describe('RecipeDetailPage', () => {
 
     await screen.findByRole('heading', { name: 'Tortilla' });
     const addButton = screen.getByRole('button', { name: /añadir a la lista/i });
-    const servings = screen.getByRole('spinbutton', { name: /raciones para la lista/i });
+    const servings = screen.getByRole('spinbutton', { name: /raciones/i });
 
     expect(addButton).toHaveClass('recipe-detail__add-to-list');
     expect(servings).toHaveAttribute('aria-valuemin', '1');
@@ -307,5 +339,201 @@ describe('RecipeDetailPage', () => {
     expect(manual).toHaveClass('recipe-detail__tag--manual');
     expect(auto).toHaveClass('recipe-detail__tag--auto');
     expect(manual.className).not.toEqual(auto.className);
+  });
+
+  it('usa la preferencia de comensales y escala 8→2 por defecto', async () => {
+    mockedFetchRecipe.mockResolvedValue(
+      recipe({ servings: 8, ingredients: [{ name: 'Patata', amount: 800, unit: 'g' }] }),
+    );
+    mockedFetchSettings.mockResolvedValue({ default_servings: 2 });
+    renderDetail();
+
+    await screen.findByRole('heading', { name: 'Tortilla' });
+    const servings = screen.getByRole('spinbutton', { name: /raciones/i });
+    expect(servings).toHaveValue('2');
+    expect(screen.getByText(/receta para 8 · cantidades para 2/i)).toBeInTheDocument();
+    expect(screen.getByText(/200\s*g/)).toBeInTheDocument();
+  });
+
+  it('recalcula las cantidades al cambiar a 6 raciones', async () => {
+    mockedFetchRecipe.mockResolvedValue(
+      recipe({ servings: 8, ingredients: [{ name: 'Patata', amount: 800, unit: 'g' }] }),
+    );
+    mockedFetchSettings.mockResolvedValue({ default_servings: 2 });
+    const user = userEvent.setup();
+    renderDetail();
+
+    await screen.findByRole('heading', { name: 'Tortilla' });
+    const servings = screen.getByRole('spinbutton', { name: /raciones/i });
+    await user.clear(servings);
+    await user.type(servings, '6');
+
+    expect(screen.getByText(/600\s*g/)).toBeInTheDocument();
+    expect(screen.getByText(/receta para 8 · cantidades para 6/i)).toBeInTheDocument();
+  });
+
+  it('«Ver originales» muestra las cantidades sin factor', async () => {
+    mockedFetchRecipe.mockResolvedValue(
+      recipe({ servings: 8, ingredients: [{ name: 'Patata', amount: 800, unit: 'g' }] }),
+    );
+    mockedFetchSettings.mockResolvedValue({ default_servings: 2 });
+    const user = userEvent.setup();
+    renderDetail();
+
+    await screen.findByRole('heading', { name: 'Tortilla' });
+    expect(screen.getByText(/200\s*g/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('checkbox', { name: /ver originales/i }));
+
+    expect(screen.getByText(/800\s*g/)).toBeInTheDocument();
+  });
+
+  it('una receta importada no escala, muestra originales y avisa', async () => {
+    mockedFetchRecipe.mockResolvedValue(
+      recipe({
+        servings: 8,
+        ingredients: [
+          { name: 'Sal', amount: 1, unit: 'ud' },
+          { name: 'Pimienta', amount: 1, unit: 'ud' },
+        ],
+      }),
+    );
+    mockedFetchSettings.mockResolvedValue({ default_servings: 2 });
+    renderDetail();
+
+    await screen.findByRole('heading', { name: 'Tortilla' });
+    expect(
+      screen.getByText(/la importación no trae cantidades; no se escalan/i),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText(/1\s*ud/)).toHaveLength(2);
+
+    // El toggle de originales queda deshabilitado: siempre se muestran las
+    // originales. El selector sigue visible pero no tiene efecto.
+    expect(screen.getByRole('checkbox', { name: /ver originales/i })).toBeDisabled();
+    expect(screen.getByRole('spinbutton', { name: /raciones/i })).toBeInTheDocument();
+  });
+
+  it('añadir a la compra envía las raciones seleccionadas', async () => {
+    mockedFetchRecipe.mockResolvedValue(
+      recipe({ servings: 8, ingredients: [{ name: 'Patata', amount: 800, unit: 'g' }] }),
+    );
+    mockedFetchSettings.mockResolvedValue({ default_servings: 2 });
+    const user = userEvent.setup();
+    renderDetail();
+
+    await screen.findByRole('heading', { name: 'Tortilla' });
+    const servings = screen.getByRole('spinbutton', { name: /raciones/i });
+    await user.clear(servings);
+    await user.type(servings, '6');
+    await user.click(screen.getByRole('button', { name: /añadir a la lista/i }));
+
+    await waitFor(() =>
+      expect(mockedAddFromRecipe).toHaveBeenCalledWith({ recipe_id: 'r1', servings: 6 }),
+    );
+  });
+
+  it('usa la preferencia del servidor (4) y no el fallback', async () => {
+    mockedFetchRecipe.mockResolvedValue(
+      recipe({ servings: 8, ingredients: [{ name: 'Patata', amount: 800, unit: 'g' }] }),
+    );
+    mockedFetchSettings.mockResolvedValue({ default_servings: 4 });
+    renderDetail();
+
+    await screen.findByRole('heading', { name: 'Tortilla' });
+    const servings = screen.getByRole('spinbutton', { name: /raciones/i });
+    expect(servings).toHaveValue('4');
+    expect(screen.getByText(/receta para 8 · cantidades para 4/i)).toBeInTheDocument();
+    expect(screen.getByText(/400\s*g/)).toBeInTheDocument();
+  });
+
+  it('una preferencia que llega tarde no pisa una elección manual', async () => {
+    mockedFetchRecipe.mockResolvedValue(
+      recipe({ servings: 8, ingredients: [{ name: 'Patata', amount: 800, unit: 'g' }] }),
+    );
+    let resolveSettings: (value: { default_servings: number }) => void = () => {};
+    mockedFetchSettings.mockReturnValue(
+      new Promise((resolve) => {
+        resolveSettings = resolve;
+      }),
+    );
+    const user = userEvent.setup();
+    renderDetail();
+
+    await screen.findByRole('heading', { name: 'Tortilla' });
+    const servings = screen.getByRole('spinbutton', { name: /raciones/i });
+    // Antes de resolver la preferencia se usa el fallback 2.
+    expect(servings).toHaveValue('2');
+
+    await user.clear(servings);
+    await user.type(servings, '6');
+
+    resolveSettings({ default_servings: 4 });
+
+    await waitFor(() => expect(servings).toHaveValue('6'));
+  });
+
+  it('clampea una preferencia 0 a 1 al calcular y al añadir a la compra', async () => {
+    mockedFetchRecipe.mockResolvedValue(
+      recipe({ servings: 8, ingredients: [{ name: 'Patata', amount: 800, unit: 'g' }] }),
+    );
+    mockedFetchSettings.mockResolvedValue({ default_servings: 0 });
+    const user = userEvent.setup();
+    renderDetail();
+
+    await screen.findByRole('heading', { name: 'Tortilla' });
+    // 0 se acota a 1: no se muestra todo a 0.
+    expect(screen.getByText(/100\s*g/)).toBeInTheDocument();
+    expect(screen.queryByText(/^0\s*g$/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /añadir a la lista/i }));
+    await waitFor(() =>
+      expect(mockedAddFromRecipe).toHaveBeenCalledWith({ recipe_id: 'r1', servings: 1 }),
+    );
+  });
+
+  it('clampea una preferencia 21 a 20 al calcular y al añadir a la compra', async () => {
+    mockedFetchRecipe.mockResolvedValue(
+      recipe({ servings: 8, ingredients: [{ name: 'Patata', amount: 800, unit: 'g' }] }),
+    );
+    mockedFetchSettings.mockResolvedValue({ default_servings: 21 });
+    const user = userEvent.setup();
+    renderDetail();
+
+    await screen.findByRole('heading', { name: 'Tortilla' });
+    expect(screen.getByText(/2000\s*g/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /añadir a la lista/i }));
+    await waitFor(() =>
+      expect(mockedAddFromRecipe).toHaveBeenCalledWith({ recipe_id: 'r1', servings: 20 }),
+    );
+  });
+
+  it('al navegar a otra receta resetea raciones y toggle de originales', async () => {
+    mockedFetchRecipe.mockImplementation((id: string) =>
+      Promise.resolve(
+        recipe({
+          id,
+          name: id === 'r1' ? 'Tortilla' : 'Paella',
+          servings: 8,
+          ingredients: [{ name: 'Patata', amount: 800, unit: 'g' }],
+        }),
+      ),
+    );
+    mockedFetchSettings.mockResolvedValue({ default_servings: 4 });
+    const user = userEvent.setup();
+    renderWithNavigation();
+
+    await screen.findByRole('heading', { name: 'Tortilla' });
+    const servings = screen.getByRole('spinbutton', { name: /raciones/i });
+    await user.clear(servings);
+    await user.type(servings, '6');
+    await user.click(screen.getByRole('checkbox', { name: /ver originales/i }));
+    expect(screen.getByRole('checkbox', { name: /ver originales/i })).toBeChecked();
+
+    await user.click(screen.getByRole('link', { name: /ir a r2/i }));
+
+    await screen.findByRole('heading', { name: 'Paella' });
+    expect(screen.getByRole('spinbutton', { name: /raciones/i })).toHaveValue('4');
+    expect(screen.getByRole('checkbox', { name: /ver originales/i })).not.toBeChecked();
   });
 });

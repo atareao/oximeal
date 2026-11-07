@@ -8,7 +8,7 @@ import {
 import { createIdbStore, type CachedQuery, type OfflineStore } from './idb';
 
 /** Raíces de `queryKey` cuyos datos se cachean en IndexedDB. */
-export const PERSISTED_QUERY_ROOTS = ['shopping-list', 'meal-plan', 'recipes'] as const;
+export const PERSISTED_QUERY_ROOTS = ['shopping-list', 'meal-plan', 'recipes', 'settings'] as const;
 
 const PERSISTED_ROOTS: ReadonlySet<string> = new Set(PERSISTED_QUERY_ROOTS);
 

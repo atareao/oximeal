@@ -488,3 +488,84 @@ async fn shopping_recipe_sources_enforces_servings_check_and_cascade() {
             .expect("contar fuentes");
     assert_eq!(remaining, 0, "la fuente se elimina en cascada");
 }
+
+/// Migración `0010`: tabla `household_settings` con CHECK `id = 1` y
+/// `default_servings BETWEEN 1 AND 20`.
+#[tokio::test]
+async fn check_household_settings_id_must_be_1() {
+    let state = common::test_state().await;
+
+    // Intentar insertar con id != 1 debe fallar
+    let err = sqlx::query(
+        "INSERT INTO household_settings (id, default_servings, updated_at) \
+         VALUES (2, 5, '2024-01-01T00:00:00.000Z')",
+    )
+    .execute(&state.pool)
+    .await;
+    assert!(
+        err.is_err(),
+        "household_settings.id != 1 debe ser rechazado por CHECK"
+    );
+
+    // id = 1 debe ser aceptado
+    sqlx::query("DELETE FROM household_settings WHERE id = 1")
+        .execute(&state.pool)
+        .await
+        .expect("limpiar fila seed");
+    sqlx::query(
+        "INSERT INTO household_settings (id, default_servings, updated_at) \
+         VALUES (1, 5, '2024-01-01T00:00:00.000Z')",
+    )
+    .execute(&state.pool)
+    .await
+    .expect("id = 1 debe ser aceptado");
+}
+
+#[tokio::test]
+async fn check_household_settings_default_servings_range() {
+    let state = common::test_state().await;
+
+    // Preparar la fila id=1
+    sqlx::query("DELETE FROM household_settings WHERE id = 1")
+        .execute(&state.pool)
+        .await
+        .expect("limpiar fila seed");
+
+    // Frontera inferior violada: 0
+    let err = sqlx::query(
+        "INSERT INTO household_settings (id, default_servings, updated_at) \
+         VALUES (1, 0, '2024-01-01T00:00:00.000Z')",
+    )
+    .execute(&state.pool)
+    .await;
+    assert!(
+        err.is_err(),
+        "default_servings = 0 debe ser rechazado por CHECK"
+    );
+
+    // Frontera superior violada: 21
+    let err = sqlx::query(
+        "INSERT INTO household_settings (id, default_servings, updated_at) \
+         VALUES (1, 21, '2024-01-01T00:00:00.000Z')",
+    )
+    .execute(&state.pool)
+    .await;
+    assert!(
+        err.is_err(),
+        "default_servings = 21 debe ser rechazado por CHECK"
+    );
+
+    // Fronteras válidas: 1 y 20
+    sqlx::query(
+        "INSERT INTO household_settings (id, default_servings, updated_at) \
+         VALUES (1, 1, '2024-01-01T00:00:00.000Z')",
+    )
+    .execute(&state.pool)
+    .await
+    .expect("default_servings = 1 debe ser aceptado");
+
+    sqlx::query("UPDATE household_settings SET default_servings = 20 WHERE id = 1")
+        .execute(&state.pool)
+        .await
+        .expect("default_servings = 20 debe ser aceptado");
+}

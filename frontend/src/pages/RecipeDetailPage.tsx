@@ -4,6 +4,7 @@ import {
   Alert,
   App as AntdApp,
   Button,
+  Checkbox,
   InputNumber,
   Popconfirm,
   Result,
@@ -15,32 +16,69 @@ import {
   useAddRecipeToShoppingList,
   useDeleteRecipe,
   useRecipe,
+  useSettings,
   useUpdateRecipe,
 } from '../api/hooks';
 import { ApiError } from '../api/client';
 import type { RecipeInput } from '../api/types';
 import { RecipeForm } from '../components/RecipeForm';
-import { formatAmount } from '../lib/shopping';
+import { formatScaledAmount, hasRealQuantities, scaleAmount } from '../lib/scaling';
 import { categoryLabel, formatRecipeMeta } from '../lib/recipes';
 import { useOnline } from '../offline/connectivity';
 import './RecipeDetailPage.css';
 
 const { Title, Paragraph } = Typography;
 
-/** Detalle de una receta con acciones de edición y borrado. */
+const MIN_SERVINGS = 1;
+const MAX_SERVINGS = 20;
+const FALLBACK_SERVINGS = 2;
+
+/** Acota las raciones al rango válido (1..20) y cae en 2 si no es finito. */
+function clampServings(value: number): number {
+  if (!Number.isFinite(value)) {
+    return FALLBACK_SERVINGS;
+  }
+  return Math.min(MAX_SERVINGS, Math.max(MIN_SERVINGS, value));
+}
+
+/**
+ * Detalle de una receta con acciones de edición y borrado.
+ *
+ * El contenido se monta con `key={id}`: React Router reutiliza la instancia de
+ * la ruta al navegar entre recetas, así que sin la key el estado local
+ * (raciones, «Ver originales», edición) se filtraría de una receta a otra.
+ */
 export function RecipeDetailPage() {
   const { id } = useParams<{ id: string }>();
+  return <RecipeDetailContent key={id ?? ''} id={id} />;
+}
+
+interface RecipeDetailContentProps {
+  id: string | undefined;
+}
+
+function RecipeDetailContent({ id }: RecipeDetailContentProps) {
   const { message } = AntdApp.useApp();
   const navigate = useNavigate();
   const online = useOnline();
   const { data, isLoading, isError, error, refetch } = useRecipe(id);
+  const { data: settings } = useSettings();
   const updateRecipe = useUpdateRecipe();
   const deleteRecipe = useDeleteRecipe();
   const addToList = useAddRecipeToShoppingList();
   const [editOpen, setEditOpen] = useState(false);
-  // `null` mientras no se toque el selector: así el valor cae en las raciones
-  // de la receta aunque estas lleguen después del primer render.
+  // `null` mientras no se toque el selector: así el valor cae en la preferencia
+  // de comensales (o en 2) aunque la consulta resuelva después del primer render.
   const [servings, setServings] = useState<number | null>(null);
+  const [showOriginal, setShowOriginal] = useState(false);
+
+  const defaultServings = clampServings(settings?.default_servings ?? FALLBACK_SERVINGS);
+  // Se acota también el valor elegido: `InputNumber` solo clampea al perder el
+  // foco, así que el factor y el alta en la compra nunca deben usar 0 ni > 20.
+  const selectedServings = clampServings(servings ?? defaultServings);
+  const realQuantities = data ? hasRealQuantities(data.ingredients) : true;
+  const factor = data && data.servings > 0 ? selectedServings / data.servings : 1;
+  const showScaled = realQuantities && !showOriginal;
 
   const handleUpdate = (input: RecipeInput) => {
     if (!id) {
@@ -86,7 +124,7 @@ export function RecipeDetailPage() {
       return;
     }
     addToList.mutate(
-      { recipe_id: id, servings: servings ?? data?.servings ?? 2 },
+      { recipe_id: id, servings: selectedServings },
       {
         onSuccess: () => {
           message.success({
@@ -158,6 +196,44 @@ export function RecipeDetailPage() {
         {formatRecipeMeta(data.prep_time_minutes, data.servings)}
       </Paragraph>
 
+      <div className="recipe-detail__scaling">
+        <InputNumber
+          className="recipe-detail__servings"
+          min={1}
+          max={20}
+          value={selectedServings}
+          onChange={(value) => setServings(value)}
+          disabled={!online}
+          aria-label="Raciones"
+        />
+        <Checkbox
+          className="recipe-detail__original-toggle"
+          checked={showOriginal}
+          onChange={(event) => setShowOriginal(event.target.checked)}
+          disabled={!realQuantities}
+        >
+          Ver originales
+        </Checkbox>
+      </div>
+
+      {!realQuantities ? (
+        <Alert
+          type="info"
+          showIcon
+          data-testid="recipe-detail-imported"
+          message="La importación no trae cantidades; no se escalan"
+        />
+      ) : (
+        selectedServings !== data.servings && (
+          <Alert
+            type="info"
+            showIcon
+            data-testid="recipe-detail-scaling-notice"
+            message={`Receta para ${data.servings} · cantidades para ${selectedServings}`}
+          />
+        )
+      )}
+
       {!online && (
         <Alert
           type="warning"
@@ -191,14 +267,6 @@ export function RecipeDetailPage() {
             Borrar
           </Button>
         </Popconfirm>
-        <InputNumber
-          className="recipe-detail__servings"
-          min={1}
-          value={servings ?? data.servings}
-          onChange={(value) => setServings(value)}
-          disabled={!online}
-          aria-label="Raciones para la lista"
-        />
         <Button
           className="recipe-detail__add-to-list"
           type="primary"
@@ -238,7 +306,9 @@ export function RecipeDetailPage() {
             <li key={`${ingredient.name}-${index}`} className="recipe-detail__ingredient">
               <span className="recipe-detail__ingredient-name">{ingredient.name}</span>
               <span className="recipe-detail__ingredient-amount">
-                {`${formatAmount(ingredient.amount)} ${ingredient.unit}`}
+                {`${formatScaledAmount(
+                  showScaled ? scaleAmount(ingredient.amount, factor) : ingredient.amount,
+                )} ${ingredient.unit}`}
               </span>
             </li>
           ))}

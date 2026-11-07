@@ -168,6 +168,17 @@ export interface RecipeToShoppingListInput {
   servings?: number;
 }
 
+/** Preferencia de comensales habituales (`GET/PUT /api/settings`). */
+export interface HouseholdSettings {
+  default_servings: number;
+  updated_at?: string;
+}
+
+/** Cuerpo de `PUT /api/settings`. */
+export interface SettingsInput {
+  default_servings: number;
+}
+
 /** Sobre de error estándar del backend. */
 export interface ApiErrorBody {
   error: string;

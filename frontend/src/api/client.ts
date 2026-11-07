@@ -1,6 +1,7 @@
 import type {
   ApiErrorBody,
   AuthMeResponse,
+  HouseholdSettings,
   MealPlanEntryView,
   MealPlanInput,
   MealPlanPatchInput,
@@ -11,6 +12,7 @@ import type {
   RecipeListResponse,
   RecipeQueryParams,
   RecipeToShoppingListInput,
+  SettingsInput,
   ShoppingItem,
   ShoppingItemInput,
   ShoppingItemPatch,
@@ -365,4 +367,14 @@ export function addRecipeToShoppingList(
     method: 'POST',
     body: input,
   });
+}
+
+/** `GET /api/settings` — preferencia de comensales habituales. */
+export function getSettings(signal?: AbortSignal): Promise<HouseholdSettings> {
+  return apiRequest<HouseholdSettings>('/settings', { signal });
+}
+
+/** `PUT /api/settings` — actualiza la preferencia de comensales (1..20). */
+export function updateSettings(input: SettingsInput): Promise<HouseholdSettings> {
+  return apiRequest<HouseholdSettings>('/settings', { method: 'PUT', body: input });
 }
