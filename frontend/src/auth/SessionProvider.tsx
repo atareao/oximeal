@@ -17,6 +17,7 @@ import {
 } from '../api/client';
 import { isOnline, useOnline } from '../offline/connectivity';
 import { clearPersistedQueries, hasCachedData } from '../offline/queryPersist';
+import { navigateTo } from './navigate';
 import { SessionContext, type SessionContextValue, type SessionStatus } from './session';
 
 interface SessionState {
@@ -132,13 +133,28 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [online, state.status]);
 
   const logout = useCallback(async () => {
+    let logoutUrl: string | null = null;
     try {
-      await logoutAuth();
+      const response = await logoutAuth();
+      logoutUrl = response.logout_url;
+    } catch {
+      // El POST falló (red/500): la limpieza local del `finally` basta y no se
+      // navega al IdP, que podría no haber cerrado su sesión.
     } finally {
+      // Estado anónimo ya mismo: no depende del borrado de la persistencia.
       setCsrfToken(null);
       queryClient.clear();
-      await clearPersistedQueries();
       setState(ANONYMOUS_STATE);
+    }
+    try {
+      // Best-effort: si el borrado persistente falla, la sesión ya está cerrada
+      // en memoria y no debe impedir la salida.
+      await clearPersistedQueries();
+    } catch {
+      // Ignorado a propósito.
+    }
+    if (logoutUrl) {
+      navigateTo(logoutUrl);
     }
   }, [queryClient]);
 

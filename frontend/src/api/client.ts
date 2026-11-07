@@ -215,9 +215,21 @@ export function fetchAuthMe(signal?: AbortSignal): Promise<AuthMeResponse> {
   return performRequest<AuthMeResponse>('/auth/me', { signal }) as Promise<AuthMeResponse>;
 }
 
-/** `POST /auth/logout`: destruye la sesión server-side y limpia la cookie. */
-export function logoutAuth(): Promise<void> {
-  return performRequest<void>('/auth/logout', { method: 'POST' }) as Promise<void>;
+/** Cuerpo de `POST /auth/logout`: URL de fin de sesión del IdP, si aplica. */
+export interface LogoutResponse {
+  logout_url: string | null;
+}
+
+/**
+ * `POST /auth/logout`: destruye la sesión server-side y limpia la cookie.
+ *
+ * Devuelve la URL de RP-initiated logout del IdP (`logout_url`) o `null` cuando
+ * el IdP no la publica; un `204` sin cuerpo se normaliza a `null`.
+ */
+export function logoutAuth(): Promise<LogoutResponse> {
+  return performRequest<LogoutResponse>('/auth/logout', { method: 'POST' }).then((data) => ({
+    logout_url: data?.logout_url ?? null,
+  }));
 }
 
 function buildQuery(params: Record<string, string | number | undefined>): string {

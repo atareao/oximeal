@@ -98,6 +98,7 @@ const DOCS_PATH: &str = "/api/docs";
         crate::models::agent::AgentShoppingItemsInput,
         crate::models::agent::RemovedResponse,
         crate::auth::MeResponse,
+        crate::auth::routes::LogoutResponse,
     ))
 )]
 pub struct ApiDoc;

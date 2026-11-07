@@ -277,16 +277,35 @@ describe('CSRF y manejo de sesión en el cliente', () => {
     expect(fetchMock).toHaveBeenCalledWith('/auth/me', expect.objectContaining({ method: 'GET' }));
   });
 
-  it('invoca POST /auth/logout', async () => {
+  it('invoca POST /auth/logout y devuelve la URL de fin de sesión', async () => {
     const fetchMock = vi.mocked(fetch);
-    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const logoutUrl = 'https://idp.example/logout?id_token_hint=abc&client_id=oximeal';
+    fetchMock.mockResolvedValueOnce(jsonResponse({ logout_url: logoutUrl }));
+    setCsrfToken('token-123');
 
-    await expect(logoutAuth()).resolves.toBeUndefined();
+    await expect(logoutAuth()).resolves.toEqual({ logout_url: logoutUrl });
 
     expect(fetchMock).toHaveBeenCalledWith(
       '/auth/logout',
-      expect.objectContaining({ method: 'POST' }),
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'X-CSRF-Token': 'token-123' }),
+      }),
     );
+  });
+
+  it('devuelve logout_url null cuando el backend no puede construir la URL', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(jsonResponse({ logout_url: null }));
+
+    await expect(logoutAuth()).resolves.toEqual({ logout_url: null });
+  });
+
+  it('normaliza a logout_url null una respuesta sin el campo esperado', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(jsonResponse({}));
+
+    await expect(logoutAuth()).resolves.toEqual({ logout_url: null });
   });
 });
 

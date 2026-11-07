@@ -115,7 +115,11 @@ impl AuthService {
             anyhow::bail!("SESSION_SECRET es obligatorio con OIDC_ENABLED=true");
         }
 
+        // Timeouts acotados: un IdP colgado no debe bloquear el logout ni el
+        // resto del flujo (discovery/token/JWKS).
         let http = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(10))
             .build()
             .map_err(|error| anyhow::anyhow!("no se pudo crear el cliente HTTP: {error}"))?;
 
