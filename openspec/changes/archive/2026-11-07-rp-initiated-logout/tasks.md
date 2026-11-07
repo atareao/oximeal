@@ -51,6 +51,6 @@
 - [x] 3.1 `npx @fission-ai/openspec@1.16.0 validate --all --strict` sin errores.
 - [x] 3.2 Auditoría `@rust-reviewer` sobre los cambios de backend.
 - [x] 3.3 Auditoría `@react-reviewer` sobre los cambios de frontend.
-- [ ] 3.4 Preparar release 0.8.1.
+- [x] 3.4 Preparar release 0.8.1.
 - [ ] 3.5 Desplegar en co1 con Dockge Update y verificar el cierre de sesión completo (IdP incluido).
-- [ ] 3.6 Actualizar `docs/` y archivar el change.
+- [x] 3.6 Actualizar `docs/` y archivar el change.

@@ -4,7 +4,7 @@
 Que «Salir» cierre también la sesión SSO de Pocket ID: el backend devuelve un `logout_url` de *RP-initiated logout* y el SPA limpia estado/caché y navega a ella.
 
 ## Estado
-Especificado y validado (OpenSpec `rp-initiated-logout`), backend y frontend en TDD completos y auditorías pasadas. Pendiente: release, despliegue y archivo del change.
+Completado y archivado (OpenSpec `rp-initiated-logout` fusionado en `openspec/specs/`). Release 0.8.1 publicada (tag `v0.8.1`, imagen GHCR publicada) y change archivado. **Pendiente único:** despliegue en co1 con Dockge Update y verificación del cierre de sesión completo (IdP incluido).
 
 ## Alcance
 - Backend: handler `logout` (`LogoutResponse`), helper `logout_url`/`endpoint_url`, timeouts del cliente `reqwest`, contrato en el OpenAPI.
@@ -17,6 +17,6 @@ Especificado y validado (OpenSpec `rp-initiated-logout`), backend y frontend en 
 - [x] Frontend TDD (contrato, navegación, fallbacks).
 - [x] Auditorías `@rust-reviewer` y `@react-reviewer` con hallazgos corregidos.
 - [x] `validate --all --strict`.
-- [ ] Release 0.8.1.
-- [ ] Despliegue en co1.
-- [ ] Archivar el change (`openspec archive`).
+- [x] Release 0.8.1 (tag `v0.8.1`, imagen GHCR publicada).
+- [ ] Despliegue en co1 con Dockge Update — **pendiente**.
+- [x] Archivar el change (`openspec archive`).
