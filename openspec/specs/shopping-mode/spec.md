@@ -35,7 +35,7 @@ Al tocar un ítem, la aplicación SHALL marcarlo como comprado aplicando tachado
 - THEN la aplicación no lanza ningún error y el ítem se marca igualmente
 
 ### Requirement: Alta rápida y limpieza
-La vista SHALL ofrecer un input superior para añadir ítems manualmente y una acción "Limpiar comprados" que invoca `DELETE /api/shopping-list/completed`.
+La vista SHALL ofrecer un input superior para añadir ítems manualmente y, en la barra de acciones, dos acciones: «Limpiar comprados» (invoca `DELETE /api/shopping-list/completed`) y «Marcar todo», que marca como comprados todos los ítems pendientes reutilizando el toggle por ítem (por lo que se encola sin conexión). «Limpiar comprados» SHALL estar deshabilitado sin ítems comprados y «Marcar todo» sin ítems pendientes.
 
 #### Scenario: Alta manual
 - GIVEN el modo compra abierto
@@ -47,3 +47,19 @@ La vista SHALL ofrecer un input superior para añadir ítems manualmente y una a
 - WHEN el usuario pulsa "Limpiar comprados"
 - THEN se invoca `DELETE /api/shopping-list/completed`
 - AND los ítems comprados desaparecen de la vista
+
+#### Scenario: Marcar todo
+- GIVEN una lista con varios ítems pendientes
+- WHEN el usuario pulsa "Marcar todo"
+- THEN todos los ítems pendientes quedan marcados como comprados
+- AND los ítems ya marcados no cambian
+
+#### Scenario: Marcar todo sin conexión
+- GIVEN la lista con ítems pendientes y sin conexión
+- WHEN el usuario pulsa "Marcar todo"
+- THEN los ítems quedan marcados de forma optimista y el cambio se encola para sincronizar
+
+#### Scenario: Marcar todo deshabilitado sin pendientes
+- GIVEN una lista cuyos ítems están todos marcados
+- WHEN se muestra la barra de acciones
+- THEN "Marcar todo" aparece deshabilitado
