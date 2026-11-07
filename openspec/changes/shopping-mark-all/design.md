@@ -15,7 +15,8 @@
 
 ## Decisions
 
-- **Reutilizar el toggle por ítem**: «Marcar todo» recorre los ítems pendientes y aplica el toggle (o una actualización optimista única + toggles por ítem) reutilizando `useToggleShoppingItem`. Alternativa descartada: `POST /api/shopping-list/check-all`, que sería una operación compuesta no encolable y quedaría inservible sin conexión.
+- **Reutilizar el toggle por ítem, en serie**: «Marcar todo» recorre los ítems pendientes y aplica el toggle **secuencialmente** (`await mutateAsync` uno tras otro) reutilizando `useToggleShoppingItem`, de modo que solo haya una mutación viva a la vez. Alternativa descartada: `POST /api/shopping-list/check-all`, operación compuesta no encolable e inservible sin conexión. Alternativa descartada: N `mutate()` en paralelo desde el mismo hook (coexisten mutaciones, observadores y `contextRef` compartido → riesgo de decidir mal el encolado).
+- **Guard durante el lote**: mientras `isMarkingAll`, `handleToggle`/`handleCategoryChange` se ignoran, para no solapar una mutación del usuario con el lote.
 - **Habilitación**: el botón se deshabilita cuando no hay ítems pendientes (sin ítems que marcar), igual que «Limpiar comprados» se deshabilita sin comprados.
 - **Sin confirmación**: marcar no es destructivo (reversible desmarcando), así que no lleva `Popconfirm`.
 
@@ -23,3 +24,7 @@
 
 - **N peticiones online** (una por ítem pendiente, serializadas por el `scope` del toggle): aceptable para el tamaño típico de una lista; a cambio se mantiene el soporte offline y cero backend nuevo.
 - **Idempotencia**: solo se marcan los pendientes; los ya marcados no se tocan.
+
+## Follow-up (fuera de alcance)
+
+`useToggleShoppingItem` comparte la decisión `deferred` entre `onMutate` y `mutationFn` mediante un `contextRef` único. Con un lote secuencial no se dispara, pero dos toggles individuales concurrentes (usuario rápido) aún podrían pisar ese contexto. No afecta al rollback (`onError`/`onSuccess` reciben el contexto por argumento). Se documenta para una futura limpieza del hook (derivar `deferred` de las variables).
