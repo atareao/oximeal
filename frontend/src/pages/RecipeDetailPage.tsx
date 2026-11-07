@@ -20,9 +20,10 @@ import {
   useUpdateRecipe,
 } from '../api/hooks';
 import { ApiError } from '../api/client';
-import type { RecipeInput } from '../api/types';
+import type { IngredientInput, RecipeInput } from '../api/types';
+import { IngredientEditor } from '../components/IngredientEditor';
 import { RecipeForm } from '../components/RecipeForm';
-import { formatScaledAmount, hasRealQuantities, scaleAmount } from '../lib/scaling';
+import { hasRealQuantities } from '../lib/scaling';
 import { categoryLabel, formatRecipeMeta } from '../lib/recipes';
 import { useOnline } from '../offline/connectivity';
 import './RecipeDetailPage.css';
@@ -67,6 +68,8 @@ function RecipeDetailContent({ id }: RecipeDetailContentProps) {
   const deleteRecipe = useDeleteRecipe();
   const addToList = useAddRecipeToShoppingList();
   const [editOpen, setEditOpen] = useState(false);
+  // Edición en línea de la lista de ingredientes (sin abrir el modal).
+  const [editingIngredients, setEditingIngredients] = useState(false);
   // `null` mientras no se toque el selector: así el valor cae en la preferencia
   // de comensales (o en 2) aunque la consulta resuelva después del primer render.
   const [servings, setServings] = useState<number | null>(null);
@@ -96,6 +99,48 @@ function RecipeDetailContent({ id }: RecipeDetailContentProps) {
             mutationError instanceof Error
               ? mutationError.message
               : 'No se pudo actualizar la receta',
+          );
+        },
+      },
+    );
+  };
+
+  /**
+   * Persiste una edición en línea de los ingredientes reutilizando el mismo
+   * `PUT /api/recipes/{id}` que el modal: se envía la receta completa con la
+   * nueva lista y el resto de campos (incluidas etiquetas manuales) intactos.
+   */
+  const handleSaveIngredients = (ingredients: IngredientInput[]) => {
+    if (!id || !data) {
+      return;
+    }
+    const input: RecipeInput = {
+      name: data.name,
+      category: data.category,
+      diet_type: data.diet_type,
+      prep_time_minutes: data.prep_time_minutes,
+      servings: data.servings,
+      instructions: data.instructions,
+      source_url: data.source_url,
+      ingredients,
+      // Se preservan las etiquetas manuales; las automáticas se recalculan en
+      // el backend, igual que hace el modal.
+      tags: data.tags.filter((tag) => tag.source !== 'auto').map((tag) => tag.name),
+      auto_tags: true,
+      suppressed_auto_tags: [],
+    };
+    updateRecipe.mutate(
+      { id, input },
+      {
+        onSuccess: () => {
+          message.success('Ingredientes actualizados');
+          setEditingIngredients(false);
+        },
+        onError: (mutationError: unknown) => {
+          message.error(
+            mutationError instanceof Error
+              ? mutationError.message
+              : 'No se pudieron actualizar los ingredientes',
           );
         },
       },
@@ -297,23 +342,17 @@ function RecipeDetailContent({ id }: RecipeDetailContentProps) {
         </ul>
       )}
 
-      <section aria-labelledby="recipe-ingredients-title" className="recipe-detail__section">
-        <h3 id="recipe-ingredients-title" className="recipe-detail__section-title">
-          Ingredientes
-        </h3>
-        <ul className="recipe-detail__ingredients">
-          {data.ingredients.map((ingredient, index) => (
-            <li key={`${ingredient.name}-${index}`} className="recipe-detail__ingredient">
-              <span className="recipe-detail__ingredient-name">{ingredient.name}</span>
-              <span className="recipe-detail__ingredient-amount">
-                {`${formatScaledAmount(
-                  showScaled ? scaleAmount(ingredient.amount, factor) : ingredient.amount,
-                )} ${ingredient.unit}`}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </section>
+      <IngredientEditor
+        ingredients={data.ingredients}
+        factor={factor}
+        showScaled={showScaled}
+        editable={online}
+        saving={updateRecipe.isPending}
+        editing={editingIngredients}
+        onStartEdit={() => setEditingIngredients(true)}
+        onCancel={() => setEditingIngredients(false)}
+        onSave={handleSaveIngredients}
+      />
 
       {data.instructions && (
         <section aria-labelledby="recipe-instructions-title" className="recipe-detail__section">

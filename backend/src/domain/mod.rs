@@ -9,6 +9,7 @@ pub mod category;
 pub mod consolidate;
 pub mod date;
 pub mod ingredient;
+pub mod ingredient_parse;
 pub mod normalize;
 pub mod schema_org;
 pub mod units;

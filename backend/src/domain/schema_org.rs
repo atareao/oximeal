@@ -9,9 +9,8 @@
 //! - `name` → `name`.
 //! - `category` se fija a `"main"` (Schema.org usa `recipeCategory`, texto
 //!   libre, que no se corresponde con nuestro enum) y `diet_type` queda `None`.
-//! - `recipeIngredient` (lista de textos) → `ingredients`: cada texto se toma
-//!   íntegro como `name`, con `amount = 1.0` y `unit = "ud"` (el parser no
-//!   interpreta cantidades).
+//! - `recipeIngredient` (lista de textos) → `ingredients`: cada texto se
+//!   desglosa con [`parse_ingredient`] en cantidad, unidad y nombre.
 //! - `recipeYield` → `servings` (número o cadena con entero inicial); por
 //!   defecto [`DEFAULT_SERVINGS`].
 //! - `prepTime` → `prep_time_minutes`; si falta, se usa `totalTime`.
@@ -21,7 +20,7 @@
 
 use serde_json::Value;
 
-use crate::domain::ingredient::IngredientInput;
+use crate::domain::ingredient_parse::parse_ingredient;
 use crate::models::recipe::RecipeInput;
 
 /// Raciones por defecto cuando el JSON-LD no trae `recipeYield`.
@@ -211,9 +210,9 @@ fn has_recipe_type(value: Option<&Value>) -> bool {
 
 /// Mapea un objeto JSON-LD `Recipe` a [`RecipeInput`].
 ///
-/// Simplificación documentada: cada entrada de `recipeIngredient` se toma
-/// **íntegra** como nombre del ingrediente, con `amount = 1.0` y `unit = "ud"`;
-/// el parser no interpreta cantidades ni unidades.
+/// Cada entrada de `recipeIngredient` se desglosa con [`parse_ingredient`],
+/// que separa cantidad, unidad y nombre (sin cantidad detectable, la línea
+/// íntegra queda como nombre con `amount = 1.0` y `unit = "ud"`).
 fn map_recipe(recipe: &Value) -> RecipeInput {
     let name = recipe
         .get("name")
@@ -230,12 +229,7 @@ fn map_recipe(recipe: &Value) -> RecipeInput {
                 .filter_map(Value::as_str)
                 .map(str::trim)
                 .filter(|text| !text.is_empty())
-                .map(|text| IngredientInput {
-                    name: text.to_string(),
-                    amount: 1.0,
-                    unit: "ud".to_string(),
-                    category: None,
-                })
+                .map(parse_ingredient)
                 .collect()
         })
         .unwrap_or_default();
@@ -410,9 +404,11 @@ mod tests {
         assert_eq!(recipe.servings, Some(4));
         assert_eq!(recipe.prep_time_minutes, Some(80));
         assert_eq!(recipe.ingredients.len(), 2);
-        assert_eq!(recipe.ingredients[0].name, "4 huevos");
+        assert_eq!(recipe.ingredients[0].name, "huevos");
+        assert_eq!(recipe.ingredients[0].amount, 4.0);
         assert_eq!(recipe.ingredients[0].unit, "ud");
-        assert_eq!(recipe.ingredients[1].name, "3 patatas");
+        assert_eq!(recipe.ingredients[1].name, "patatas");
+        assert_eq!(recipe.ingredients[1].amount, 3.0);
         assert_eq!(
             recipe.instructions.as_deref(),
             Some("Pelar y cortar\nFreír")
