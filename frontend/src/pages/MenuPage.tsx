@@ -249,20 +249,20 @@ export function MenuPage() {
 
   const header = (
     <header className="menu-page__header">
-      <div className="menu-page__heading">
-        <Title id="menu-title" level={2} className="visually-hidden">
-          Menú
-        </Title>
+      <Title id="menu-title" level={2} className="visually-hidden">
+        Menú
+      </Title>
+      <div className="menu-page__controls">
+        <Segmented
+          className="menu-page__view"
+          options={VIEW_OPTIONS}
+          value={view}
+          onChange={(value) => changeView(value as MenuView)}
+        />
         <Paragraph className="menu-page__range" type="secondary">
           {rangeLabel}
         </Paragraph>
       </div>
-      <Segmented
-        className="menu-page__view"
-        options={VIEW_OPTIONS}
-        value={view}
-        onChange={(value) => changeView(value as MenuView)}
-      />
       <div className="menu-page__nav">
         {view === 'week' && (
           <>

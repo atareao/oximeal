@@ -788,4 +788,24 @@ describe('MenuPage', () => {
 
     expect(screen.getByRole('heading', { name: 'Menú' })).toHaveClass('visually-hidden');
   });
+
+  it('muestra la fecha/rango debajo del selector de vistas en el DOM', () => {
+    renderMenu();
+
+    const controls = document.querySelector('.menu-page__controls');
+    const range = document.querySelector('.menu-page__range');
+    const segmented = document.querySelector('.ant-segmented');
+    expect(controls).toBeInTheDocument();
+    expect(range).toBeInTheDocument();
+    expect(segmented).toBeInTheDocument();
+
+    // El rango es hijo directo de los controles y va después del Segmented.
+    expect(controls?.contains(range)).toBe(true);
+    expect(range?.parentElement).toBe(controls);
+    const children = Array.from(controls?.children ?? []);
+    expect(children.indexOf(segmented as Element)).toBeLessThan(children.indexOf(range as Element));
+    expect(
+      (segmented as Node).compareDocumentPosition(range as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
 });

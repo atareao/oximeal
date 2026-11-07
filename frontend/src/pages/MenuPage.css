@@ -12,10 +12,10 @@
   gap: 12px;
 }
 
-.menu-page__heading {
+.menu-page__controls {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 
 .menu-page__range {
