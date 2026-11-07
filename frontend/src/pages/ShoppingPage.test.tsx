@@ -76,6 +76,7 @@ describe('ShoppingPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     listState = [];
+    configureMutationQueue(createMutationStore());
     vi.stubGlobal('navigator', { ...navigator, vibrate: vi.fn() });
     mockedFetchList.mockImplementation(() => Promise.resolve(structuredClone(listState)));
     mockedPatch.mockImplementation((id, patch) => Promise.resolve(applyPatch(id, patch)));
@@ -219,6 +220,177 @@ describe('ShoppingPage', () => {
     await waitFor(() => {
       expect(mockedClear).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it('"Marcar todo" marca los pendientes y no toca los ya marcados', async () => {
+    listState = [
+      {
+        category: 'Verdulería',
+        items: [
+          item({ id: '1', name: 'Tomate' }),
+          item({ id: '2', name: 'Lechuga', checked: true }),
+          item({ id: '3', name: 'Zanahoria' }),
+        ],
+      },
+    ];
+    const user = userEvent.setup();
+    renderShopping();
+
+    await screen.findByText('Tomate');
+    await user.click(screen.getByRole('button', { name: 'Marcar todo' }));
+
+    await waitFor(() => {
+      expect(mockedPatch).toHaveBeenCalledTimes(2);
+    });
+    expect(mockedPatch).toHaveBeenCalledWith('1', { checked: true });
+    expect(mockedPatch).toHaveBeenCalledWith('3', { checked: true });
+    expect(mockedPatch).not.toHaveBeenCalledWith('2', expect.anything());
+    await waitFor(() => {
+      expect(screen.getByRole('checkbox', { name: /Tomate/ })).toBeChecked();
+      expect(screen.getByRole('checkbox', { name: /Zanahoria/ })).toBeChecked();
+    });
+  });
+
+  it('deshabilita "Marcar todo" cuando no hay pendientes', async () => {
+    listState = [
+      { category: 'Verdulería', items: [item({ id: '1', name: 'Tomate', checked: true })] },
+    ];
+    renderShopping();
+
+    await screen.findByText('Tomate');
+    expect(screen.getByRole('button', { name: 'Marcar todo' })).toBeDisabled();
+  });
+
+  it('habilita "Marcar todo" cuando hay pendientes', async () => {
+    listState = [{ category: 'Verdulería', items: [item({ id: '1', name: 'Tomate' })] }];
+    renderShopping();
+
+    await screen.findByText('Tomate');
+    expect(screen.getByRole('button', { name: 'Marcar todo' })).toBeEnabled();
+  });
+
+  it('"Marcar todo" con 3 pendientes los marca todos en un lote secuencial', async () => {
+    listState = [
+      {
+        category: 'Verdulería',
+        items: [
+          item({ id: '1', name: 'Tomate' }),
+          item({ id: '2', name: 'Lechuga' }),
+          item({ id: '3', name: 'Zanahoria' }),
+        ],
+      },
+    ];
+    const user = userEvent.setup();
+    renderShopping();
+
+    await screen.findByText('Tomate');
+    await user.click(screen.getByRole('button', { name: 'Marcar todo' }));
+
+    await waitFor(() => {
+      expect(mockedPatch).toHaveBeenCalledTimes(3);
+    });
+    expect(mockedPatch).toHaveBeenCalledWith('1', { checked: true });
+    expect(mockedPatch).toHaveBeenCalledWith('2', { checked: true });
+    expect(mockedPatch).toHaveBeenCalledWith('3', { checked: true });
+    await waitFor(() => {
+      expect(screen.getByRole('checkbox', { name: /Tomate/ })).toBeChecked();
+      expect(screen.getByRole('checkbox', { name: /Lechuga/ })).toBeChecked();
+      expect(screen.getByRole('checkbox', { name: /Zanahoria/ })).toBeChecked();
+    });
+  });
+
+  it('"Marcar todo" continúa el lote cuando un ítem falla (rollback parcial)', async () => {
+    mockedPatch.mockImplementation((id, patch) =>
+      id === '2' ? Promise.reject(new Error('boom')) : Promise.resolve(applyPatch(id, patch)),
+    );
+    listState = [
+      {
+        category: 'Verdulería',
+        items: [
+          item({ id: '1', name: 'Tomate' }),
+          item({ id: '2', name: 'Lechuga' }),
+          item({ id: '3', name: 'Zanahoria' }),
+        ],
+      },
+    ];
+    const user = userEvent.setup();
+    renderShopping();
+
+    await screen.findByText('Tomate');
+    await user.click(screen.getByRole('button', { name: 'Marcar todo' }));
+
+    await waitFor(() => {
+      expect(mockedPatch).toHaveBeenCalledTimes(3);
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('checkbox', { name: /Tomate/ })).toBeChecked();
+      expect(screen.getByRole('checkbox', { name: /Zanahoria/ })).toBeChecked();
+      expect(screen.getByRole('checkbox', { name: /Lechuga/ })).not.toBeChecked();
+    });
+  });
+
+  it('ignora toggles manuales mientras "Marcar todo" está en curso', async () => {
+    const resolvers: Array<() => void> = [];
+    mockedPatch.mockImplementation(
+      (id, patch) =>
+        new Promise<ShoppingItem>((resolve) => {
+          resolvers.push(() => resolve(applyPatch(id, patch)));
+        }),
+    );
+    listState = [
+      {
+        category: 'Verdulería',
+        items: [item({ id: '1', name: 'Tomate' }), item({ id: '2', name: 'Lechuga' })],
+      },
+    ];
+    const user = userEvent.setup();
+    renderShopping();
+
+    await screen.findByText('Tomate');
+    await user.click(screen.getByRole('button', { name: 'Marcar todo' }));
+
+    // La primera mutación del lote queda en vuelo (promesa sin resolver).
+    await waitFor(() => {
+      expect(mockedPatch).toHaveBeenCalledTimes(1);
+    });
+
+    // Un toggle manual durante el lote no dispara otra petición (guard).
+    await user.click(screen.getByRole('checkbox', { name: /Lechuga/ }));
+    expect(mockedPatch).toHaveBeenCalledTimes(1);
+
+    // Drenamos el lote resolviendo las peticiones en vuelo.
+    await waitFor(() => {
+      resolvers.splice(0).forEach((resolve) => resolve());
+      // Con el guard solo se marca cada pendiente una vez (lote: '1' y '2').
+      expect(mockedPatch).toHaveBeenCalledTimes(2);
+    });
+    // El clic manual sobre '2' no añadió una segunda petición para ese id.
+    expect(mockedPatch.mock.calls.filter(([id]) => id === '2')).toHaveLength(1);
+    expect(screen.getByRole('checkbox', { name: /Tomate/ })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /Lechuga/ })).toBeChecked();
+  });
+
+  it('"Marcar todo" sin conexión marca de forma optimista y encola los cambios', async () => {
+    vi.stubGlobal('navigator', { ...navigator, vibrate: vi.fn(), onLine: false });
+    listState = [
+      {
+        category: 'Verdulería',
+        items: [item({ id: '1', name: 'Tomate' }), item({ id: '2', name: 'Lechuga' })],
+      },
+    ];
+    const user = userEvent.setup();
+    renderShopping();
+
+    await screen.findByText('Tomate');
+    await user.click(screen.getByRole('button', { name: 'Marcar todo' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('checkbox', { name: /Tomate/ })).toBeChecked();
+      expect(screen.getByRole('checkbox', { name: /Lechuga/ })).toBeChecked();
+    });
+    expect(mockedPatch).not.toHaveBeenCalled();
+    const alert = await screen.findByTestId('pending-mutations');
+    expect(alert).toHaveTextContent('2 cambio(s) pendiente(s) de sincronizar');
   });
 
   it('"Consolidar desde el menú" pide confirmación antes de mutar', async () => {

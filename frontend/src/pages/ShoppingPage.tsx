@@ -39,6 +39,7 @@ export function ShoppingPage() {
   const online = useOnline();
   const queuedMutations = useQueuedMutations();
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isMarkingAll, setIsMarkingAll] = useState(false);
 
   const groups = useMemo(() => data ?? [], [data]);
 
@@ -47,15 +48,44 @@ export function ShoppingPage() {
     [groups],
   );
 
+  const pendingCount = useMemo(
+    () => groups.reduce((total, group) => total + group.items.filter((i) => !i.checked).length, 0),
+    [groups],
+  );
+
   const errorMessage =
     error instanceof Error ? error.message : 'Ha ocurrido un error al contactar con el servidor.';
 
   const handleToggle = (item: ShoppingItem) => {
+    if (isMarkingAll) return;
     haptics(10);
     toggleItem.mutate({ id: item.id, patch: { checked: !item.checked } });
   };
 
+  const handleMarkAll = async () => {
+    haptics(10);
+    setIsMarkingAll(true);
+    try {
+      // Secuencial: una única mutación viva para que `mutationFn` del toggle
+      // lea siempre su propio contexto `deferred` y no se pisen entre sí.
+      for (const group of groups) {
+        for (const pending of group.items) {
+          if (!pending.checked) {
+            try {
+              await toggleItem.mutateAsync({ id: pending.id, patch: { checked: true } });
+            } catch {
+              // El `onError` del toggle ya revierte ese ítem; continuamos con el resto.
+            }
+          }
+        }
+      }
+    } finally {
+      setIsMarkingAll(false);
+    }
+  };
+
   const handleCategoryChange = (item: ShoppingItem, category: string) => {
+    if (isMarkingAll) return;
     haptics(10);
     toggleItem.mutate({ id: item.id, patch: { category } });
   };
@@ -124,6 +154,13 @@ export function ShoppingPage() {
               Limpiar comprados
             </Button>
           </Popconfirm>
+          <Button
+            disabled={pendingCount === 0}
+            loading={isMarkingAll}
+            onClick={() => void handleMarkAll()}
+          >
+            Marcar todo
+          </Button>
         </div>
       </header>
 
