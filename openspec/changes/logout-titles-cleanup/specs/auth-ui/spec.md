@@ -8,13 +8,23 @@
 
 ### Requirement: Cierre de sesión en la barra superior
 
-La aplicación SHALL ofrecer el cierre de sesión **únicamente** en la barra superior, como entrada `Salir` situada a la derecha de Configuración. La entrada `Salir` SHALL estar **siempre visible** en todos los estados de sesión. Con sesión autenticada SHALL invocar `POST /auth/logout` y volver al login. Sin sesión autenticada (estados `loading`, `disabled`, `anonymous` o `degraded`) SHALL reiniciar la aplicación con una **recarga completa**, sin invocar `POST /auth/logout`. La página de ajustes SHALL **no** ofrecer ningún control de cierre de sesión. No existen roles ni administración.
+La aplicación SHALL ofrecer el cierre de sesión **únicamente** en la barra superior, como entrada `Salir` situada a la derecha de Configuración. La entrada `Salir` SHALL estar **siempre visible** en todos los estados de sesión. La página de ajustes SHALL **no** ofrecer ningún control de cierre de sesión. No existen roles ni administración.
 
 #### Scenario: Salir siempre visible
 
 - GIVEN cualquier estado de sesión (loading, authenticated, anonymous, disabled o degraded)
 - WHEN se renderiza la barra superior
 - THEN la entrada `Salir` está disponible a la derecha de Configuración
+
+#### Scenario: Ajustes sin control de cierre de sesión
+
+- GIVEN cualquier estado de sesión
+- WHEN se abre `/settings`
+- THEN la página de ajustes no muestra ningún botón ni control de cierre de sesión
+
+### Requirement: Comportamiento de `Salir` según el estado de sesión
+
+Con sesión autenticada, `Salir` SHALL invocar `POST /auth/logout` y volver al login. Sin sesión autenticada (estados `loading`, `disabled`, `anonymous` o `degraded`), `Salir` SHALL reiniciar la aplicación con una **recarga completa**, sin invocar `POST /auth/logout`.
 
 #### Scenario: Cierre de sesión con sesión autenticada
 
@@ -28,12 +38,6 @@ La aplicación SHALL ofrecer el cierre de sesión **únicamente** en la barra su
 - WHEN el usuario pulsa `Salir`
 - THEN la aplicación se reinicia con una recarga completa
 - AND no se invoca `POST /auth/logout`
-
-#### Scenario: Ajustes sin control de cierre de sesión
-
-- GIVEN cualquier estado de sesión
-- WHEN se abre `/settings`
-- THEN la página de ajustes no muestra ningún botón ni control de cierre de sesión
 
 ### Requirement: Identidad en la página de ajustes
 
