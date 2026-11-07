@@ -12,6 +12,13 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [No publicado]
 
+## [0.7.0] - 2026-11-07
+
+### Añadido
+
+- **Ajustes (comensales):** preferencia de comensales habituales (1..20, por defecto 2) persistida en el servidor mediante la migración `0010` y `GET/PUT /api/settings` (permisos `read:recipes`/`write:recipes`, `422` fuera de rango). Se edita en `/settings` y se cachea en IndexedDB para uso sin red.
+- **Recetas (escalado):** el detalle escala las cantidades a las raciones seleccionadas (1..20), con la preferencia como valor inicial, aviso «Receta para 8 · cantidades para 2» y opción de ver las originales. Las recetas importadas sin cantidades reales (`amount = 1`, `unit = "ud"`) no se escalan y se avisa. La lista de la compra mantiene su propio cálculo.
+
 ## [0.6.1] - 2026-11-06
 
 ### Corregido

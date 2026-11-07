@@ -14,7 +14,7 @@ use utoipa_swagger_ui::{Config, Url, serve};
 
 use crate::state::AppState;
 
-use super::{agent, health, meal_plan, recipes, shopping_list, tags};
+use super::{agent, health, meal_plan, recipes, settings, shopping_list, tags};
 
 /// Ruta pública del documento OpenAPI.
 const OPENAPI_PATH: &str = "/api/openapi.json";
@@ -41,6 +41,8 @@ const DOCS_PATH: &str = "/api/docs";
         tags::list_tags,
         tags::create_tag,
         tags::delete_tag,
+        settings::get_settings,
+        settings::update_settings,
         meal_plan::list_meal_plan,
         meal_plan::create_meal_plan,
         meal_plan::patch_meal_plan,
@@ -73,6 +75,8 @@ const DOCS_PATH: &str = "/api/docs";
         crate::models::tag::Tag,
         crate::models::tag::TagInput,
         crate::models::tag::RecipeTag,
+        crate::models::settings::HouseholdSettings,
+        crate::models::settings::SettingsInput,
         crate::models::meal_plan::MealPlanEntryView,
         crate::models::meal_plan::MealPlanInput,
         crate::models::meal_plan::MealPlanPatchInput,

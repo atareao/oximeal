@@ -48,3 +48,34 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.settings-page__servings {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-page__servings-input {
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.settings-page__servings-input .ant-input-number-input {
+  height: 46px;
+}
+
+.settings-page__save {
+  min-height: 48px;
+}
+
+.settings-page__saved {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent, #2f855a);
+}
+
+.settings-page__error {
+  margin-top: 4px;
+}
