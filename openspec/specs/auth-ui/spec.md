@@ -48,48 +48,51 @@ El cliente del frontend SHALL añadir la cabecera `X-CSRF-Token`, con el valor o
 - WHEN el frontend realiza una mutación
 - THEN la petición incluye la cabecera `X-CSRF-Token`
 
-### Requirement: Identidad y cierre de sesión en la interfaz
+### Requirement: Cierre de sesión en la barra superior
 
-La aplicación SHALL mostrar el nombre del usuario en ajustes. El cierre de sesión SHALL existir **únicamente** en la barra superior, como `Salir` a la derecha de Configuración, invocando `POST /auth/logout` y volviendo al login. Ajustes SHALL **no** ofrecer ningún control de cierre de sesión, y sin sesión autenticada SHALL **no** mostrarse `Salir`. No existen roles ni administración.
+La aplicación SHALL ofrecer el cierre de sesión **únicamente** en la barra superior, como entrada `Salir` situada a la derecha de Configuración. La entrada `Salir` SHALL estar **siempre visible** en todos los estados de sesión. La página de ajustes SHALL **no** ofrecer ningún control de cierre de sesión. No existen roles ni administración.
 
-#### Scenario: Se muestra el nombre del usuario
+#### Scenario: Salir siempre visible
 
-- GIVEN una sesión válida
-- WHEN la aplicación renderiza la interfaz
-- THEN el nombre del usuario de la sesión es visible
-
-#### Scenario: Cierre de sesión desde la interfaz
-
-- GIVEN un usuario autenticado
-- WHEN pulsa el control de cierre de sesión
-- THEN el frontend invoca `POST /auth/logout` y vuelve al login
-
-#### Scenario: Salir desde la barra superior
-
-- GIVEN una sesión válida
+- GIVEN cualquier estado de sesión (loading, authenticated, anonymous, disabled o degraded)
 - WHEN se renderiza la barra superior
-- THEN la entrada Salir está disponible a la derecha de Configuración
-
-#### Scenario: Nombre en ajustes
-
-- GIVEN una sesión válida
-- WHEN se abre `/settings`
-- THEN el nombre del usuario es visible
-
-#### Scenario: Cierre de sesión
-
-- GIVEN un usuario autenticado
-- WHEN pulsa Salir
-- THEN el frontend invoca `POST /auth/logout` y vuelve al login
+- THEN la entrada `Salir` está disponible a la derecha de Configuración
 
 #### Scenario: Ajustes sin control de cierre de sesión
 
-- GIVEN un usuario autenticado
+- GIVEN cualquier estado de sesión
 - WHEN se abre `/settings`
 - THEN la página de ajustes no muestra ningún botón ni control de cierre de sesión
 
-#### Scenario: Sin sesión no hay Salir
+### Requirement: Comportamiento de `Salir` según el estado de sesión
+
+Con sesión autenticada, `Salir` SHALL invocar `POST /auth/logout` y volver al login. Sin sesión autenticada (estados `loading`, `disabled`, `anonymous` o `degraded`), `Salir` SHALL reiniciar la aplicación con una **recarga completa**, sin invocar `POST /auth/logout`.
+
+#### Scenario: Cierre de sesión con sesión autenticada
+
+- GIVEN un usuario autenticado
+- WHEN pulsa `Salir`
+- THEN el frontend invoca `POST /auth/logout` y vuelve al login
+
+#### Scenario: Reinicio sin sesión
 
 - GIVEN un estado de sesión distinto de `authenticated`
-- WHEN se renderiza la barra superior
-- THEN no se muestra la entrada Salir
+- WHEN el usuario pulsa `Salir`
+- THEN la aplicación se reinicia con una recarga completa
+- AND no se invoca `POST /auth/logout`
+
+### Requirement: Identidad en la página de ajustes
+
+La aplicación SHALL mostrar el nombre del usuario en la página de ajustes **solo** cuando haya sesión autenticada, ocultando la sección de identidad en el resto de estados.
+
+#### Scenario: Nombre en ajustes con sesión
+
+- GIVEN una sesión autenticada
+- WHEN se abre `/settings`
+- THEN el nombre del usuario es visible
+
+#### Scenario: Ajustes sin sesión sin identidad
+
+- GIVEN un estado de sesión distinto de `authenticated`
+- WHEN se abre `/settings`
+- THEN la sección de identidad no se muestra
