@@ -6,20 +6,17 @@
 
 .menu-page__header {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
+  text-align: center;
 }
 
-.menu-page__heading {
+.menu-page__controls {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-}
-
-.menu-page__title {
-  margin: 0 !important;
+  align-items: center;
+  gap: 4px;
 }
 
 .menu-page__range {
@@ -31,6 +28,7 @@
 .menu-page__nav {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 8px;
 }
 

@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { AppHeader } from './AppHeader';
 import { useSession, type SessionContextValue } from '../auth/session';
 import { useMediaQuery } from '../hooks/useMediaQuery';
+import { reloadApp } from '../auth/reload';
 
 vi.mock('../auth/session', () => ({
   useSession: vi.fn(),
@@ -14,8 +15,13 @@ vi.mock('../hooks/useMediaQuery', () => ({
   useMediaQuery: vi.fn(),
 }));
 
+vi.mock('../auth/reload', () => ({
+  reloadApp: vi.fn(),
+}));
+
 const mockedUseSession = vi.mocked(useSession);
 const mockedUseMediaQuery = vi.mocked(useMediaQuery);
+const mockedReloadApp = vi.mocked(reloadApp);
 
 function session(overrides: Partial<SessionContextValue> = {}): SessionContextValue {
   return {
@@ -136,6 +142,7 @@ describe('AppHeader', () => {
     await user.click(screen.getByRole('button', { name: 'Salir' }));
 
     expect(logout).toHaveBeenCalledTimes(1);
+    expect(mockedReloadApp).not.toHaveBeenCalled();
   });
 
   it('todos los controles interactivos tienen altura mínima de 48px', () => {
@@ -172,15 +179,27 @@ describe('AppHeader', () => {
     expect(actions?.lastElementChild).toBe(logout);
   });
 
-  it('sin sesión autenticada no renderiza el botón Salir', () => {
+  it('Salir está presente en todos los estados de sesión', () => {
     for (const status of ['loading', 'disabled', 'anonymous', 'degraded'] as const) {
       mockedUseSession.mockReturnValue(session({ status }));
       mockViewport({ desktop: false, wide: false });
 
       const { unmount } = renderHeader();
-      expect(screen.queryByRole('button', { name: 'Salir' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Salir' })).toBeInTheDocument();
       unmount();
     }
+  });
+
+  it('sin sesión autenticada, pulsar Salir recarga la app y no invoca el logout', async () => {
+    const logout = vi.fn().mockResolvedValue(undefined);
+    mockedUseSession.mockReturnValue(session({ status: 'disabled', logout }));
+    const user = userEvent.setup();
+    renderHeader();
+
+    await user.click(screen.getByRole('button', { name: 'Salir' }));
+
+    expect(mockedReloadApp).toHaveBeenCalledTimes(1);
+    expect(logout).not.toHaveBeenCalled();
   });
 
   it('con sesión autenticada y viewport estrecho la acción agrupa Configuración y Salir sin texto OxiMeal', () => {

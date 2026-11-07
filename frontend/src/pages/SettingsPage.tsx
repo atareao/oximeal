@@ -21,7 +21,7 @@ const FALLBACK_SERVINGS = 2;
 /** Página de ajustes: tema, comensales habituales e identidad de la sesión. */
 export function SettingsPage() {
   const { mode, setMode } = useTheme();
-  const { name } = useSession();
+  const { status, name, subject } = useSession();
   const { data: settings, isLoading, isError, error: settingsError } = useSettings();
   const updateSettings = useUpdateSettings();
 
@@ -61,7 +61,7 @@ export function SettingsPage() {
 
   return (
     <section className="settings-page" aria-labelledby="settings-title">
-      <Title id="settings-title" level={2} className="settings-page__title">
+      <Title id="settings-title" level={2} className="visually-hidden">
         Configuración
       </Title>
 
@@ -135,10 +135,12 @@ export function SettingsPage() {
         )}
       </div>
 
-      <div className="settings-page__section">
-        <h3 className="settings-page__section-title">Sesión</h3>
-        <span className="settings-page__name">{name ?? 'Sesión'}</span>
-      </div>
+      {status === 'authenticated' && (
+        <div className="settings-page__section">
+          <h3 className="settings-page__section-title">Sesión</h3>
+          <span className="settings-page__name">{name ?? subject ?? 'Sesión'}</span>
+        </div>
+      )}
     </section>
   );
 }

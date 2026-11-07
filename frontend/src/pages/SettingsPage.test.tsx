@@ -102,6 +102,20 @@ describe('SettingsPage', () => {
     expect(screen.getByText('Ana')).toBeInTheDocument();
   });
 
+  it('sin sesión autenticada no muestra la sección de identidad', () => {
+    mockedUseSession.mockReturnValue(session({ status: 'disabled', name: undefined }));
+
+    renderSettings();
+
+    expect(screen.queryByText('Sesión')).not.toBeInTheDocument();
+  });
+
+  it('expone el encabezado de la vista oculto para lectores de pantalla', () => {
+    renderSettings();
+
+    expect(screen.getByRole('heading', { name: 'Configuración' })).toHaveClass('visually-hidden');
+  });
+
   it('no muestra ningún botón ni control de cierre de sesión', () => {
     renderSettings();
 

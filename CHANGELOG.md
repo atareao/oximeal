@@ -12,6 +12,10 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [No publicado]
 
+### Corregido
+
+- **Interfaz (barra superior):** `Salir` siempre visible en la barra superior una vez conocido el estado de sesión, no solo con sesión autenticada; sin sesión reinicia la aplicación con una recarga completa. Los encabezados de vista (Menú, Recetas, Lista de la compra y Configuración) pasan a estar ocultos visualmente pero accesibles por lectores de pantalla, y dejan de duplicar la navegación.
+
 ## [0.6.1] - 2026-11-06
 
 ### Corregido

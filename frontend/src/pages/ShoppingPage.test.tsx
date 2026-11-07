@@ -304,4 +304,12 @@ describe('ShoppingPage', () => {
     expect(alert).toHaveTextContent('1 cambio(s) pendiente(s) de sincronizar');
     expect(within(alert).getByRole('button', { name: /sincronizar ahora/i })).toBeEnabled();
   });
+
+  it('expone el encabezado de la vista oculto para lectores de pantalla', () => {
+    renderShopping();
+
+    expect(screen.getByRole('heading', { name: 'Lista de la compra' })).toHaveClass(
+      'visually-hidden',
+    );
+  });
 });
