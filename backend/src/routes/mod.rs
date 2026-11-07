@@ -7,8 +7,8 @@
 //!
 //! | ruta | permiso |
 //! |---|---|
-//! | `GET /api/recipes`, `GET /api/recipes/{id}`, `GET /api/tags` | `read:recipes` |
-//! | `POST /api/recipes`, `PUT /api/recipes/{id}`, `DELETE /api/recipes/{id}`, `POST /api/tags`, `DELETE /api/tags/{id}` | `write:recipes` |
+//! | `GET /api/recipes`, `GET /api/recipes/{id}`, `GET /api/tags`, `GET /api/settings` | `read:recipes` |
+//! | `POST /api/recipes`, `PUT /api/recipes/{id}`, `DELETE /api/recipes/{id}`, `POST /api/tags`, `DELETE /api/tags/{id}`, `PUT /api/settings` | `write:recipes` |
 //! | `GET /api/meal-plan` | `read:plan` |
 //! | `POST /api/meal-plan`, `PATCH /api/meal-plan/{id}`, `DELETE /api/meal-plan/{id}` | `write:plan` |
 //! | `GET /api/shopping-list` | `read:shopping` |
@@ -27,6 +27,7 @@ pub mod health;
 pub mod meal_plan;
 pub mod openapi;
 pub mod recipes;
+pub mod settings;
 pub mod shopping_list;
 pub mod tags;
 pub mod validation;
@@ -53,6 +54,8 @@ pub fn router(state: &AppState) -> Router<AppState> {
             .merge(recipes::write_router())
             .merge(tags::read_router())
             .merge(tags::write_router())
+            .merge(settings::read_router())
+            .merge(settings::write_router())
             .merge(meal_plan::read_router())
             .merge(meal_plan::write_router())
             .merge(shopping_list::read_router())
@@ -81,6 +84,16 @@ pub fn router(state: &AppState) -> Router<AppState> {
         ))
         .merge(require_permission(
             tags::write_router(),
+            state,
+            "write:recipes",
+        ))
+        .merge(require_permission(
+            settings::read_router(),
+            state,
+            "read:recipes",
+        ))
+        .merge(require_permission(
+            settings::write_router(),
             state,
             "write:recipes",
         ))

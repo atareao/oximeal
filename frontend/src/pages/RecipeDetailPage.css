@@ -79,6 +79,19 @@
   align-items: center;
 }
 
+.recipe-detail__scaling {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.recipe-detail__original-toggle {
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+}
+
 .recipe-detail__servings .ant-input-number-input {
   height: 46px;
 }

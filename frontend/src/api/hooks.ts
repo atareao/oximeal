@@ -14,12 +14,14 @@ import {
   fetchMealPlan,
   fetchRecipe,
   fetchRecipes,
+  getSettings,
   fetchShoppingList,
   fetchTags,
   importRecipe,
   patchMealPlanEntry,
   patchShoppingItem,
   updateRecipe,
+  updateSettings,
 } from './client';
 import type {
   MealPlanInput,
@@ -29,6 +31,7 @@ import type {
   RecipeInput,
   RecipeQueryParams,
   RecipeToShoppingListInput,
+  SettingsInput,
   ShoppingItem,
   ShoppingItemInput,
   ShoppingItemPatch,
@@ -57,6 +60,9 @@ export const queryKeys = {
   },
   tags: {
     all: ['tags'] as const,
+  },
+  settings: {
+    all: ['settings'] as const,
   },
 };
 
@@ -175,6 +181,29 @@ export function useDeleteTag() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.tags.all });
       void queryClient.invalidateQueries({ queryKey: queryKeys.recipes.all });
+    },
+  });
+}
+
+/**
+ * Preferencia de comensales habituales. Sin conexión se sirve el último valor
+ * conocido desde IndexedDB (mismo patrón `offlineFirst` que el recetario).
+ */
+export function useSettings() {
+  return useQuery({
+    queryKey: queryKeys.settings.all,
+    queryFn: ({ signal }) => getSettings(signal),
+    networkMode: 'offlineFirst',
+  });
+}
+
+/** Actualiza la preferencia de comensales e invalida la consulta. */
+export function useUpdateSettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: SettingsInput) => updateSettings(input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.all });
     },
   });
 }

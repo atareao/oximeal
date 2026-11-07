@@ -148,3 +148,35 @@ async fn swagger_ui_assets_resolve_under_docs_path() {
         "los recursos deben resolverse bajo /api/docs/"
     );
 }
+
+/// El documento OpenAPI expone los endpoints y esquemas de ajustes del hogar.
+#[tokio::test]
+async fn openapi_json_includes_settings_endpoints_and_schemas() {
+    let state = common::test_state().await;
+
+    let (status, body) = common::request(state, "GET", "/api/openapi.json", None).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let paths = body["paths"].as_object().expect("objeto paths");
+    let settings = paths["/api/settings"]
+        .as_object()
+        .expect("/api/settings debe ser un objeto");
+    assert!(
+        settings.contains_key("get"),
+        "/api/settings debe exponer get"
+    );
+    assert!(
+        settings.contains_key("put"),
+        "/api/settings debe exponer put"
+    );
+
+    let schemas = body["components"]["schemas"]
+        .as_object()
+        .expect("objeto components.schemas");
+    for name in ["HouseholdSettings", "SettingsInput"] {
+        assert!(
+            schemas.contains_key(name),
+            "falta el esquema {name} en components.schemas"
+        );
+    }
+}
