@@ -40,29 +40,29 @@ Eliminar los duplicados heredados de la lista de la compra —líneas **manuales
 ## Tareas TDD
 
 ### Fase RED
-- [ ] T1. Test: dos líneas manuales «Tomate» 2 ud y 3 ud → tras reconciliar, una de 5 ud.
-- [ ] T2. Test: «Harina» «1 kg» + «500 g» → una línea equivalente a 1500 g.
-- [ ] T3. Test: «Tomate» «2 ud» + «500 g» → dos líneas (familias distintas).
-- [ ] T4. Test: «Tomate» manual 2 ud + «Tomate» del plan 4 ud → dos líneas (orígenes distintos).
-- [ ] T5. Test: supervivente = `id` menor y `checked = 1` si alguna estaba marcada.
-- [ ] T6. Test: idempotencia (segunda ejecución no cambia nada) y marca persistente escrita.
-- [ ] T7. Test: orden determinista del listado `GET /api/shopping-list` con nombres de distinta capitalización.
-- [ ] T8. Verificar RED (`cargo test`).
+- [x] T1. Test: dos líneas manuales «Tomate» 2 ud y 3 ud → tras reconciliar, una de 5 ud.
+- [x] T2. Test: «Harina» «1 kg» + «500 g» → una línea equivalente a 1500 g.
+- [x] T3. Test: «Tomate» «2 ud» + «500 g» → dos líneas (familias distintas).
+- [x] T4. Test: «Tomate» manual 2 ud + «Tomate» del plan 4 ud → dos líneas (orígenes distintos).
+- [x] T5. Test: supervivente = `id` menor y `checked = 1` si alguna estaba marcada.
+- [x] T6. Test: idempotencia (segunda ejecución no cambia nada) y marca persistente escrita.
+- [x] T7. Test: orden determinista del listado `GET /api/shopping-list` con nombres de distinta capitalización.
+- [x] T8. Verificar RED (`cargo test`).
 
 ### Fase GREEN
-- [ ] T9. Migración `0012_shopping_backfills.sql`.
-- [ ] T10. `services::shopping_reconcile::reconcile(pool)` (transacción `BEGIN IMMEDIATE`, marcador).
-- [ ] T11. Llamada en `main.rs` tras autotag (log de error sin abortar).
-- [ ] T12. Verificar GREEN (`cargo test`).
+- [x] T9. Migración `0012_shopping_backfills.sql`.
+- [x] T10. `services::shopping_reconcile::reconcile(pool)` (transacción `BEGIN IMMEDIATE`, marcador).
+- [x] T11. Llamada en `main.rs` tras autotag (log de error sin abortar).
+- [x] T12. Verificar GREEN (`cargo test`).
 
 ### Fase REFACTOR
-- [ ] T13. `cargo fmt --check` y `cargo clippy --all-targets -- -D warnings`.
-- [ ] T14. `openspec validate dedupe-shopping-items --strict`.
+- [x] T13. `cargo fmt --check` y `cargo clippy --all-targets -- -D warnings`.
+- [x] T14. `openspec validate dedupe-shopping-items --strict`.
 
 ### Auditoría y cierre
-- [ ] T15. Auditoría con `@rust-reviewer`.
-- [ ] T16. `docs/shopping-list-dedupe.md`.
-- [ ] T17. Archivar el change y consolidar `openspec/specs/shopping-list/spec.md`.
+- [x] T15. Auditoría con `@rust-reviewer`.
+- [x] T16. `docs/shopping-list-dedupe.md`.
+- [x] T17. Archivar el change y consolidar `openspec/specs/shopping-list/spec.md`.
 - [ ] T18. PR a `development` (gitmoji), CI en verde y merge; marcar issue #131.
 
 ## Criterios de aceptación (DoD)
