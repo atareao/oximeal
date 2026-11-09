@@ -86,3 +86,14 @@ pub struct RecipeToShoppingListInput {
     #[serde(default)]
     pub servings: Option<i64>,
 }
+
+/// Cuerpo de `POST /api/shopping-list/from-plan`: volcado aditivo desde el plan.
+///
+/// Ambos extremos del rango son obligatorios y deben cumplir `start_date <= end_date`.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct PlanToShoppingListInput {
+    /// Inicio del rango (`YYYY-MM-DD`).
+    pub start_date: String,
+    /// Fin del rango (`YYYY-MM-DD`).
+    pub end_date: String,
+}

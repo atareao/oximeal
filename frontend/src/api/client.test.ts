@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { message } from 'antd';
 import {
   ApiError,
+  addPlanToShoppingList,
   apiRequest,
   clearCompletedShoppingItems,
   createRecipe,
@@ -416,6 +417,31 @@ describe('mutaciones de recetas', () => {
         method: 'DELETE',
         headers: expect.objectContaining({ 'X-CSRF-Token': 'token-123' }),
       }),
+    );
+  });
+});
+
+describe('mutaciones de la lista de la compra', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+    setCsrfToken(null);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    setCsrfToken(null);
+  });
+
+  it('addPlanToShoppingList hace POST /api/shopping-list/from-plan con el cuerpo', async () => {
+    const fetchMock = vi.mocked(fetch);
+    const input = { start_date: '2026-11-02', end_date: '2026-11-08' };
+    fetchMock.mockResolvedValueOnce(jsonResponse([]));
+
+    await expect(addPlanToShoppingList(input)).resolves.toEqual([]);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/shopping-list/from-plan',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify(input) }),
     );
   });
 });

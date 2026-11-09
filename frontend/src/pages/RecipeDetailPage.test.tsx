@@ -99,6 +99,11 @@ function renderDetail(id = 'r1') {
   return { ...result, rerenderTree: () => result.rerender(tree()) };
 }
 
+/** Cambia a la pestaña Ingredientes: sus acciones solo son accesibles en el panel activo. */
+async function openIngredientsTab(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('tab', { name: 'Ingredientes' }));
+}
+
 function renderWithNavigation() {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -140,14 +145,17 @@ describe('RecipeDetailPage', () => {
   });
 
   it('muestra el detalle completo con ingredientes e instrucciones', async () => {
+    const user = userEvent.setup();
     renderDetail();
 
     expect(await screen.findByRole('heading', { name: 'Tortilla' })).toBeInTheDocument();
-    expect(screen.getByText('Patata')).toBeInTheDocument();
-    expect(screen.getByText(/500\s*g/)).toBeInTheDocument();
     expect(screen.getByText('Pelar y freír.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /editar/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /borrar receta/i })).toBeInTheDocument();
+
+    await openIngredientsTab(user);
+    expect(screen.getByText('Patata')).toBeInTheDocument();
+    expect(screen.getByText(/500\s*g/)).toBeInTheDocument();
   });
 
   it('muestra las etiquetas de la receta', async () => {
@@ -275,6 +283,7 @@ describe('RecipeDetailPage', () => {
 
     expect(await screen.findByText('La receta no existe')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Tortilla' })).toBeInTheDocument();
+    await openIngredientsTab(user);
     expect(screen.getByText('Patata')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /ver la lista/i })).not.toBeInTheDocument();
   });
@@ -289,6 +298,7 @@ describe('RecipeDetailPage', () => {
 
     expect(await screen.findByText('Error interno')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Tortilla' })).toBeInTheDocument();
+    await openIngredientsTab(user);
     expect(screen.getByText('Patata')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /ver la lista/i })).not.toBeInTheDocument();
   });
@@ -350,12 +360,14 @@ describe('RecipeDetailPage', () => {
       recipe({ servings: 8, ingredients: [{ name: 'Patata', amount: 800, unit: 'g' }] }),
     );
     mockedFetchSettings.mockResolvedValue({ default_servings: 2 });
+    const user = userEvent.setup();
     renderDetail();
 
     await screen.findByRole('heading', { name: 'Tortilla' });
     const servings = screen.getByRole('spinbutton', { name: /raciones/i });
     expect(servings).toHaveValue('2');
     expect(screen.getByText(/receta para 8 · cantidades para 2/i)).toBeInTheDocument();
+    await openIngredientsTab(user);
     expect(screen.getByText(/200\s*g/)).toBeInTheDocument();
   });
 
@@ -372,6 +384,7 @@ describe('RecipeDetailPage', () => {
     await user.clear(servings);
     await user.type(servings, '6');
 
+    await openIngredientsTab(user);
     expect(screen.getByText(/600\s*g/)).toBeInTheDocument();
     expect(screen.getByText(/receta para 8 · cantidades para 6/i)).toBeInTheDocument();
   });
@@ -385,6 +398,7 @@ describe('RecipeDetailPage', () => {
     renderDetail();
 
     await screen.findByRole('heading', { name: 'Tortilla' });
+    await openIngredientsTab(user);
     expect(screen.getByText(/200\s*g/)).toBeInTheDocument();
 
     await user.click(screen.getByRole('checkbox', { name: /ver originales/i }));
@@ -403,12 +417,14 @@ describe('RecipeDetailPage', () => {
       }),
     );
     mockedFetchSettings.mockResolvedValue({ default_servings: 2 });
+    const user = userEvent.setup();
     renderDetail();
 
     await screen.findByRole('heading', { name: 'Tortilla' });
     expect(
       screen.getByText(/la importación no trae cantidades; no se escalan/i),
     ).toBeInTheDocument();
+    await openIngredientsTab(user);
     expect(screen.getAllByText(/1\s*ud/)).toHaveLength(2);
 
     // El toggle de originales queda deshabilitado: siempre se muestran las
@@ -441,12 +457,14 @@ describe('RecipeDetailPage', () => {
       recipe({ servings: 8, ingredients: [{ name: 'Patata', amount: 800, unit: 'g' }] }),
     );
     mockedFetchSettings.mockResolvedValue({ default_servings: 4 });
+    const user = userEvent.setup();
     renderDetail();
 
     await screen.findByRole('heading', { name: 'Tortilla' });
     const servings = screen.getByRole('spinbutton', { name: /raciones/i });
     expect(servings).toHaveValue('4');
     expect(screen.getByText(/receta para 8 · cantidades para 4/i)).toBeInTheDocument();
+    await openIngredientsTab(user);
     expect(screen.getByText(/400\s*g/)).toBeInTheDocument();
   });
 
@@ -486,6 +504,7 @@ describe('RecipeDetailPage', () => {
 
     await screen.findByRole('heading', { name: 'Tortilla' });
     // 0 se acota a 1: no se muestra todo a 0.
+    await openIngredientsTab(user);
     expect(screen.getByText(/100\s*g/)).toBeInTheDocument();
     expect(screen.queryByText(/^0\s*g$/)).not.toBeInTheDocument();
 
@@ -504,6 +523,7 @@ describe('RecipeDetailPage', () => {
     renderDetail();
 
     await screen.findByRole('heading', { name: 'Tortilla' });
+    await openIngredientsTab(user);
     expect(screen.getByText(/2000\s*g/)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /añadir a la lista/i }));
@@ -559,8 +579,9 @@ describe('RecipeDetailPage', () => {
       renderDetail();
 
       await screen.findByRole('heading', { name: 'Tortilla' });
-      expect(screen.getByText(/1\s*ud/)).toBeInTheDocument();
 
+      await openIngredientsTab(user);
+      expect(screen.getByText(/1\s*ud/)).toBeInTheDocument();
       await user.click(screen.getByRole('button', { name: /corregir ingredientes/i }));
 
       const amount = screen.getByLabelText('Cantidad del ingrediente 1');
@@ -605,6 +626,7 @@ describe('RecipeDetailPage', () => {
       renderDetail();
 
       await screen.findByRole('heading', { name: 'Tortilla' });
+      await openIngredientsTab(user);
       await user.click(screen.getByRole('button', { name: /corregir ingredientes/i }));
       await user.click(screen.getByRole('button', { name: /añadir ingrediente/i }));
 
@@ -641,6 +663,7 @@ describe('RecipeDetailPage', () => {
       renderDetail();
 
       await screen.findByRole('heading', { name: 'Tortilla' });
+      await openIngredientsTab(user);
       await user.click(screen.getByRole('button', { name: /corregir ingredientes/i }));
       await user.click(screen.getByRole('button', { name: /eliminar ingrediente 2/i }));
       await user.click(screen.getByRole('button', { name: /guardar ingredientes/i }));
@@ -658,6 +681,7 @@ describe('RecipeDetailPage', () => {
       renderDetail();
 
       await screen.findByRole('heading', { name: 'Tortilla' });
+      await openIngredientsTab(user);
       await user.click(screen.getByRole('button', { name: /corregir ingredientes/i }));
       await user.clear(screen.getByLabelText('Nombre del ingrediente 1'));
       await user.click(screen.getByRole('button', { name: /guardar ingredientes/i }));
@@ -673,6 +697,7 @@ describe('RecipeDetailPage', () => {
       renderDetail();
 
       await screen.findByRole('heading', { name: 'Tortilla' });
+      await openIngredientsTab(user);
       await user.click(screen.getByRole('button', { name: /corregir ingredientes/i }));
       const amount = screen.getByLabelText('Cantidad del ingrediente 1');
       fireEvent.change(amount, { target: { value: '-3' } });
@@ -687,6 +712,7 @@ describe('RecipeDetailPage', () => {
       renderDetail();
 
       await screen.findByRole('heading', { name: 'Tortilla' });
+      await openIngredientsTab(userEvent.setup());
       expect(screen.getByRole('button', { name: /corregir ingredientes/i })).toBeDisabled();
     });
 
@@ -695,6 +721,7 @@ describe('RecipeDetailPage', () => {
       const { rerenderTree } = renderDetail();
 
       await screen.findByRole('heading', { name: 'Tortilla' });
+      await openIngredientsTab(user);
       await user.click(screen.getByRole('button', { name: /corregir ingredientes/i }));
       expect(screen.getByRole('button', { name: /añadir ingrediente/i })).toBeEnabled();
 
@@ -706,6 +733,132 @@ describe('RecipeDetailPage', () => {
       expect(screen.getByRole('button', { name: /añadir ingrediente/i })).toBeDisabled();
       expect(screen.getByRole('button', { name: /guardar ingredientes/i })).toBeDisabled();
       expect(screen.getByRole('button', { name: /eliminar ingrediente 1/i })).toBeDisabled();
+    });
+  });
+
+  describe('pestañas Instrucciones / Ingredientes', () => {
+    it('muestra Instrucciones activa por defecto y oculta Ingredientes', async () => {
+      renderDetail();
+
+      await screen.findByRole('heading', { name: 'Tortilla' });
+      const tablist = screen.getByRole('tablist');
+      expect(within(tablist).getAllByRole('tab')).toHaveLength(2);
+      expect(screen.getByRole('tab', { name: 'Instrucciones' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      expect(screen.getByRole('tab', { name: 'Ingredientes' })).toHaveAttribute(
+        'aria-selected',
+        'false',
+      );
+
+      // El panel de Instrucciones es el activo (accesible).
+      expect(screen.getByRole('tabpanel')).toBeInTheDocument();
+      expect(screen.getByText('Pelar y freír.')).toBeInTheDocument();
+      // El panel de Ingredientes no está en el árbol de accesibilidad.
+      expect(
+        screen.queryByRole('button', { name: /corregir ingredientes/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('al cambiar a Ingredientes se ve la lista con nombres y cantidades', async () => {
+      const user = userEvent.setup();
+      renderDetail();
+
+      await screen.findByRole('heading', { name: 'Tortilla' });
+      await user.click(screen.getByRole('tab', { name: 'Ingredientes' }));
+
+      expect(screen.getByRole('tab', { name: 'Ingredientes' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      expect(screen.getByRole('button', { name: /corregir ingredientes/i })).toBeInTheDocument();
+      expect(screen.getByText('Patata')).toBeInTheDocument();
+      expect(screen.getByText(/500\s*g/)).toBeInTheDocument();
+      // El panel de Instrucciones deja de mostrarse.
+      expect(screen.queryByRole('heading', { name: 'Instrucciones' })).not.toBeInTheDocument();
+    });
+
+    it('volver a Instrucciones recupera el texto', async () => {
+      const user = userEvent.setup();
+      renderDetail();
+
+      await screen.findByRole('heading', { name: 'Tortilla' });
+      await user.click(screen.getByRole('tab', { name: 'Ingredientes' }));
+      await user.click(screen.getByRole('tab', { name: 'Instrucciones' }));
+
+      expect(screen.getByRole('tab', { name: 'Instrucciones' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      expect(screen.getByText('Pelar y freír.')).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /corregir ingredientes/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('una receta sin instrucciones muestra un estado vacío', async () => {
+      mockedFetchRecipe.mockResolvedValue(recipe({ instructions: null }));
+      renderDetail();
+
+      await screen.findByRole('heading', { name: 'Tortilla' });
+      expect(screen.getByText('Esta receta no tiene instrucciones.')).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Instrucciones' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+    });
+
+    it('expone roles tablist/tab/tabpanel coherentes', async () => {
+      renderDetail();
+
+      await screen.findByRole('heading', { name: 'Tortilla' });
+      // El panel activo está enlazado con su pestaña vía `aria-labelledby`.
+      const panel = screen.getByRole('tabpanel');
+      const labelledBy = panel.getAttribute('aria-labelledby');
+      expect(labelledBy).toBeTruthy();
+      expect(document.getElementById(labelledBy as string)).toHaveAttribute('role', 'tab');
+    });
+
+    it('conserva el estado de edición al cambiar de pestaña (panel no destructivo)', async () => {
+      const user = userEvent.setup();
+      renderDetail();
+
+      await screen.findByRole('heading', { name: 'Tortilla' });
+      await openIngredientsTab(user);
+      await user.click(screen.getByRole('button', { name: /corregir ingredientes/i }));
+
+      const amount = screen.getByLabelText('Cantidad del ingrediente 1');
+      await user.clear(amount);
+      await user.type(amount, '750');
+
+      await user.click(screen.getByRole('tab', { name: 'Instrucciones' }));
+      await user.click(screen.getByRole('tab', { name: 'Ingredientes' }));
+
+      expect(screen.getByLabelText('Cantidad del ingrediente 1')).toHaveValue(750);
+    });
+
+    it('navega entre pestañas con las flechas del teclado', async () => {
+      const user = userEvent.setup();
+      renderDetail();
+
+      await screen.findByRole('heading', { name: 'Tortilla' });
+      screen.getByRole('tab', { name: /Instrucciones/ }).focus();
+
+      // Las flechas mueven el foco; Enter activa la pestaña enfocada.
+      await user.keyboard('{ArrowRight}');
+      await user.keyboard('{Enter}');
+      expect(screen.getByRole('tab', { name: /Ingredientes/ })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+
+      await user.keyboard('{ArrowLeft}');
+      await user.keyboard('{Enter}');
+      expect(screen.getByRole('tab', { name: /Instrucciones/ })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
     });
   });
 });

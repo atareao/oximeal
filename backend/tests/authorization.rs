@@ -59,6 +59,11 @@ fn protected_requests() -> Vec<(&'static str, &'static str, Option<Value>)> {
             "/api/shopping-list",
             Some(json!({"name": "Leche", "amount": 1.0, "unit": "l"})),
         ),
+        (
+            "POST",
+            "/api/shopping-list/from-plan",
+            Some(json!({"start_date": "2024-01-01", "end_date": "2024-01-07"})),
+        ),
     ]
 }
 
@@ -322,6 +327,26 @@ async fn token_with_write_shopping_permission_allows_creation() {
     .await;
 
     assert_eq!(status, StatusCode::CREATED, "body: {response}");
+}
+
+#[tokio::test]
+async fn token_with_read_shopping_cannot_add_plan_to_list() {
+    let idp = MockIdp::start().await;
+    let state = test_state_oidc(&idp.issuer, USER_GROUPS).await;
+
+    let token = token_for(&idp, READ_SHOPPING);
+    let (status, _headers, body) = call(
+        &state,
+        "POST",
+        "/api/shopping-list/from-plan",
+        Some(&token),
+        None,
+        None,
+        Some(json!({"start_date": "2024-01-01", "end_date": "2024-01-07"})),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::FORBIDDEN, "body: {body}");
 }
 
 #[tokio::test]

@@ -168,6 +168,12 @@ export interface RecipeToShoppingListInput {
   servings?: number;
 }
 
+/** Cuerpo de `POST /api/shopping-list/from-plan` (espejo de `PlanToShoppingListInput`). */
+export interface PlanToShoppingListInput {
+  start_date: string;
+  end_date: string;
+}
+
 /** Preferencia de comensales habituales (`GET/PUT /api/settings`). */
 export interface HouseholdSettings {
   default_servings: number;
