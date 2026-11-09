@@ -3,6 +3,7 @@
 mod common;
 
 use axum::http::StatusCode;
+use oximeal_backend::domain::normalize::normalize_name;
 use oximeal_backend::error::AppError;
 use serde_json::{Value, json};
 
@@ -1636,4 +1637,58 @@ async fn consolidate_preserves_recipe_lines() {
         Some(recipe.as_str()),
         "la línea de receta conserva su procedencia"
     );
+}
+
+/// El listado se ordena de forma determinista por nombre (sin distinguir
+/// mayúsculas) y, a igualdad de nombre, por `id` ascendente.
+#[tokio::test]
+async fn list_is_ordered_deterministically_by_name_and_id() {
+    let state = common::test_state().await;
+
+    // Dos ítems manuales con el mismo nombre y distinta capitalización.
+    for name in ["tomate", "Tomate"] {
+        let (status, _) = common::request(
+            state.clone(),
+            "POST",
+            "/api/shopping-list",
+            Some(json!({"name": name, "amount": 1.0, "unit": "ud"})),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "crear «{name}»");
+    }
+
+    // Recoge los ids de los ítems cuyo nombre normalizado es «tomate».
+    let collect_ids = |groups: &Value| -> Vec<String> {
+        let mut ids = Vec::new();
+        if let Some(array) = groups.as_array() {
+            for group in array {
+                if let Some(items) = group["items"].as_array() {
+                    for item in items {
+                        if item["name"]
+                            .as_str()
+                            .is_some_and(|name| normalize_name(name) == "tomate")
+                            && let Some(id) = item["id"].as_str()
+                        {
+                            ids.push(id.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        ids
+    };
+
+    let (status, groups) = common::request(state.clone(), "GET", "/api/shopping-list", None).await;
+    assert_eq!(status, StatusCode::OK);
+    let first = collect_ids(&groups);
+    assert_eq!(first.len(), 2, "deben aparecer los dos tomates");
+
+    let mut sorted = first.clone();
+    sorted.sort();
+    assert_eq!(first, sorted, "los ids deben ir en orden ascendente");
+
+    // Repetir el GET debe devolver el mismo orden.
+    let (status, groups) = common::request(state, "GET", "/api/shopping-list", None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(collect_ids(&groups), first, "el orden debe ser estable");
 }
