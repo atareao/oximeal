@@ -129,6 +129,38 @@ async fn openapi_json_includes_from_recipe_endpoint_and_schema() {
     );
 }
 
+/// El documento OpenAPI expone el volcado desde el plan y su esquema.
+#[tokio::test]
+async fn openapi_json_includes_from_plan_endpoint_and_schema() {
+    let state = common::test_state().await;
+
+    let (status, body) = common::request(state, "GET", "/api/openapi.json", None).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let paths = body["paths"].as_object().expect("objeto paths");
+    let from_plan = paths["/api/shopping-list/from-plan"]
+        .as_object()
+        .expect("/api/shopping-list/from-plan debe ser un objeto");
+    let post = from_plan
+        .get("post")
+        .expect("/api/shopping-list/from-plan debe exponer post");
+    let responses = post["responses"].as_object().expect("objeto responses");
+    for code in ["200", "400"] {
+        assert!(
+            responses.contains_key(code),
+            "falta la respuesta {code} en from-plan"
+        );
+    }
+
+    let schemas = body["components"]["schemas"]
+        .as_object()
+        .expect("objeto components.schemas");
+    assert!(
+        schemas.contains_key("PlanToShoppingListInput"),
+        "falta el esquema PlanToShoppingListInput en components.schemas"
+    );
+}
+
 #[tokio::test]
 async fn swagger_ui_is_served() {
     let state = common::test_state().await;

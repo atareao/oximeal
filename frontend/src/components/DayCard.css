@@ -21,6 +21,12 @@
   gap: 8px;
 }
 
+.day-card__heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .day-card__day {
   font-weight: 700;
   font-size: 15px;
@@ -72,6 +78,17 @@
 
 .day-card__meal-name {
   font-weight: 500;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.day-card__meal-name:hover {
+  color: var(--accent, #2f855a);
+}
+
+.day-card__add-to-list {
+  min-height: 48px;
 }
 
 .day-card__meal-servings {

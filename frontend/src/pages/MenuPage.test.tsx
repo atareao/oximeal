@@ -9,8 +9,10 @@ import type {
   MealPlanInput,
   RecipeListResponse,
   RecipeSummary,
+  ShoppingListGroup,
 } from '../api/types';
 import {
+  addPlanToShoppingList,
   createMealPlanEntry,
   deleteMealPlanEntry,
   fetchMealPlan,
@@ -34,6 +36,7 @@ vi.mock('../api/client', async (importOriginal) => {
     createMealPlanEntry: vi.fn(),
     deleteMealPlanEntry: vi.fn(),
     patchMealPlanEntry: vi.fn(),
+    addPlanToShoppingList: vi.fn(),
   };
 });
 
@@ -58,6 +61,7 @@ const mockedFetchRecipes = vi.mocked(fetchRecipes);
 const mockedCreateMealPlan = vi.mocked(createMealPlanEntry);
 const mockedDeleteMealPlan = vi.mocked(deleteMealPlanEntry);
 const mockedPatchMealPlan = vi.mocked(patchMealPlanEntry);
+const mockedAddPlanToShoppingList = vi.mocked(addPlanToShoppingList);
 const mockedUseOnline = vi.mocked(useOnline);
 
 const PAGE_SIZE = 20;
@@ -194,6 +198,7 @@ describe('MenuPage', () => {
       entries[index] = updated;
       return Promise.resolve(updated);
     });
+    mockedAddPlanToShoppingList.mockResolvedValue([]);
   });
 
   it('renderiza siete tarjetas de lunes a domingo', async () => {
@@ -485,6 +490,26 @@ describe('MenuPage', () => {
       'http://valet.test',
     );
     expect(screen.getByRole('link', { name: /lista de la compra/i })).toBeInTheDocument();
+  });
+
+  it('no muestra el botón de añadir a la lista cuando no hay entradas', async () => {
+    entries = [];
+    renderMenu();
+
+    expect(await screen.findByText(/no hay comidas planificadas/i)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Añadir la semana a la lista' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('no muestra el botón de añadir a la lista en la vista diaria sin entradas', async () => {
+    entries = [];
+    renderMenuAt('/?view=day&date=2026-11-02');
+
+    await screen.findByTestId('daily-view');
+    expect(
+      screen.queryByRole('button', { name: 'Añadir el día a la lista' }),
+    ).not.toBeInTheDocument();
   });
 
   it('mantiene la acción de Valet disponible con la vista con datos', async () => {
@@ -807,5 +832,191 @@ describe('MenuPage', () => {
     expect(
       (segmented as Node).compareDocumentPosition(range as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+
+  it('enlaza cada receta de la vista semanal a su detalle', async () => {
+    entries = [
+      view({
+        id: 'e1',
+        date: '2026-11-02',
+        recipe: summary({ id: 'r-lentejas', name: 'Lentejas' }),
+      }),
+      view({
+        id: 'e2',
+        date: '2026-11-03',
+        meal_type: 'dinner',
+        recipe: summary({ id: 'r-tortilla', name: 'Tortilla' }),
+      }),
+    ];
+    renderMenu();
+
+    await screen.findByTestId('weekly-calendar');
+    expect(
+      within(cardForDay(0)).getByRole('link', { name: 'Lentejas' }),
+    ).toHaveAttribute('href', '/recipes/r-lentejas');
+    expect(
+      within(cardForDay(1)).getByRole('link', { name: 'Tortilla' }),
+    ).toHaveAttribute('href', '/recipes/r-tortilla');
+  });
+
+  it('enlaza la receta de la vista diaria a su detalle', async () => {
+    entries = [
+      view({
+        id: 'e1',
+        date: '2026-11-02',
+        recipe: summary({ id: 'r-lentejas', name: 'Lentejas' }),
+      }),
+    ];
+    renderMenuAt('/?view=day&date=2026-11-02');
+
+    const card = await screen.findByTestId('day-card');
+    expect(within(card).getByRole('link', { name: 'Lentejas' })).toHaveAttribute(
+      'href',
+      '/recipes/r-lentejas',
+    );
+  });
+
+  it('añade el día visible a la lista desde la vista diaria', async () => {
+    entries = [view({ id: 'e1', date: '2026-11-02' })];
+    const user = userEvent.setup();
+    renderMenuAt('/?view=day&date=2026-11-02');
+
+    await screen.findByTestId('daily-view');
+    await user.click(screen.getByRole('button', { name: 'Añadir el día a la lista' }));
+
+    await waitFor(() =>
+      expect(mockedAddPlanToShoppingList).toHaveBeenCalledWith({
+        start_date: '2026-11-02',
+        end_date: '2026-11-02',
+      }),
+    );
+  });
+
+  it('no marca la cabecera como loading cuando el pending viene de la tarjeta del día', async () => {
+    let resolveAdd: (value: ShoppingListGroup[]) => void = () => undefined;
+    mockedAddPlanToShoppingList.mockImplementation(
+      () =>
+        new Promise<ShoppingListGroup[]>((resolve) => {
+          resolveAdd = resolve;
+        }),
+    );
+    entries = [view({ id: 'e1', date: '2026-11-02' })];
+    const user = userEvent.setup();
+    renderMenuAt('/?view=day&date=2026-11-02');
+
+    const card = await screen.findByTestId('day-card');
+    const dayButton = within(card).getByRole('button', {
+      name: 'Añadir los ingredientes de Lun 2 a la lista',
+    });
+    await user.click(dayButton);
+
+    await waitFor(() => expect(mockedAddPlanToShoppingList).toHaveBeenCalledTimes(1));
+    const headerButton = screen.getByRole('button', { name: 'Añadir el día a la lista' });
+    expect(headerButton).not.toHaveClass('ant-btn-loading');
+    expect(dayButton).toHaveClass('ant-btn-loading');
+
+    resolveAdd([]);
+    await waitFor(() => expect(dayButton).not.toHaveClass('ant-btn-loading'));
+  });
+
+  it('añade la semana completa a la lista desde la cabecera', async () => {
+    entries = [view({ id: 'e1', date: '2026-11-02' })];
+    const user = userEvent.setup();
+    renderMenu();
+
+    await screen.findByTestId('weekly-calendar');
+    await user.click(screen.getByRole('button', { name: 'Añadir la semana a la lista' }));
+
+    await waitFor(() =>
+      expect(mockedAddPlanToShoppingList).toHaveBeenCalledWith({
+        start_date: '2026-11-02',
+        end_date: '2026-11-08',
+      }),
+    );
+  });
+
+  it('añade solo un día concreto desde la tarjeta de la semana', async () => {
+    entries = [view({ id: 'e1', date: '2026-11-03' })];
+    const user = userEvent.setup();
+    renderMenu();
+
+    await screen.findByTestId('weekly-calendar');
+    const tuesday = cardForDay(1);
+    await user.click(
+      within(tuesday).getByRole('button', { name: 'Añadir los ingredientes de Mar 3 a la lista' }),
+    );
+
+    await waitFor(() =>
+      expect(mockedAddPlanToShoppingList).toHaveBeenCalledWith({
+        start_date: '2026-11-03',
+        end_date: '2026-11-03',
+      }),
+    );
+  });
+
+  it('sin conexión deshabilita añadir a la lista', async () => {
+    mockedUseOnline.mockReturnValue(false);
+    entries = [view({ id: 'e1', date: '2026-11-02' })];
+    renderMenu();
+
+    await screen.findByTestId('weekly-calendar');
+    expect(screen.getByRole('button', { name: 'Añadir la semana a la lista' })).toBeDisabled();
+    expect(
+      within(cardForDay(0)).getByRole('button', {
+        name: 'Añadir los ingredientes de Lun 2 a la lista',
+      }),
+    ).toBeDisabled();
+    expect(mockedAddPlanToShoppingList).not.toHaveBeenCalled();
+  });
+
+  it('muestra un mensaje de éxito al añadir a la lista', async () => {
+    entries = [view({ id: 'e1', date: '2026-11-02' })];
+    const user = userEvent.setup();
+    renderMenu();
+
+    await screen.findByTestId('weekly-calendar');
+    await user.click(screen.getByRole('button', { name: 'Añadir la semana a la lista' }));
+
+    expect(await screen.findByText(/ingredientes añadidos a la lista/i)).toBeInTheDocument();
+  });
+
+  it('muestra un mensaje de error si falla añadir a la lista', async () => {
+    mockedAddPlanToShoppingList.mockRejectedValueOnce(new Error('boom'));
+    entries = [view({ id: 'e1', date: '2026-11-02' })];
+    const user = userEvent.setup();
+    renderMenu();
+
+    await screen.findByTestId('weekly-calendar');
+    await user.click(screen.getByRole('button', { name: 'Añadir la semana a la lista' }));
+
+    expect(await screen.findByText('boom')).toBeInTheDocument();
+  });
+
+  it('muestra el estado de carga mientras añade a la lista', async () => {
+    let resolveAdd: (value: ShoppingListGroup[]) => void = () => undefined;
+    mockedAddPlanToShoppingList.mockImplementation(
+      () =>
+        new Promise<ShoppingListGroup[]>((resolve) => {
+          resolveAdd = resolve;
+        }),
+    );
+    entries = [view({ id: 'e1', date: '2026-11-02' })];
+    const user = userEvent.setup();
+    renderMenu();
+
+    await screen.findByTestId('weekly-calendar');
+    const button = screen.getByRole('button', { name: 'Añadir la semana a la lista' });
+    await user.click(button);
+
+    await waitFor(() => expect(mockedAddPlanToShoppingList).toHaveBeenCalledTimes(1));
+    expect(button).toHaveClass('ant-btn-loading');
+    expect(
+      within(cardForDay(0)).getByRole('button', {
+        name: 'Añadir los ingredientes de Lun 2 a la lista',
+      }),
+    ).toBeDisabled();
+
+    resolveAdd([]);
+    await waitFor(() => expect(button).not.toHaveClass('ant-btn-loading'));
   });
 });

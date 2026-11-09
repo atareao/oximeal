@@ -5,6 +5,7 @@ import type {
   MealPlanEntryView,
   MealPlanInput,
   MealPlanPatchInput,
+  PlanToShoppingListInput,
   Recipe,
   RecipeImportInput,
   RecipeImportResult,
@@ -376,6 +377,21 @@ export function addRecipeToShoppingList(
   input: RecipeToShoppingListInput,
 ): Promise<ShoppingListGroup[]> {
   return apiRequest<ShoppingListGroup[]>('/shopping-list/from-recipe', {
+    method: 'POST',
+    body: input,
+  });
+}
+
+/**
+ * `POST /api/shopping-list/from-plan` — añade los ingredientes del plan entre
+ * `start_date` y `end_date` a la lista, fusionándolos con los ítems existentes.
+ *
+ * Devuelve la lista agrupada ya fusionada.
+ */
+export function addPlanToShoppingList(
+  input: PlanToShoppingListInput,
+): Promise<ShoppingListGroup[]> {
+  return apiRequest<ShoppingListGroup[]>('/shopping-list/from-plan', {
     method: 'POST',
     body: input,
   });

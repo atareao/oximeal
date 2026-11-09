@@ -1,5 +1,6 @@
 import { useId } from 'react';
 import { Button, Popconfirm } from 'antd';
+import { Link } from 'react-router-dom';
 import type { MealPlanEntryView, MealType } from '../api/types';
 import { formatDayLabel, isToday } from '../lib/dates';
 import { mealTypeLabel, PLANNED_MEAL_TYPES } from '../lib/mealPlan';
@@ -13,6 +14,12 @@ export interface DayCardProps {
   onAdd?: (date: string, mealType: MealType) => void;
   onRemove?: (entry: MealPlanEntryView) => void;
   onEditServings?: (entry: MealPlanEntryView) => void;
+  /** Añade los ingredientes de este día a la lista de la compra. */
+  onAddToShoppingList?: (date: string) => void;
+  /** Deshabilita la acción mientras hay una petición en curso. */
+  addingToShoppingList?: boolean;
+  /** Fecha de la petición en curso, para mostrar el spinner en su tarjeta. */
+  addingToShoppingListDate?: string | null;
   /** Id de la entrada cuya baja está en curso, para el estado de carga. */
   removingId?: string | null;
   /** Franjas a mostrar, en orden. Por defecto, comida y cena. */
@@ -53,7 +60,9 @@ function MealSlot({
             const isSalad = entry.role === 'salad' || entry.recipe.category === 'salad';
             return (
               <li key={entry.id} className="day-card__meal">
-                <span className="day-card__meal-name">{entry.recipe.name}</span>
+                <Link to={`/recipes/${encodeURIComponent(entry.recipe.id)}`} className="day-card__meal-name">
+                  {entry.recipe.name}
+                </Link>
                 {isSalad && <span className="day-card__salad">🥗 Ensalada</span>}
                 <span className="day-card__meal-servings">{entry.servings} rac.</span>
                 <span className="day-card__meal-actions">
@@ -114,6 +123,9 @@ export function DayCard({
   onAdd,
   onRemove,
   onEditServings,
+  onAddToShoppingList,
+  addingToShoppingList = false,
+  addingToShoppingListDate = null,
   removingId,
   slots = DEFAULT_SLOTS,
 }: DayCardProps) {
@@ -127,10 +139,24 @@ export function DayCard({
       aria-labelledby={headingId}
     >
       <header className="day-card__header">
-        <span id={headingId} className="day-card__day">
-          {formatDayLabel(date)}
-        </span>
-        {today && <span className="day-card__today-badge">Hoy</span>}
+        <div className="day-card__heading">
+          <span id={headingId} className="day-card__day">
+            {formatDayLabel(date)}
+          </span>
+          {today && <span className="day-card__today-badge">Hoy</span>}
+        </div>
+        {onAddToShoppingList && (
+          <Button
+            size="small"
+            className="day-card__add-to-list"
+            disabled={!online || addingToShoppingList}
+            loading={addingToShoppingListDate === date}
+            aria-label={`Añadir los ingredientes de ${formatDayLabel(date)} a la lista`}
+            onClick={() => onAddToShoppingList(date)}
+          >
+            Añadir a la lista
+          </Button>
+        )}
       </header>
       {slots.map((slot) => (
         <MealSlot

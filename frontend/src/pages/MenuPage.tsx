@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Alert, Button, Empty, Result, Segmented, Skeleton, Typography } from 'antd';
+import { Alert, App as AntdApp, Button, Empty, Result, Segmented, Skeleton, Typography } from 'antd';
 import {
   useAddMealPlanEntry,
+  useAddPlanToShoppingList,
   useMealPlan,
   useRemoveMealPlanEntry,
   useUpdateMealPlanEntry,
@@ -134,6 +135,7 @@ export function MenuPage() {
   const rangeEnd = view === 'day' ? referenceDate : view === 'week' ? weekEnd : monthEnd;
 
   const { data, isLoading, isError, error, refetch } = useMealPlan(rangeStart, rangeEnd);
+  const hasEntries = (data?.length ?? 0) > 0;
 
   // Al recuperar la conexión, refresca el plan desde el servidor
   // (scenario «Recuperación de la conexión» de offline-writes).
@@ -148,12 +150,17 @@ export function MenuPage() {
   const addEntry = useAddMealPlanEntry();
   const removeEntry = useRemoveMealPlanEntry();
   const updateEntry = useUpdateMealPlanEntry();
+  const addToShoppingList = useAddPlanToShoppingList();
+  const { message } = AntdApp.useApp();
 
   const [addSlot, setAddSlot] = useState<AddSlot | null>(null);
   const [editEntry, setEditEntry] = useState<MealPlanEntryView | null>(null);
   const [addError, setAddError] = useState<string | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
+  // Origen de la petición a la lista: permite distinguir el spinner de la
+  // cabecera del de la tarjeta del día en la vista diaria.
+  const [shoppingListSource, setShoppingListSource] = useState<'header' | 'day' | null>(null);
 
   const errorMessage =
     error instanceof Error ? error.message : 'Ha ocurrido un error al contactar con el servidor.';
@@ -240,6 +247,58 @@ export function MenuPage() {
     );
   };
 
+  const addRangeToShoppingList = (
+    startDate: string,
+    endDate: string,
+    source: 'header' | 'day',
+  ) => {
+    setShoppingListSource(source);
+    addToShoppingList.mutate(
+      { start_date: startDate, end_date: endDate },
+      {
+        onSuccess: () => {
+          setShoppingListSource(null);
+          message.success('Ingredientes añadidos a la lista');
+        },
+        onError: (mutationError: unknown) => {
+          setShoppingListSource(null);
+          message.error(
+            describeActionError(
+              mutationError,
+              'No se pudieron añadir los ingredientes a la lista',
+            ),
+          );
+        },
+      },
+    );
+  };
+
+  const handleAddToShoppingList = () => {
+    if (view === 'week') {
+      addRangeToShoppingList(weekStart, weekEnd, 'header');
+    } else if (view === 'day') {
+      addRangeToShoppingList(referenceDate, referenceDate, 'header');
+    }
+  };
+
+  const handleAddDayToShoppingList = (date: string) => {
+    addRangeToShoppingList(date, date, 'day');
+  };
+
+  const shoppingListPending = addToShoppingList.isPending;
+  const shoppingListPendingDate =
+    shoppingListPending &&
+    shoppingListSource === 'day' &&
+    addToShoppingList.variables?.start_date === addToShoppingList.variables?.end_date
+      ? (addToShoppingList.variables?.start_date ?? null)
+      : null;
+  const headerAddPending =
+    shoppingListPending &&
+    shoppingListSource === 'header' &&
+    addToShoppingList.variables?.start_date ===
+      (view === 'week' ? weekStart : referenceDate) &&
+    addToShoppingList.variables?.end_date === (view === 'week' ? weekEnd : referenceDate);
+
   const rangeLabel =
     view === 'week'
       ? formatWeekRange(weekStart, weekEnd)
@@ -262,6 +321,17 @@ export function MenuPage() {
         <Paragraph className="menu-page__range" type="secondary">
           {rangeLabel}
         </Paragraph>
+        {(view === 'week' || view === 'day') && hasEntries && (
+          <Button
+            className="menu-page__add-to-list"
+            aria-label={view === 'week' ? 'Añadir la semana a la lista' : 'Añadir el día a la lista'}
+            disabled={!online}
+            loading={headerAddPending}
+            onClick={handleAddToShoppingList}
+          >
+            Añadir a la lista
+          </Button>
+        )}
       </div>
       <div className="menu-page__nav">
         {view === 'week' && (
@@ -385,6 +455,9 @@ export function MenuPage() {
             onAdd={(date, mealType) => openAdd(date, mealType)}
             onRemove={handleRemove}
             onEditServings={openEditServings}
+            onAddToShoppingList={handleAddDayToShoppingList}
+            addingToShoppingList={shoppingListPending}
+            addingToShoppingListDate={shoppingListPendingDate}
             removingId={removeEntry.isPending ? removeEntry.variables : null}
           />
         ))}
@@ -397,6 +470,9 @@ export function MenuPage() {
           onAdd={(date, mealType) => openAdd(date, mealType)}
           onRemove={handleRemove}
           onEditServings={openEditServings}
+          onAddToShoppingList={handleAddDayToShoppingList}
+          addingToShoppingList={shoppingListPending}
+          addingToShoppingListDate={shoppingListPendingDate}
           removingId={removeEntry.isPending ? removeEntry.variables : null}
           onPrevious={() => goToDay(addDays(referenceDate, -1))}
           onNext={() => goToDay(addDays(referenceDate, 1))}

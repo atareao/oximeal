@@ -9,6 +9,9 @@ export interface DailyViewProps {
   onAdd?: (date: string, mealType: MealType) => void;
   onRemove?: (entry: MealPlanEntryView) => void;
   onEditServings?: (entry: MealPlanEntryView) => void;
+  onAddToShoppingList?: (date: string) => void;
+  addingToShoppingList?: boolean;
+  addingToShoppingListDate?: string | null;
   removingId?: string | null;
   onPrevious: () => void;
   onNext: () => void;
@@ -23,6 +26,9 @@ export function DailyView({
   onAdd,
   onRemove,
   onEditServings,
+  onAddToShoppingList,
+  addingToShoppingList,
+  addingToShoppingListDate,
   removingId,
   onPrevious,
   onNext,
@@ -48,6 +54,9 @@ export function DailyView({
         onAdd={onAdd}
         onRemove={onRemove}
         onEditServings={onEditServings}
+        onAddToShoppingList={onAddToShoppingList}
+        addingToShoppingList={addingToShoppingList}
+        addingToShoppingListDate={addingToShoppingListDate}
         removingId={removingId}
       />
     </div>

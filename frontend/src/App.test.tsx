@@ -35,6 +35,7 @@ vi.mock('./api/hooks', () => ({
   useAddMealPlanEntry: vi.fn(() => ({ mutate: vi.fn(), isPending: false, variables: null })),
   useRemoveMealPlanEntry: vi.fn(() => ({ mutate: vi.fn(), isPending: false, variables: null })),
   useUpdateMealPlanEntry: vi.fn(() => ({ mutate: vi.fn(), isPending: false, variables: null })),
+  useAddPlanToShoppingList: vi.fn(() => ({ mutate: vi.fn(), isPending: false, variables: null })),
 }));
 
 const mockedFetchAuthMe = vi.mocked(fetchAuthMe);
