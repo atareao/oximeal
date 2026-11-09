@@ -133,11 +133,12 @@ pub async fn patch_item(
 /// `POST /api/shopping-list/consolidate` — regenera la lista desde el plan.
 ///
 /// **Semántica**: la lista de la compra es una **única lista semanal global**.
-/// Este endpoint recalcula las líneas derivadas del plan (`source_plan_id` no
-/// nulo) a partir de las entradas del plan comprendidas en el rango —o en la
-/// semana ISO actual si no se indica— y las reemplaza *en su totalidad*,
+/// Este endpoint **fija las fuentes al rango**: descarta las fuentes del plan
+/// registradas antes (p. ej. por un `from-plan`), registra las entradas del rango
+/// —o de la semana ISO actual si no se indica— en `shopping_plan_sources` y
+/// reconstruye *en su totalidad* las líneas del plan (`source_plan_id` no nulo),
 /// conservando los ítems manuales. El rango **no** acota el borrado: solo decide
-/// qué entradas se leen para consolidar.
+/// qué entradas quedan como fuentes.
 #[utoipa::path(
     post,
     path = "/api/shopping-list/consolidate",
@@ -201,13 +202,15 @@ pub async fn from_recipe(
     Ok(Json(groups))
 }
 
-/// `POST /api/shopping-list/from-plan` — vuelca aditivamente los ingredientes del plan.
+/// `POST /api/shopping-list/from-plan` — vuelca el plan a la lista (declarativo).
 ///
-/// **Semántica**: a diferencia de `consolidate`, este volcado es **aditivo**:
-/// fusiona los ingredientes de las entradas del plan en el rango con los ítems
-/// existentes por nombre normalizado y unidad canónica. Si coincide, suma la
-/// cantidad; si no, inserta un ítem nuevo. Los ítems manuales, los volcados de
-/// receta y los del plan se conservan con sus `checked`/`client_id`.
+/// **Semántica**: idempotente y **no aditiva**. Registra las entradas del plan
+/// del rango en `shopping_plan_sources` (`INSERT OR IGNORE`: la **unión**) y
+/// reconstruye *todas* las líneas del plan (`source_plan_id` no nulo)
+/// reconsolidando esa unión. Repetir el mismo rango no duplica; añadir otro rango
+/// amplía la unión; editar el plan reescala al reconstruir. Las líneas del plan
+/// no se fusionan con los ítems manuales ni con los volcados de receta, que se
+/// conservan intactos.
 #[utoipa::path(
     post,
     path = "/api/shopping-list/from-plan",

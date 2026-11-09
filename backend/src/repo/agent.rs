@@ -49,10 +49,13 @@ pub async fn recent_recipes(pool: &SqlitePool, days: u32) -> AppResult<Vec<Recen
 /// regenera los ítems derivados del plan conservando los ítems manuales.
 ///
 /// **Semántica de reconstrucción**: la lista de la compra es una **única lista
-/// semanal global**; `shopping_list::replace_consolidated` borra *todos* los
-/// ítems con `source_plan_id` no nulo (no solo los del rango) y los regenera a
-/// partir de las entradas del plan leídas entre `start` y `end`. Devuelve el
-/// número de entradas creadas y la lista agrupada resultante.
+/// semanal global**; tras reescribir las entradas, se registran las del rango
+/// cubierto como fuentes (`INSERT OR IGNORE`, la **unión** de
+/// `shopping_plan_sources`) y se reconstruyen *todas* las líneas con
+/// `source_plan_id` no nulo a partir de esa unión. Las fuentes de otras fechas se
+/// conservan; las entradas borradas/reescritas de este rango se reflejan al
+/// reconstruir. Devuelve el número de entradas creadas y la lista agrupada
+/// resultante.
 pub async fn set_weekly_plan(
     pool: &SqlitePool,
     entries: &[StructuredPlanEntry],
@@ -120,11 +123,13 @@ pub async fn set_weekly_plan(
         .await?;
     }
 
-    // Reconstruye la compra en el rango cubierto, dentro de la misma transacción.
+    // Registra las entradas del rango como fuentes (unión) y reconstruye la
+    // compra a partir de la unión de fuentes, en la misma transacción.
     let start = dates.first().copied().unwrap_or_default();
     let end = dates.last().copied().unwrap_or_default();
-    let drafts = shopping_list::collect_drafts(&mut tx, start, end).await?;
-    shopping_list::replace_consolidated(&mut tx, &drafts).await?;
+    shopping_list::register_plan_sources(&mut tx, start, end).await?;
+    let drafts = shopping_list::collect_plan_drafts(&mut tx).await?;
+    shopping_list::rebuild_plan_lines(&mut tx, &drafts).await?;
 
     tx.commit().await?;
 
