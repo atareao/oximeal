@@ -13,6 +13,12 @@
 //! coherente con `domain::consolidate` y con `agent::add_shopping_items`. La
 //! reconciliación no se puede expresar en SQL porque depende de la
 //! canonicalización de unidades (familia + `display_unit`).
+//!
+//! La cantidad resultante replica la semántica de `domain::consolidate`
+//! (`SubGroup::amount`): `ToTaste` siempre vale `0.0`; `Unknown` suma el total
+//! canónico si alguna fila aporta una cantidad distinta de cero y, en caso
+//! contrario, cuenta el número de ocurrencias del grupo; el resto de familias
+//! expresa `total_base / factor` en la unidad de presentación del supervivente.
 
 use std::collections::HashMap;
 
@@ -48,15 +54,16 @@ struct Row {
 ///    ordenadas por `id` ascendente.
 /// 2. Las agrupa por [`MergeKey`].
 /// 3. Por cada grupo con más de una fila: la de `id` menor sobrevive (conserva
-///    su `name` y su `category`), se le fija la cantidad total canonicalizada
-///    expresada en su unidad, se hereda `checked = 1` si alguna fila lo estaba y
+///    su `name`, su `category` y su `client_id`), se le fija la cantidad total
+///    canonicalizada expresada en su unidad de presentación (con la misma
+///    semántica que `domain::consolidate`, ver el doc-comment del módulo), se
+///    hereda `checked = 1` si alguna fila lo estaba, se refresca `updated_at` y
 ///    se eliminan las demás.
 /// 4. Escribe el marcador y confirma.
 ///
-/// Las familias no aditivas (`ToTaste`) resultan en `0.0`. Los grupos se iteran
-/// en orden determinista (por el `id` del supervivente) para que los updates
-/// sean reproducibles. Los orígenes distintos (manual / receta / plan) **nunca**
-/// se fusionan entre sí.
+/// Los grupos se iteran en orden determinista (por el `id` del supervivente)
+/// para que los updates sean reproducibles. Los orígenes distintos (manual /
+/// receta / plan) **nunca** se fusionan entre sí.
 pub async fn reconcile(pool: &SqlitePool) -> AppResult<()> {
     let already_applied: Option<String> =
         sqlx::query_scalar("SELECT name FROM shopping_backfills WHERE name = ?")
@@ -81,7 +88,7 @@ pub async fn reconcile(pool: &SqlitePool) -> AppResult<()> {
 
     let mut groups: HashMap<MergeKey, Vec<Row>> = HashMap::new();
     for (id, name, amount, unit, checked) in rows {
-        let key = merge_key(&name, amount, &unit);
+        let key = merge_key(&name, &unit);
         groups.entry(key).or_default().push(Row {
             id,
             amount,
@@ -110,20 +117,41 @@ pub async fn reconcile(pool: &SqlitePool) -> AppResult<()> {
         // supervivente. `canonicalize(1.0, unit)` es la equivalencia de una
         // unidad de presentación en unidades base.
         let factor = canonicalize(1.0, &survivor.unit).amount;
-        let amount = if canonical.family == UnitFamily::ToTaste || factor <= 0.0 {
-            0.0
-        } else {
-            round2(total_base / factor)
+        let amount = match canonical.family {
+            // No aditivo: "al gusto" no acumula cantidad.
+            UnitFamily::ToTaste => 0.0,
+            // Unidad desconocida: si alguna fila aporta una cantidad distinta de
+            // cero se suma el total canónico; si ninguna lo hace, se cuentan las
+            // ocurrencias (alineado con `domain::consolidate`).
+            UnitFamily::Unknown => {
+                let significant = group
+                    .iter()
+                    .any(|row| canonicalize(row.amount, &row.unit).amount != 0.0);
+                if significant {
+                    total_base
+                } else {
+                    group.len() as f64
+                }
+            }
+            // Familias aditivas conocidas: `factor` siempre es positivo
+            // (`canonicalize(1.0, ..)` de una unidad conocida). El guard es
+            // defensivo: si fuera `<= 0.0` no se puede reexpresar la cantidad y
+            // se conserva el total en unidades base en lugar de perder datos.
+            _ if factor <= 0.0 => total_base,
+            _ => round2(total_base / factor),
         };
 
         let checked = i64::from(group.iter().any(|row| row.checked != 0));
 
-        sqlx::query("UPDATE shopping_list_items SET amount = ?, checked = ? WHERE id = ?")
-            .bind(amount)
-            .bind(checked)
-            .bind(&survivor.id)
-            .execute(&mut *tx)
-            .await?;
+        sqlx::query(
+            "UPDATE shopping_list_items \
+             SET amount = ?, checked = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        )
+        .bind(amount)
+        .bind(checked)
+        .bind(&survivor.id)
+        .execute(&mut *tx)
+        .await?;
 
         for row in &group[1..] {
             sqlx::query("DELETE FROM shopping_list_items WHERE id = ?")
@@ -144,8 +172,11 @@ pub async fn reconcile(pool: &SqlitePool) -> AppResult<()> {
 }
 
 /// Construye la clave de fusión de una fila manual.
-fn merge_key(name: &str, amount: f64, unit: &str) -> MergeKey {
-    let canonical = canonicalize(amount, unit);
+///
+/// `family` y `display_unit` son independientes del `amount`, por lo que se
+/// canonicaliza con `0.0` para obtener la partición del grupo.
+fn merge_key(name: &str, unit: &str) -> MergeKey {
+    let canonical = canonicalize(0.0, unit);
     (
         normalize_name(name),
         canonical.family,

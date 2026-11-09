@@ -11,6 +11,9 @@ use oximeal_backend::domain::units::canonicalize;
 use oximeal_backend::state::AppState;
 
 /// Siembra una fila en `shopping_list_items` con id y orígenes controlados.
+///
+/// `client_id` es opcional (`None` por defecto en la práctica: los llamantes
+/// existentes pasan `None` explícitamente).
 #[allow(clippy::too_many_arguments)]
 async fn seed_item(
     state: &AppState,
@@ -22,6 +25,7 @@ async fn seed_item(
     checked: i64,
     source_plan_id: Option<&str>,
     source_recipe_id: Option<&str>,
+    client_id: Option<&str>,
 ) {
     sqlx::query(
         "INSERT INTO shopping_list_items \
@@ -36,7 +40,7 @@ async fn seed_item(
     .bind(checked)
     .bind(source_plan_id)
     .bind(source_recipe_id)
-    .bind(Option::<String>::None)
+    .bind(client_id)
     .execute(&state.pool)
     .await
     .expect("sembrar ítem");
@@ -83,6 +87,7 @@ async fn reconcile_merges_duplicate_manual_lines() {
         0,
         None,
         None,
+        None,
     )
     .await;
     seed_item(
@@ -93,6 +98,7 @@ async fn reconcile_merges_duplicate_manual_lines() {
         "ud",
         "Verdulería",
         1,
+        None,
         None,
         None,
     )
@@ -117,11 +123,11 @@ async fn reconcile_merges_duplicate_manual_lines() {
 async fn reconcile_canonicalizes_compatible_units() {
     let state = common::test_state().await;
     seed_item(
-        &state, "hr-a", "Harina", 1.0, "kg", "Despensa", 0, None, None,
+        &state, "hr-a", "Harina", 1.0, "kg", "Despensa", 0, None, None, None,
     )
     .await;
     seed_item(
-        &state, "hr-b", "Harina", 500.0, "g", "Despensa", 0, None, None,
+        &state, "hr-b", "Harina", 500.0, "g", "Despensa", 0, None, None, None,
     )
     .await;
 
@@ -157,6 +163,7 @@ async fn reconcile_keeps_incompatible_units_separate() {
         0,
         None,
         None,
+        None,
     )
     .await;
     seed_item(
@@ -167,6 +174,7 @@ async fn reconcile_keeps_incompatible_units_separate() {
         "g",
         "Verdulería",
         0,
+        None,
         None,
         None,
     )
@@ -195,6 +203,7 @@ async fn reconcile_does_not_merge_across_sources() {
         0,
         None,
         None,
+        None,
     )
     .await;
     seed_item(
@@ -206,6 +215,7 @@ async fn reconcile_does_not_merge_across_sources() {
         "Verdulería",
         0,
         Some("consolidated"),
+        None,
         None,
     )
     .await;
@@ -233,6 +243,7 @@ async fn reconcile_picks_lowest_id_as_survivor_and_or_checks() {
         0,
         None,
         None,
+        None,
     )
     .await;
     seed_item(
@@ -243,6 +254,7 @@ async fn reconcile_picks_lowest_id_as_survivor_and_or_checks() {
         "ud",
         "Verdulería",
         1,
+        None,
         None,
         None,
     )
@@ -271,6 +283,7 @@ async fn reconcile_is_idempotent_and_writes_marker() {
         0,
         None,
         None,
+        None,
     )
     .await;
     seed_item(
@@ -281,6 +294,7 @@ async fn reconcile_is_idempotent_and_writes_marker() {
         "ud",
         "Verdulería",
         1,
+        None,
         None,
         None,
     )
@@ -326,11 +340,11 @@ async fn reconcile_is_idempotent_and_writes_marker() {
 async fn reconcile_merges_unknown_units_case_insensitively() {
     let state = common::test_state().await;
     seed_item(
-        &state, "cj-a", "Huevos", 2.0, "cajas", "Otros", 0, None, None,
+        &state, "cj-a", "Huevos", 2.0, "cajas", "Otros", 0, None, None, None,
     )
     .await;
     seed_item(
-        &state, "cj-b", "Huevos", 3.0, "Cajas", "Otros", 0, None, None,
+        &state, "cj-b", "Huevos", 3.0, "Cajas", "Otros", 0, None, None, None,
     )
     .await;
 
@@ -346,7 +360,10 @@ async fn reconcile_merges_unknown_units_case_insensitively() {
 #[tokio::test]
 async fn reconcile_leaves_single_lines_untouched() {
     let state = common::test_state().await;
-    seed_item(&state, "solo", "Leche", 1.0, "l", "Lácteos", 1, None, None).await;
+    seed_item(
+        &state, "solo", "Leche", 1.0, "l", "Lácteos", 1, None, None, None,
+    )
+    .await;
 
     reconcile(&state).await;
 
@@ -356,4 +373,268 @@ async fn reconcile_leaves_single_lines_untouched() {
     assert!((rows[0].1 - 1.0).abs() < 1e-9, "amount intacto");
     assert_eq!(rows[0].2, "l", "unit intacta");
     assert_eq!(rows[0].3, 1, "checked intacto");
+}
+
+/// Dos «Sal» "al gusto" se fusionan en una línea de cantidad 0.0.
+#[tokio::test]
+async fn reconcile_to_taste_lines_become_zero() {
+    let state = common::test_state().await;
+    seed_item(
+        &state, "sa-a", "Sal", 0.0, "al gusto", "Despensa", 0, None, None, None,
+    )
+    .await;
+    seed_item(
+        &state, "sa-b", "Sal", 0.0, "al gusto", "Despensa", 0, None, None, None,
+    )
+    .await;
+
+    reconcile(&state).await;
+
+    let rows = rows_by_name(&state, "Sal").await;
+    assert_eq!(rows.len(), 1, "debe quedar una línea");
+    assert_eq!(rows[0].0, "sa-a", "el supervivente es el id menor");
+    assert!(
+        (rows[0].1 - 0.0).abs() < 1e-9,
+        "al gusto no acumula cantidad"
+    );
+    assert_eq!(rows[0].2, "al gusto");
+}
+
+/// Tres «Huevos» "cajas" con cantidad 0.0 cuentan ocurrencias (= 3.0),
+/// alineado con `domain::consolidate`.
+#[tokio::test]
+async fn reconcile_unknown_without_amounts_counts_occurrences() {
+    let state = common::test_state().await;
+    seed_item(
+        &state, "hu-a", "Huevos", 0.0, "cajas", "Otros", 0, None, None, None,
+    )
+    .await;
+    seed_item(
+        &state, "hu-b", "Huevos", 0.0, "cajas", "Otros", 0, None, None, None,
+    )
+    .await;
+    seed_item(
+        &state, "hu-c", "Huevos", 0.0, "cajas", "Otros", 0, None, None, None,
+    )
+    .await;
+
+    reconcile(&state).await;
+
+    let rows = rows_by_name(&state, "Huevos").await;
+    assert_eq!(rows.len(), 1, "debe quedar una línea");
+    assert_eq!(rows[0].0, "hu-a", "el supervivente es el id menor");
+    assert!(
+        (rows[0].1 - 3.0).abs() < 1e-9,
+        "sin cantidades significativas se cuentan las ocurrencias"
+    );
+}
+
+/// Tres «Tomate» de 1/2/3 ud se fusionan en una línea de 6 ud.
+#[tokio::test]
+async fn reconcile_merges_three_or_more_lines() {
+    let state = common::test_state().await;
+    seed_item(
+        &state,
+        "tm-1",
+        "Tomate",
+        1.0,
+        "ud",
+        "Verdulería",
+        0,
+        None,
+        None,
+        None,
+    )
+    .await;
+    seed_item(
+        &state,
+        "tm-2",
+        "Tomate",
+        2.0,
+        "ud",
+        "Verdulería",
+        0,
+        None,
+        None,
+        None,
+    )
+    .await;
+    seed_item(
+        &state,
+        "tm-3",
+        "Tomate",
+        3.0,
+        "ud",
+        "Verdulería",
+        0,
+        None,
+        None,
+        None,
+    )
+    .await;
+
+    reconcile(&state).await;
+
+    let rows = rows_by_name(&state, "Tomate").await;
+    assert_eq!(rows.len(), 1, "debe quedar una línea");
+    assert_eq!(rows[0].0, "tm-1", "el supervivente es el id menor");
+    assert!((rows[0].1 - 6.0).abs() < 1e-9, "1 + 2 + 3 = 6");
+}
+
+/// El supervivente conserva su `client_id`.
+#[tokio::test]
+async fn reconcile_preserves_survivor_client_id() {
+    let state = common::test_state().await;
+    seed_item(
+        &state,
+        "tm-a",
+        "Tomate",
+        2.0,
+        "ud",
+        "Verdulería",
+        0,
+        None,
+        None,
+        Some("cid-a"),
+    )
+    .await;
+    seed_item(
+        &state,
+        "tm-b",
+        "Tomate",
+        3.0,
+        "ud",
+        "Verdulería",
+        0,
+        None,
+        None,
+        None,
+    )
+    .await;
+
+    reconcile(&state).await;
+
+    let rows = rows_by_name(&state, "Tomate").await;
+    assert_eq!(rows.len(), 1, "debe quedar una línea");
+    assert_eq!(rows[0].0, "tm-a", "el supervivente es el id menor");
+    assert!((rows[0].1 - 5.0).abs() < 1e-9, "2 ud + 3 ud = 5 ud");
+    let client_id: Option<String> =
+        sqlx::query_scalar("SELECT client_id FROM shopping_list_items WHERE id = 'tm-a'")
+            .fetch_one(&state.pool)
+            .await
+            .expect("leer client_id");
+    assert_eq!(client_id.as_deref(), Some("cid-a"));
+}
+
+/// Si el marcador ya existe, no se fusiona nada (los duplicados permanecen).
+#[tokio::test]
+async fn reconcile_skips_when_marker_present() {
+    let state = common::test_state().await;
+
+    sqlx::query("INSERT INTO shopping_backfills (name) VALUES ('merge-duplicate-lines')")
+        .execute(&state.pool)
+        .await
+        .expect("sembrar marcador");
+
+    seed_item(
+        &state,
+        "tm-a",
+        "Tomate",
+        2.0,
+        "ud",
+        "Verdulería",
+        0,
+        None,
+        None,
+        None,
+    )
+    .await;
+    seed_item(
+        &state,
+        "tm-b",
+        "Tomate",
+        3.0,
+        "ud",
+        "Verdulería",
+        0,
+        None,
+        None,
+        None,
+    )
+    .await;
+
+    reconcile(&state).await;
+
+    assert_eq!(
+        count_by_name(&state, "Tomate").await,
+        2,
+        "el marcador impide la fusión"
+    );
+}
+
+/// Líneas atribuidas (`source_recipe_id` no nulo) no se fusionan entre sí.
+#[tokio::test]
+async fn reconcile_does_not_merge_attributed_lines() {
+    let state = common::test_state().await;
+    seed_item(
+        &state,
+        "rc-a",
+        "Tomate",
+        2.0,
+        "ud",
+        "Verdulería",
+        0,
+        None,
+        Some("consolidated"),
+        None,
+    )
+    .await;
+    seed_item(
+        &state,
+        "rc-b",
+        "Tomate",
+        3.0,
+        "ud",
+        "Verdulería",
+        0,
+        None,
+        Some("consolidated"),
+        None,
+    )
+    .await;
+
+    reconcile(&state).await;
+
+    assert_eq!(
+        count_by_name(&state, "Tomate").await,
+        2,
+        "las líneas atribuidas no se fusionan"
+    );
+}
+
+/// Equivalentes entre presentaciones («docena» y «ud») se fusionan.
+#[tokio::test]
+async fn reconcile_merges_dozens_into_equivalent() {
+    let state = common::test_state().await;
+    seed_item(
+        &state, "hu-a", "Huevos", 1.0, "docena", "Otros", 0, None, None, None,
+    )
+    .await;
+    seed_item(
+        &state, "hu-b", "Huevos", 6.0, "ud", "Otros", 0, None, None, None,
+    )
+    .await;
+
+    reconcile(&state).await;
+
+    let rows = rows_by_name(&state, "Huevos").await;
+    assert_eq!(rows.len(), 1, "debe quedar una línea");
+    assert_eq!(rows[0].0, "hu-a", "el supervivente es el id menor");
+    let canonical = canonicalize(rows[0].1, &rows[0].2);
+    assert!(
+        (canonical.amount - 18.0).abs() < 1e-9,
+        "1 docena + 6 ud = 18 ud, pero fue {} {}",
+        rows[0].1,
+        rows[0].2
+    );
 }
