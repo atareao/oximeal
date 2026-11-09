@@ -76,7 +76,7 @@ Hacer **declarativo e idempotente** el volcado del plan a la lista (`POST /api/s
 
 - [x] T20. Crear `docs/shopping-plan-dump.md` (qué es, ficheros, cómo funciona, decisiones, follow-ups).
 - [x] T21. Archivar el change (`openspec archive idempotent-plan-to-shopping`) y consolidar la spec. (archivado como 2026-11-09-idempotent-plan-to-shopping)
-- [ ] T22. PR a `development` (gitmoji), CI en verde y merge.
+- [x] T22. PR a `development` (gitmoji), CI en verde y merge. (PR #129, merge ab9dc60)
 
 ## 5. Criterios de aceptación
 
