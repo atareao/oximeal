@@ -148,7 +148,7 @@ export function DayCard({
           </span>
           {today && <span className="day-card__today-badge">Hoy</span>}
         </div>
-        {onAddToShoppingList && (
+        {onAddToShoppingList && entries.length > 0 && (
           <Button
             size="small"
             className="day-card__add-to-list"

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import type { MealPlanEntryView, RecipeSummary } from '../api/types';
@@ -94,6 +94,15 @@ describe('DayCard', () => {
 
     expect(
       screen.queryByRole('button', { name: 'Añadir los ingredientes de Lun 2 a la lista' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('no renderiza el botón de añadir a la lista en un día sin entradas', () => {
+    renderCard({ entries: [] });
+
+    const card = screen.getByTestId('day-card');
+    expect(
+      within(card).queryByRole('button', { name: /añadir los ingredientes de .* a la lista/i }),
     ).not.toBeInTheDocument();
   });
 });
