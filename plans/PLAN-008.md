@@ -43,39 +43,39 @@ Hacer **declarativo e idempotente** el volcado del plan a la lista (`POST /api/s
 
 ### 4.1 Backend — RED
 
-- [ ] T1. Test de idempotencia: `from_plan` del mismo rango dos veces → misma lista, sin duplicar.
-- [ ] T2. Test de acumulación: `from_plan` del lunes y luego del martes → aparecen ambos, sin duplicar entradas coincidentes.
-- [ ] T3. Test de reescalado: cambiar `servings` de una entrada y re-volcar → reescala sin acumular.
-- [ ] T4. Test de solape: `from_plan` de un día y luego de la semana que lo contiene → sin duplicar.
-- [ ] T5. Test «líneas del plan separadas de las manuales» (manual «Tomate» 2 ud + plan «Tomate» 4 ud → dos líneas).
-- [ ] T6. Test de autorización: `from-plan` sin permiso → 401/403; con `write:shopping` → 200.
-- [ ] T7. Test de `consolidate`: fija las fuentes al rango (el volcado previo de otro rango desaparece).
-- [ ] T8. Verificar RED: `cargo test`.
+- [x] T1. Test de idempotencia: `from_plan` del mismo rango dos veces → misma lista, sin duplicar.
+- [x] T2. Test de acumulación: `from_plan` del lunes y luego del martes → aparecen ambos, sin duplicar entradas coincidentes.
+- [x] T3. Test de reescalado: cambiar `servings` de una entrada y re-volcar → reescala sin acumular.
+- [x] T4. Test de solape: `from_plan` de un día y luego de la semana que lo contiene → sin duplicar.
+- [x] T5. Test «líneas del plan separadas de las manuales» (manual «Tomate» 2 ud + plan «Tomate» 4 ud → dos líneas).
+- [x] T6. Test de autorización: `from-plan` sin permiso → 401/403; con `write:shopping` → 200.
+- [x] T7. Test de `consolidate`: fija las fuentes al rango (el volcado previo de otro rango desaparece).
+- [x] T8. Verificar RED: `cargo test`.
 
 ### 4.2 Backend — GREEN
 
-- [ ] T9. Migración `0011_shopping_plan_sources.sql`.
-- [ ] T10. `rebuild_plan_lines` + helpers de registro (unión) y fijado (reset) de fuentes; retirar `merge_drafts`/`MergeTarget`.
-- [ ] T11. Adaptar `collect_drafts` para leer la unión de fuentes.
-- [ ] T12. `from_plan` (unión) y `consolidate` (fijar) con el helper compartido.
-- [ ] T13. `agent::set_weekly_plan` usa el helper de unión.
-- [ ] T14. Actualizar doc-comments de rutas y OpenAPI si procede.
-- [ ] T15. Verificar GREEN: `cargo test` y `cargo check`.
+- [x] T9. Migración `0011_shopping_plan_sources.sql`.
+- [x] T10. `rebuild_plan_lines` + helpers de registro (unión) y fijado (reset) de fuentes; retirar `merge_drafts`/`MergeTarget`.
+- [x] T11. Adaptar `collect_drafts` para leer la unión de fuentes.
+- [x] T12. `from_plan` (unión) y `consolidate` (fijar) con el helper compartido.
+- [x] T13. agent::set_weekly_plan fija las fuentes al rango (reset) y reconstruye.
+- [x] T14. Actualizar doc-comments de rutas y OpenAPI si procede.
+- [x] T15. Verificar GREEN: `cargo test` y `cargo check`.
 
 ### 4.3 Backend — REFACTOR
 
-- [ ] T16. Adaptar/renombrar los tests `from_plan_*` existentes que asumían fusión aditiva.
-- [ ] T17. `cargo fmt --check` y `cargo clippy -- -D warnings` sin avisos.
-- [ ] T18. `openspec validate idempotent-plan-to-shopping --strict` en verde.
+- [x] T16. Adaptar/renombrar los tests `from_plan_*` existentes que asumían fusión aditiva.
+- [x] T17. `cargo fmt --check` y `cargo clippy -- -D warnings` sin avisos.
+- [x] T18. `openspec validate idempotent-plan-to-shopping --strict` en verde.
 
 ### 4.4 Auditoría
 
-- [ ] T19. Revisión con `@rust-reviewer` (arquitectura, tests, migración, concurrencia).
+- [x] T19. Revisión con `@rust-reviewer` (arquitectura, tests, migración, concurrencia).
 
 ### 4.5 Documentación y cierre
 
-- [ ] T20. Crear `docs/shopping-plan-dump.md` (qué es, ficheros, cómo funciona, decisiones, follow-ups).
-- [ ] T21. Archivar el change (`openspec archive idempotent-plan-to-shopping`) y consolidar la spec.
+- [x] T20. Crear `docs/shopping-plan-dump.md` (qué es, ficheros, cómo funciona, decisiones, follow-ups).
+- [x] T21. Archivar el change (`openspec archive idempotent-plan-to-shopping`) y consolidar la spec.
 - [ ] T22. PR a `development` (gitmoji), CI en verde y merge.
 
 ## 5. Criterios de aceptación

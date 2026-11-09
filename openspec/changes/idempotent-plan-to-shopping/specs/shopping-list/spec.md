@@ -65,7 +65,8 @@ El sistema SHALL exponer `POST /api/shopping-list/from-plan` con permiso `write:
 
 - GIVEN un rango sin entradas en el plan
 - WHEN se envía la petición
-- THEN se responde `200` con la lista sin cambios
+- THEN se responde `200` y la lista no gana ítems del plan
+- AND los ítems manuales y de receta no cambian
 
 #### Scenario: Sin permiso
 
@@ -82,8 +83,9 @@ El volcado SHALL ser idempotente: repetir el mismo rango NO SHALL duplicar líne
 
 - GIVEN un plan ya volcado con `from-plan`
 - WHEN se repite la misma petición con el mismo rango
-- THEN la lista resultante es idéntica
+- THEN la lista resultante es idéntica en contenido y cantidades
 - AND no se duplican líneas ni cantidades
+- AND las líneas del plan se recrean con `checked = false` (no conservan el marcado, igual que en `from-recipe`)
 
 #### Scenario: Añadir otro rango acumula
 

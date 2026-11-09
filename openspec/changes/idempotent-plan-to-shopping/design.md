@@ -30,7 +30,7 @@
 - **D3. `from_plan` = unión.** `from_plan(range)` hace `INSERT OR IGNORE` de las entradas del rango en fuentes y reconstruye. Repetir no cambia el conjunto; añadir otro rango lo amplía; editar el plan reescala al reconstruir.
 - **D4. `consolidate` = fijar al rango.** `consolidate(range)` borra todas las fuentes, inserta las del rango y reconstruye. Conserva la semántica actual («reemplazar las líneas del plan por las del rango»).
 - **D5. Un solo conjunto de líneas del plan.** Ambas rutas producen `source_plan_id = 'consolidated'`; no hay dos conjuntos compitiendo.
-- **D6. `agent::set_weekly_plan` = unión.** Tras reescribir las entradas (borra e inserta), registra las del rango con `INSERT OR IGNORE` y reconstruye; las fuentes de otras fechas se conservan. Sustituye su uso directo de `collect_drafts` + `replace_consolidated`.
+- **D6. `agent::set_weekly_plan` = fijar (reset).** Tras reescribir las entradas (borra e inserta), fija las fuentes al rango cubierto (`reset_plan_sources`) y reconstruye. Preserva la semántica previa (el plan establecido determina la compra) y evita la acumulación indefinida entre semanas. Sustituye su uso directo de `collect_drafts` + `replace_consolidated`.
 - **D7. Las líneas del plan ya no se fusionan con las manuales.** Inherente al modelo declarativo (atribución), igual que `from-recipe`. Un ítem manual «Tomate» y uno del plan «Tomate» quedan como dos líneas.
 
 ## Risks / Trade-offs
