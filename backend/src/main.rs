@@ -39,6 +39,17 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
+    // Reconciliación de un solo uso (marcador en `shopping_backfills`): fusiona
+    // las líneas manuales duplicadas heredadas del antiguo `from-plan` aditivo.
+    // Es idempotente y tolerante a fallos: si falla, no se escribe el marcador y
+    // se reintentará en el siguiente arranque, sin impedir el arranque actual.
+    if let Err(error) = oximeal_backend::services::shopping_reconcile::reconcile(&pool).await {
+        tracing::error!(
+            error = %error,
+            "la reconciliación de líneas duplicadas falló; se continúa el arranque"
+        );
+    }
+
     let config = Arc::new(config);
     let auth = AuthService::build(&config, pool.clone())
         .context("construir el servicio de autenticación")?;

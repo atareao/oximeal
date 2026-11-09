@@ -6,11 +6,11 @@ use std::collections::{BTreeSet, HashMap};
 use uuid::Uuid;
 
 use crate::domain::category::{CATEGORY_ORDER, categorize};
-use crate::domain::consolidate::{ShoppingListItemDraft, round2};
+use crate::domain::consolidate::ShoppingListItemDraft;
 use crate::domain::date::parse_iso_date;
 use crate::domain::ingredient::IngredientInput;
 use crate::domain::normalize::normalize_name;
-use crate::domain::units::{UnitFamily, canonicalize, normalize_unit};
+use crate::domain::units::{UnitFamily, canonicalize};
 use crate::error::{AppError, AppResult};
 use crate::models::shopping_list::{
     ShoppingItem, ShoppingItemInput, ShoppingItemPatch, ShoppingListGroup,
@@ -25,6 +25,13 @@ const SELECT_ITEM: &str = "SELECT id, name, amount, unit, category, checked, \
 /// Una línea consolidada a partir de un mismo ingrediente aportado por más de
 /// una receta ya no tiene una atribución unívoca; se marca con este centinela.
 const SOURCE_CONSOLIDATED: &str = "consolidated";
+
+/// Valor de `source_plan_id` de las líneas derivadas del plan.
+///
+/// Se mantiene el literal `"consolidated"` (igual que [`SOURCE_CONSOLIDATED`])
+/// por compatibilidad con datos heredados: las líneas del plan ya se marcaban
+/// con ese centinela antes de introducir esta constante.
+const SOURCE_PLAN: &str = "consolidated";
 
 /// Borrador derivado de recetas junto con su receta fuente.
 ///
@@ -202,18 +209,18 @@ pub async fn patch_item(
     get_item(pool, id).await
 }
 
-/// Regenera los ítems derivados del plan para un rango de fechas.
+/// Regenera las líneas derivadas del plan **fijando las fuentes al rango**.
 ///
 /// **Semántica de la lista de la compra**: existe una **única lista semanal
-/// global**; no hay una lista por rango ni por plan. Por eso los ítems derivados
-/// del plan se identifican con `source_plan_id` no nulo y se reemplazan **todos**
-/// (no solo los del rango indicado) al reconstruir. El rango aquí solo determina
-/// qué entradas del plan se leen para calcular las cantidades.
+/// global**; no hay una lista por rango ni por plan. `consolidate` reemplaza la
+/// procedencia declarativa (`shopping_plan_sources`) por las entradas del rango
+/// indicado —descartando las fuentes registradas antes, p. ej. por un
+/// [`from_plan`] previo— y reconstruye **todas** las líneas del plan
+/// (`source_plan_id` no nulo) a partir de esa unión.
 ///
-/// Lee las recetas asignadas en el rango, consolida sus ingredientes con el
-/// motor de dominio y reemplaza los ítems con `source_plan_id` no nulo. Los
-/// ítems manuales (`source_plan_id` nulo) se conservan. Toda la regeneración
-/// ocurre en una única transacción.
+/// Los ítems manuales (`source_plan_id` nulo) y las líneas derivadas de recetas
+/// (`source_recipe_id` no nulo) se conservan. Toda la regeneración ocurre en una
+/// única transacción `BEGIN IMMEDIATE`.
 pub async fn consolidate(
     pool: &SqlitePool,
     start_date: &str,
@@ -222,8 +229,9 @@ pub async fn consolidate(
     // Escritura read-then-write: BEGIN IMMEDIATE evita SQLITE_BUSY_SNAPSHOT en WAL.
     let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
 
-    let drafts = collect_drafts(&mut tx, start_date, end_date).await?;
-    replace_consolidated(&mut tx, &drafts).await?;
+    reset_plan_sources(&mut tx, start_date, end_date).await?;
+    let drafts = collect_plan_drafts(&mut tx).await?;
+    rebuild_plan_lines(&mut tx, &drafts).await?;
 
     tx.commit().await?;
 
@@ -284,14 +292,6 @@ pub async fn from_recipe(
     list_grouped(pool).await
 }
 
-/// Objetivo de fusión de una línea existente: id, cantidad canónica y unidad.
-#[derive(Debug, Clone)]
-struct MergeTarget {
-    id: String,
-    amount: f64,
-    unit: String,
-}
-
 /// Valida que el rango sea parseable y que `start_date <= end_date`.
 ///
 /// Defensa en profundidad: los handlers ya validan el rango, pero el repositorio
@@ -310,15 +310,17 @@ fn validate_range(start_date: &str, end_date: &str) -> AppResult<()> {
     Ok(())
 }
 
-/// Añade los ingredientes del plan en un rango a la lista global, fusionando.
+/// Vuelca los ingredientes del plan de un rango a la lista, de forma declarativa.
 ///
-/// A diferencia de [`consolidate`], que **reemplaza** las líneas del plan, este
-/// volcado es **aditivo**: los ingredientes del plan se fusionan con los ítems
-/// existentes por nombre normalizado y unidad canónica. Si coincide con un ítem
-/// existente, se suma su cantidad; si no, se inserta un ítem nuevo. Los ítems
-/// manuales, los volcados de receta y los del plan se conservan junto con sus
-/// `checked`/`client_id`. Toda la operación ocurre en una transacción
-/// `BEGIN IMMEDIATE`.
+/// Registra las entradas del plan del rango en `shopping_plan_sources`
+/// (`INSERT OR IGNORE`: la **unión**) y reconstruye **todas** las líneas
+/// derivadas del plan (`source_plan_id` no nulo) reconsolidando esa unión de
+/// fuentes. Es decir, el volcado es **declarativo e idempotente**: repetir el
+/// mismo rango no duplica; añadir otro rango amplía la unión; editar el plan
+/// reescala al reconstruir. Los ítems manuales y las líneas derivadas de recetas
+/// se conservan intactos (las líneas del plan no se fusionan con ellos).
+///
+/// Toda la operación ocurre en una única transacción `BEGIN IMMEDIATE`.
 pub async fn from_plan(
     pool: &SqlitePool,
     start_date: &str,
@@ -329,103 +331,49 @@ pub async fn from_plan(
     // Escritura read-then-write: BEGIN IMMEDIATE evita SQLITE_BUSY_SNAPSHOT en WAL.
     let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
 
-    let drafts = collect_drafts(&mut tx, start_date, end_date).await?;
-    merge_drafts(&mut tx, &drafts).await?;
+    register_plan_sources(&mut tx, start_date, end_date).await?;
+    let drafts = collect_plan_drafts(&mut tx).await?;
+    rebuild_plan_lines(&mut tx, &drafts).await?;
 
     tx.commit().await?;
 
     list_grouped(pool).await
 }
 
-/// Fusiona los borradores del plan con los ítems existentes, sumando cantidades.
+/// Registra como fuentes las entradas del plan del rango (**unión**).
 ///
-/// La clave de conciliación es `(nombre normalizado, familia, unidad canónica
-/// normalizada)`, el mismo subgrupo que usa el motor de dominio. La unidad se
-/// normaliza con [`normalize_unit`] para que las variantes de `Unknown` (p. ej.
-/// `"Cajas"` y `"cajas"`) coincidan. Si ya existe una línea con esa clave, se
-/// suma su cantidad canónica y se conserva la línea (y su `checked`, `client_id`,
-/// `source_plan_id` y `source_recipe_id`); si no, se inserta una línea nueva con
-/// `source_plan_id` y `source_recipe_id` nulos.
-///
-/// Usa `conn` sin abrir transacción propia.
-pub(crate) async fn merge_drafts(
+/// `INSERT OR IGNORE` sobre `shopping_plan_sources`: las entradas ya registradas
+/// no se duplican (deduplica solapes: día ⊂ semana) y las de otros rangos se
+/// conservan. Usa `conn` sin abrir transacción propia.
+pub(crate) async fn register_plan_sources(
     conn: &mut SqliteConnection,
-    drafts: &[ShoppingListItemDraft],
+    start_date: &str,
+    end_date: &str,
 ) -> AppResult<()> {
-    let sql = SELECT_ITEM.to_string();
-    let items: Vec<ShoppingItem> = sqlx::query_as(sqlx::AssertSqlSafe(sql))
-        .fetch_all(&mut *conn)
-        .await?;
-
-    let mut targets: HashMap<(String, UnitFamily, String), MergeTarget> = HashMap::new();
-    for item in &items {
-        let canonical = canonicalize(0.0, &item.unit);
-        // La clave normaliza la unidad para que, en la familia `Unknown`, las
-        // variantes de mayúsculas/espacios (`"Cajas"` y `"cajas"`) se fusionen.
-        let key = (
-            normalize_name(&item.name),
-            canonical.family,
-            normalize_unit(&canonical.display_unit),
-        );
-        targets.entry(key).or_insert_with(|| MergeTarget {
-            id: item.id.clone(),
-            amount: canonicalize(item.amount, &item.unit).amount,
-            unit: canonical.display_unit,
-        });
-    }
-
-    for draft in drafts {
-        let canonical = canonicalize(draft.amount, &draft.unit);
-        let key = (
-            normalize_name(&draft.name),
-            canonical.family,
-            normalize_unit(&canonical.display_unit),
-        );
-
-        if let Some(target) = targets.get_mut(&key) {
-            // Un aporte de 0.0 (p. ej. `al gusto`) no cambia la fila: no se
-            // refresca `updated_at` ni se reescribe la unidad.
-            if canonical.amount == 0.0 {
-                continue;
-            }
-            let total = round2(target.amount + canonical.amount);
-            target.amount = total;
-            sqlx::query(
-                "UPDATE shopping_list_items SET amount = ?, unit = ?, \
-                 updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            )
-            .bind(total)
-            .bind(&target.unit)
-            .bind(&target.id)
-            .execute(&mut *conn)
-            .await?;
-        } else {
-            let id = Uuid::new_v4().to_string();
-            let amount = round2(canonical.amount);
-            sqlx::query(
-                "INSERT INTO shopping_list_items \
-                 (id, name, amount, unit, category, checked, source_plan_id, source_recipe_id, updated_at) \
-                 VALUES (?, ?, ?, ?, ?, 0, NULL, NULL, CURRENT_TIMESTAMP)",
-            )
-            .bind(&id)
-            .bind(&draft.name)
-            .bind(amount)
-            .bind(&canonical.display_unit)
-            .bind(&draft.category)
-            .execute(&mut *conn)
-            .await?;
-            targets.insert(
-                key,
-                MergeTarget {
-                    id,
-                    amount,
-                    unit: canonical.display_unit,
-                },
-            );
-        }
-    }
-
+    sqlx::query(
+        "INSERT OR IGNORE INTO shopping_plan_sources (entry_id) \
+         SELECT id FROM meal_plan_entries WHERE date >= ? AND date <= ?",
+    )
+    .bind(start_date)
+    .bind(end_date)
+    .execute(&mut *conn)
+    .await?;
     Ok(())
+}
+
+/// Fija las fuentes a las entradas del plan del rango (**reset + unión**).
+///
+/// Borra todas las fuentes registradas y registra las del rango: descarta lo
+/// volcado por otros rangos. Usa `conn` sin abrir transacción propia.
+pub(crate) async fn reset_plan_sources(
+    conn: &mut SqliteConnection,
+    start_date: &str,
+    end_date: &str,
+) -> AppResult<()> {
+    sqlx::query("DELETE FROM shopping_plan_sources")
+        .execute(&mut *conn)
+        .await?;
+    register_plan_sources(conn, start_date, end_date).await
 }
 
 /// Recolecta los borradores consolidados de todas las recetas volcadas.
@@ -541,25 +489,28 @@ pub(crate) async fn replace_recipe_derived(
     Ok(())
 }
 
-/// Recolecta los borradores consolidados del plan en un rango, usando `conn`.
+/// Recolecta los borradores consolidados de la **unión de fuentes** del plan.
+///
+/// Lee cada fuente registrada (`shopping_plan_sources`), une con la entrada del
+/// plan y su receta, escala sus ingredientes por el factor
+/// raciones_entrada / raciones_receta y consolida el conjunto con el motor de
+/// dominio. El rango no interviene aquí: las fuentes ya determinan el conjunto
+/// volcado (así se deduplican los solapes de rango por entrada del plan).
 ///
 /// No abre transacción propia: el llamante controla la atomicidad y puede
 /// encadenarla con otras escrituras sobre la misma conexión.
-pub(crate) async fn collect_drafts(
+pub(crate) async fn collect_plan_drafts(
     conn: &mut SqliteConnection,
-    start_date: &str,
-    end_date: &str,
 ) -> AppResult<Vec<ShoppingListItemDraft>> {
     // Se leen las raciones planificadas y las de la receta para escalar las
     // cantidades por el factor `entry / recipe` (ambas con valor por defecto 2).
     let rows: Vec<(String, i64, i64)> = sqlx::query_as(
         "SELECT CAST(r.ingredients AS TEXT), COALESCE(e.servings, 2), COALESCE(r.servings, 2) \
-         FROM meal_plan_entries e \
+         FROM shopping_plan_sources s \
+         JOIN meal_plan_entries e ON e.id = s.entry_id \
          JOIN recipes r ON r.id = e.recipe_id \
-         WHERE e.date >= ? AND e.date <= ?",
+         ORDER BY e.date ASC, e.meal_type ASC, e.role ASC, s.entry_id ASC",
     )
-    .bind(start_date)
-    .bind(end_date)
     .fetch_all(&mut *conn)
     .await?;
 
@@ -587,14 +538,15 @@ fn servings_factor(entry_servings: i64, recipe_servings: i64) -> f64 {
     entry_servings as f64 / recipe_servings.max(1) as f64
 }
 
-/// Reemplaza los ítems derivados del plan (`source_plan_id` no nulo) por los
-/// borradores dados, conservando los ítems manuales. Usa `conn` sin abrir
-/// transacción propia.
+/// Reconstruye las líneas derivadas del plan (`source_plan_id` no nulo) a partir
+/// de los borradores dados, conservando los ítems manuales y las líneas derivadas
+/// de recetas. Usa `conn` sin abrir transacción propia.
 ///
 /// El borrado `WHERE source_plan_id IS NOT NULL` **no** se acota al rango de
 /// fechas a propósito: la lista de la compra es una única lista semanal global,
-/// así que cada reconstrucción parte de cero para los ítems del plan.
-pub(crate) async fn replace_consolidated(
+/// así que cada reconstrucción parte de cero para las líneas del plan, que se
+/// derivan de la **unión de fuentes** registrada en `shopping_plan_sources`.
+pub(crate) async fn rebuild_plan_lines(
     conn: &mut SqliteConnection,
     drafts: &[ShoppingListItemDraft],
 ) -> AppResult<()> {
@@ -607,13 +559,14 @@ pub(crate) async fn replace_consolidated(
         sqlx::query(
             "INSERT INTO shopping_list_items \
              (id, name, amount, unit, category, checked, source_plan_id, updated_at) \
-             VALUES (?, ?, ?, ?, ?, 0, 'consolidated', CURRENT_TIMESTAMP)",
+             VALUES (?, ?, ?, ?, ?, 0, ?, CURRENT_TIMESTAMP)",
         )
         .bind(&id)
         .bind(&draft.name)
         .bind(draft.amount)
         .bind(&draft.unit)
         .bind(&draft.category)
+        .bind(SOURCE_PLAN)
         .execute(&mut *conn)
         .await?;
     }

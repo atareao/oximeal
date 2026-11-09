@@ -53,8 +53,9 @@ pub(crate) fn normalize_unit(unit: &str) -> String {
 
 /// Convierte una cantidad y su unidad textual a su forma canónica.
 ///
-/// La unidad de presentación (`display_unit`) se devuelve como `String` para poder
-/// conservar tal cual la unidad original cuando esta es desconocida.
+/// La unidad de presentación (`display_unit`) se devuelve como `String`: para las
+/// unidades conocidas es la forma canónica y, para las desconocidas, la forma
+/// normalizada de la unidad original (minúsculas, sin diacríticos, recortada).
 pub fn canonicalize(amount: f64, unit: &str) -> Canonical {
     let normalized = normalize_unit(unit);
     match normalized.as_str() {
@@ -91,8 +92,11 @@ pub fn canonicalize(amount: f64, unit: &str) -> Canonical {
             canonical(UnitFamily::ToTaste, 0.0, "al gusto")
         }
 
-        // Desconocida: se conserva la unidad original recortada
-        _ => canonical(UnitFamily::Unknown, amount, unit.trim()),
+        // Desconocida: se conserva la unidad normalizada (minúsculas, sin
+        // diacríticos y con espacios colapsados), de modo que `"Cajas"`,
+        // `"cajas"` y `" cajas "` se consoliden en una sola línea en todos los
+        // caminos (plan, receta y agente).
+        _ => canonical(UnitFamily::Unknown, amount, &normalized),
     }
 }
 
@@ -196,6 +200,16 @@ mod tests {
     #[test]
     fn unidad_desconocida_se_conserva() {
         let c = canonicalize(3.0, "cajas");
+        assert_eq!(c.family, UnitFamily::Unknown);
+        assert!(approx(c.amount, 3.0));
+        assert_eq!(c.display_unit, "cajas");
+    }
+
+    #[test]
+    fn unidad_desconocida_se_normaliza() {
+        // `"Cajas"` (con mayúscula) debe canonizarse a la misma forma
+        // normalizada que `"cajas"`, para que la consolidación no duplique.
+        let c = canonicalize(3.0, "Cajas");
         assert_eq!(c.family, UnitFamily::Unknown);
         assert!(approx(c.amount, 3.0));
         assert_eq!(c.display_unit, "cajas");
