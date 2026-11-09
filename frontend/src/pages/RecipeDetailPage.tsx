@@ -9,6 +9,7 @@ import {
   Popconfirm,
   Result,
   Skeleton,
+  Tabs,
   Tag,
   Typography,
 } from 'antd';
@@ -342,26 +343,48 @@ function RecipeDetailContent({ id }: RecipeDetailContentProps) {
         </ul>
       )}
 
-      <IngredientEditor
-        ingredients={data.ingredients}
-        factor={factor}
-        showScaled={showScaled}
-        editable={online}
-        saving={updateRecipe.isPending}
-        editing={editingIngredients}
-        onStartEdit={() => setEditingIngredients(true)}
-        onCancel={() => setEditingIngredients(false)}
-        onSave={handleSaveIngredients}
+      <Tabs
+        className="recipe-detail__tabs"
+        defaultActiveKey="instructions"
+        items={[
+          {
+            key: 'instructions',
+            label: 'Instrucciones',
+            children: data.instructions ? (
+              <section
+                aria-labelledby="recipe-instructions-title"
+                className="recipe-detail__section"
+              >
+                <h3 id="recipe-instructions-title" className="recipe-detail__section-title">
+                  Instrucciones
+                </h3>
+                <Paragraph className="recipe-detail__instructions">{data.instructions}</Paragraph>
+              </section>
+            ) : (
+              <Paragraph className="recipe-detail__instructions-empty">
+                Esta receta no tiene instrucciones.
+              </Paragraph>
+            ),
+          },
+          {
+            key: 'ingredients',
+            label: 'Ingredientes',
+            children: (
+              <IngredientEditor
+                ingredients={data.ingredients}
+                factor={factor}
+                showScaled={showScaled}
+                editable={online}
+                saving={updateRecipe.isPending}
+                editing={editingIngredients}
+                onStartEdit={() => setEditingIngredients(true)}
+                onCancel={() => setEditingIngredients(false)}
+                onSave={handleSaveIngredients}
+              />
+            ),
+          },
+        ]}
       />
-
-      {data.instructions && (
-        <section aria-labelledby="recipe-instructions-title" className="recipe-detail__section">
-          <h3 id="recipe-instructions-title" className="recipe-detail__section-title">
-            Instrucciones
-          </h3>
-          <Paragraph className="recipe-detail__instructions">{data.instructions}</Paragraph>
-        </section>
-      )}
 
       {data.source_url && (
         <a
