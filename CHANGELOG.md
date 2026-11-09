@@ -12,6 +12,19 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [No publicado]
 
+## [0.10.0] - 2026-11-09
+
+### Añadido
+
+- **Lista de la compra (volcado del plan):** `POST /api/shopping-list/from-plan` pasa a ser **declarativo e idempotente** mediante la tabla de fuentes `shopping_plan_sources` (migración `0011`): repetir el mismo rango no duplica, añadir otro rango lo une, editar las raciones del plan reescala sin acumular y los solapes (día dentro de semana) se deduplican por entrada del plan.
+- **Lista de la compra (reconciliación):** al arrancar, una reconciliación de un solo uso (marcador en `shopping_backfills`, migración `0012`) fusiona las líneas manuales duplicadas heredadas, sumando cantidades, conservando la fila de `id` menor y heredando el estado marcado. Solo actúa sobre líneas manuales.
+
+### Cambiado
+
+- **Lista de la compra (orígenes):** las líneas derivadas del plan quedan atribuidas (`source_plan_id`) y ya no se fusionan con los ítems manuales ni con las líneas de receta; conviven como líneas separadas, igual que las de receta. `consolidate` fija las fuentes del plan al rango indicado y `agent::set_weekly_plan` hace lo propio al reescribir la semana.
+- **Lista de la compra (unidades):** las unidades desconocidas se normalizan en `canonicalize` (`"Cajas"` → `"cajas"`), de modo que plan, receta y agente consolidan igual.
+- **Lista de la compra (orden):** el listado se ordena de forma determinista por nombre sin distinguir mayúsculas y, a igualdad, por `id`.
+
 ## [0.9.0] - 2026-11-09
 
 ### Añadido
