@@ -2,3 +2,4 @@
 
 pub mod autotag;
 pub mod recipe_import;
+pub mod shopping_reconcile;
