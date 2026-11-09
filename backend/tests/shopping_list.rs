@@ -659,6 +659,51 @@ async fn add_plan_entry(
     assert_eq!(status, StatusCode::CREATED, "crear entrada: {body}");
 }
 
+/// Crea una receta con un único ingrediente y raciones explícitas; devuelve su id.
+///
+/// Se usa cuando el factor de escalado debe ser 1 (raciones de la receta iguales
+/// a las de la entrada) para aislar la consolidación de la aritmética de raciones.
+async fn create_recipe_with_servings(
+    state: &oximeal_backend::state::AppState,
+    name: &str,
+    ingredient_name: &str,
+    amount: f64,
+    unit: &str,
+    servings: i64,
+) -> String {
+    let (status, body) = common::request(
+        state.clone(),
+        "POST",
+        "/api/recipes",
+        Some(json!({
+            "name": name,
+            "category": "main",
+            "servings": servings,
+            "ingredients": [{"name": ingredient_name, "amount": amount, "unit": unit}]
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "crear receta: {body}");
+    body["id"].as_str().expect("id de receta").to_string()
+}
+
+/// Devuelve todas las líneas con ese nombre presentes en la lista agrupada.
+fn find_all_items<'a>(groups: &'a Value, name: &str) -> Vec<&'a Value> {
+    let mut found = Vec::new();
+    if let Some(array) = groups.as_array() {
+        for group in array {
+            if let Some(items) = group["items"].as_array() {
+                for item in items {
+                    if item["name"] == name {
+                        found.push(item);
+                    }
+                }
+            }
+        }
+    }
+    found
+}
+
 /// Escenario: volcado de un día. La lista se puebla con los ingredientes del día
 /// y las cantidades se escalan por las raciones de la entrada y de la receta.
 #[tokio::test]
@@ -728,9 +773,9 @@ async fn from_plan_adds_week_ingredients_and_sums_repeats() {
     assert_eq!(tomate["amount"], 14.0, "7 días x 2 ud");
 }
 
-/// Escenario: fusión con un ítem manual existente. Suma la cantidad sin duplicar.
+/// Las líneas del plan quedan **separadas** de los ítems manuales: no se fusionan.
 #[tokio::test]
-async fn from_plan_merges_with_existing_manual_item() {
+async fn from_plan_keeps_plan_line_separate_from_manual() {
     let state = common::test_state().await;
 
     // Ítem manual: Tomate 2 ud.
@@ -757,49 +802,90 @@ async fn from_plan_merges_with_existing_manual_item() {
     .await;
     assert_eq!(status, StatusCode::OK, "respuesta: {groups}");
 
-    let tomate = find_item(&groups, "Tomate").expect("tomate fusionado");
-    assert_eq!(tomate["amount"], 6.0, "2 + 4");
-    assert_eq!(tomate["id"], manual_id, "no se crea un duplicado");
+    // Hay DOS líneas «Tomate»: la manual y la del plan, sin sumarse.
+    let tomates = find_all_items(&groups, "Tomate");
+    assert_eq!(tomates.len(), 2, "manual y plan deben ser líneas distintas");
+
+    let manual_line = tomates
+        .iter()
+        .find(|item| item["id"] == manual_id)
+        .expect("la línea manual conserva su id");
+    assert_eq!(manual_line["amount"], 2.0, "la manual no se toca");
+
+    let plan_line = tomates
+        .iter()
+        .find(|item| item["id"] != manual_id)
+        .expect("existe una línea del plan separada");
+    assert_eq!(plan_line["amount"], 4.0, "la línea del plan aporta 4 ud");
 
     let count: i64 =
         sqlx::query_scalar("SELECT count(*) FROM shopping_list_items WHERE name = 'Tomate'")
             .fetch_one(&state.pool)
             .await
             .expect("contar tomates");
-    assert_eq!(count, 1, "no debe haber duplicados");
+    assert_eq!(count, 2, "dos filas: la manual y la del plan");
+
+    // La manual sigue sin fuente de plan; la del plan queda marcada.
+    let manual_source: Option<String> =
+        sqlx::query_scalar("SELECT source_plan_id FROM shopping_list_items WHERE id = ?")
+            .bind(&manual_id)
+            .fetch_one(&state.pool)
+            .await
+            .expect("fuente de la manual");
+    assert!(
+        manual_source.is_none(),
+        "la manual no es una línea del plan"
+    );
+
+    let plan_source: Option<String> = sqlx::query_scalar(
+        "SELECT source_plan_id FROM shopping_list_items \
+         WHERE name = 'Tomate' AND id <> ?",
+    )
+    .bind(&manual_id)
+    .fetch_one(&state.pool)
+    .await
+    .expect("fuente de la línea del plan");
+    assert!(
+        plan_source.is_some(),
+        "la línea del plan va marcada con source_plan_id"
+    );
 }
 
-/// La fusión usa nombre normalizado y unidad canónica: `1 kg` + `500 g` = `1500 g`.
+/// Dentro del plan, la consolidación usa nombre normalizado y unidad canónica:
+/// `1 kg` + `500 g` = una única línea `1500 g` (sin ítems manuales).
 #[tokio::test]
-async fn from_plan_merges_using_canonical_unit() {
+async fn from_plan_consolidates_canonical_units_within_plan() {
     let state = common::test_state().await;
 
-    // Ítem manual: Harina 1 kg.
-    let (status, _) = common::request(
-        state.clone(),
-        "POST",
-        "/api/shopping-list",
-        Some(json!({"name": "Harina", "amount": 1.0, "unit": "kg"})),
-    )
-    .await;
-    assert_eq!(status, StatusCode::CREATED);
-
-    // Plan: Harina 500 g.
-    let recipe = create_recipe(&state, "Receta harina", "Harina", 500.0, "g").await;
-    add_plan_entry(&state, "2026-03-02", &recipe, 2).await;
+    // Dos recetas con raciones iguales a las de sus entradas (factor 1).
+    let r_kg =
+        create_recipe_with_servings(&state, "Receta harina kg", "Harina", 1.0, "kg", 2).await;
+    let r_g = create_recipe_with_servings(&state, "Receta harina g", "Harina", 500.0, "g", 2).await;
+    add_plan_entry(&state, "2026-03-02", &r_kg, 2).await;
+    add_plan_entry(&state, "2026-03-03", &r_g, 2).await;
 
     let (status, groups) = common::request(
         state.clone(),
         "POST",
         "/api/shopping-list/from-plan",
-        Some(json!({"start_date": "2026-03-02", "end_date": "2026-03-02"})),
+        Some(json!({"start_date": "2026-03-02", "end_date": "2026-03-03"})),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "respuesta: {groups}");
 
-    let harina = find_item(&groups, "Harina").expect("harina fusionada");
-    assert_eq!(harina["amount"], 1500.0, "1 kg + 500 g");
-    assert_eq!(harina["unit"], "g");
+    let harinas = find_all_items(&groups, "Harina");
+    assert_eq!(harinas.len(), 1, "una sola línea de harina");
+    assert_eq!(harinas[0]["amount"], 1500.0, "1 kg + 500 g");
+    assert_eq!(harinas[0]["unit"], "g");
+
+    let count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM shopping_list_items \
+         WHERE name = 'Harina' AND source_plan_id IS NOT NULL",
+    )
+    .fetch_one(&state.pool)
+    .await
+    .expect("contar harina del plan");
+    assert_eq!(count, 1, "una única línea del plan");
 }
 
 /// Escenario: conservación de ítems manuales y volcados de receta.
@@ -837,7 +923,7 @@ async fn from_plan_preserves_manual_and_recipe_items() {
     .await;
     assert_eq!(status, StatusCode::OK);
 
-    // Plan: Tomate 4 ud (se fusiona con el manual).
+    // Plan: Tomate 4 ud (línea propia, separada del manual).
     let recipe_plan = create_recipe(&state, "Receta tomate", "Tomate", 4.0, "ud").await;
     add_plan_entry(&state, "2026-03-02", &recipe_plan, 2).await;
 
@@ -855,12 +941,22 @@ async fn from_plan_preserves_manual_and_recipe_items() {
     assert_eq!(leche["amount"], 1000.0);
     assert_eq!(leche["unit"], "ml");
 
-    // El manual se conserva, con su id, checked y client_id.
-    let tomate = find_item(&groups, "Tomate").expect("tomate conservado");
-    assert_eq!(tomate["id"], manual_id);
-    assert_eq!(tomate["amount"], 6.0);
-    assert_eq!(tomate["checked"], true);
-    assert_eq!(tomate["client_id"], "abc");
+    // Hay dos líneas «Tomate»: la manual (intacta) y la del plan.
+    let tomates = find_all_items(&groups, "Tomate");
+    assert_eq!(tomates.len(), 2, "manual y plan separados");
+    let manual_line = tomates
+        .iter()
+        .find(|item| item["id"] == manual_id)
+        .expect("la línea manual conserva su id");
+    assert_eq!(manual_line["amount"], 2.0);
+    assert_eq!(manual_line["checked"], true);
+    assert_eq!(manual_line["client_id"], "abc");
+
+    let plan_line = tomates
+        .iter()
+        .find(|item| item["id"] != manual_id)
+        .expect("existe una línea del plan separada");
+    assert_eq!(plan_line["amount"], 4.0);
 
     // El volcado de receta conserva su fuente.
     let (_, source_recipe_id) = sqlx::query_as::<_, (Option<String>, Option<String>)>(
@@ -975,73 +1071,77 @@ async fn from_plan_repo_rejects_invalid_range() {
     assert!(matches!(error, AppError::Validation(_)));
 }
 
-/// La suma de cantidades se redondea a 2 decimales como el motor `consolidate`.
+/// La consolidación del plan redondea las cantidades a 2 decimales.
 #[tokio::test]
 async fn from_plan_rounds_accumulated_floats_to_two_decimals() {
     let state = common::test_state().await;
 
-    let (status, _) = common::request(
-        state.clone(),
-        "POST",
-        "/api/shopping-list",
-        Some(json!({"name": "Sal", "amount": 0.1, "unit": "g"})),
-    )
-    .await;
-    assert_eq!(status, StatusCode::CREATED);
-
-    let recipe = create_recipe(&state, "Receta sal", "Sal", 0.2, "g").await;
-    add_plan_entry(&state, "2026-03-02", &recipe, 2).await;
+    // Dos entradas «Sal» en dos fechas del rango, con factor 1.
+    let r1 = create_recipe_with_servings(&state, "Receta sal 1", "Sal", 0.1, "g", 2).await;
+    let r2 = create_recipe_with_servings(&state, "Receta sal 2", "Sal", 0.2, "g", 2).await;
+    add_plan_entry(&state, "2026-03-02", &r1, 2).await;
+    add_plan_entry(&state, "2026-03-03", &r2, 2).await;
 
     let (status, groups) = common::request(
         state.clone(),
         "POST",
         "/api/shopping-list/from-plan",
-        Some(json!({"start_date": "2026-03-02", "end_date": "2026-03-02"})),
+        Some(json!({"start_date": "2026-03-02", "end_date": "2026-03-03"})),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "respuesta: {groups}");
 
-    let sal = find_item(&groups, "Sal").expect("sal fusionada");
-    assert_eq!(sal["amount"], 0.3, "0.1 + 0.2 debe redondear a 0.3");
+    let sales = find_all_items(&groups, "Sal");
+    assert_eq!(sales.len(), 1, "una única línea de sal");
+    assert_eq!(sales[0]["amount"], 0.3, "0.1 + 0.2 debe redondear a 0.3");
+
+    let count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM shopping_list_items \
+         WHERE name = 'Sal' AND source_plan_id IS NOT NULL",
+    )
+    .fetch_one(&state.pool)
+    .await
+    .expect("contar sal del plan");
+    assert_eq!(count, 1, "una única línea del plan");
 }
 
-/// La fusión de unidades `Unknown` normaliza la clave: `Cajas` y `cajas` coinciden.
+/// La consolidación del plan normaliza la unidad `Unknown`: `Cajas` y `cajas` coinciden.
 #[tokio::test]
 async fn from_plan_merges_unknown_units_case_insensitively() {
     let state = common::test_state().await;
 
-    let (status, _) = common::request(
-        state.clone(),
-        "POST",
-        "/api/shopping-list",
-        Some(json!({"name": "Huevos", "amount": 2.0, "unit": "cajas"})),
-    )
-    .await;
-    assert_eq!(status, StatusCode::CREATED);
-
-    let recipe = create_recipe(&state, "Receta huevos", "Huevos", 3.0, "Cajas").await;
-    add_plan_entry(&state, "2026-03-02", &recipe, 2).await;
+    let r1 =
+        create_recipe_with_servings(&state, "Receta huevos 1", "Huevos", 2.0, "cajas", 2).await;
+    let r2 =
+        create_recipe_with_servings(&state, "Receta huevos 2", "Huevos", 3.0, "Cajas", 2).await;
+    add_plan_entry(&state, "2026-03-02", &r1, 2).await;
+    add_plan_entry(&state, "2026-03-03", &r2, 2).await;
 
     let (status, groups) = common::request(
         state.clone(),
         "POST",
         "/api/shopping-list/from-plan",
-        Some(json!({"start_date": "2026-03-02", "end_date": "2026-03-02"})),
+        Some(json!({"start_date": "2026-03-02", "end_date": "2026-03-03"})),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "respuesta: {groups}");
 
-    let huevos = find_item(&groups, "Huevos").expect("huevos fusionados");
+    let huevos = find_item(&groups, "Huevos").expect("huevos del plan");
     assert_eq!(huevos["amount"], 5.0, "2 cajas + 3 cajas");
-    let count: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM shopping_list_items WHERE name = 'Huevos'")
-            .fetch_one(&state.pool)
-            .await
-            .expect("contar huevos");
-    assert_eq!(count, 1, "no debe duplicar por mayúsculas");
+    let count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM shopping_list_items \
+         WHERE name = 'Huevos' AND source_plan_id IS NOT NULL",
+    )
+    .fetch_one(&state.pool)
+    .await
+    .expect("contar huevos del plan");
+    assert_eq!(
+        count, 1,
+        "una sola línea del plan, sin duplicar por mayúsculas"
+    );
 }
 
-/// Un aporte de 0.0 no reescribe la fila ni refresca `updated_at`.
+/// Un ítem manual «al gusto» (0.0) no se toca; el aporte del plan va en otra línea.
 #[tokio::test]
 async fn from_plan_does_not_touch_unchanged_to_taste_item() {
     let state = common::test_state().await;
@@ -1065,14 +1165,14 @@ async fn from_plan_does_not_touch_unchanged_to_taste_item() {
     let recipe = create_recipe(&state, "Receta sal", "Sal", 0.0, "al gusto").await;
     add_plan_entry(&state, "2026-03-02", &recipe, 2).await;
 
-    let (status, _) = common::request(
+    let (status, groups) = common::request(
         state.clone(),
         "POST",
         "/api/shopping-list/from-plan",
         Some(json!({"start_date": "2026-03-02", "end_date": "2026-03-02"})),
     )
     .await;
-    assert_eq!(status, StatusCode::OK);
+    assert_eq!(status, StatusCode::OK, "respuesta: {groups}");
 
     let updated_at: String =
         sqlx::query_scalar("SELECT CAST(updated_at AS TEXT) FROM shopping_list_items WHERE id = ?")
@@ -1083,5 +1183,457 @@ async fn from_plan_does_not_touch_unchanged_to_taste_item() {
     assert_eq!(
         updated_at, "2020-01-01 00:00:00",
         "sin cantidad real no debe refrescarse updated_at"
+    );
+
+    // El ítem manual sigue sin fuente de plan.
+    let manual_source: Option<String> =
+        sqlx::query_scalar("SELECT source_plan_id FROM shopping_list_items WHERE id = ?")
+            .bind(&id)
+            .fetch_one(&state.pool)
+            .await
+            .expect("fuente de la manual");
+    assert!(
+        manual_source.is_none(),
+        "la manual no es una línea del plan"
+    );
+
+    // El aporte del plan queda en una línea separada.
+    let plan_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM shopping_list_items \
+         WHERE name = 'Sal' AND source_plan_id IS NOT NULL",
+    )
+    .fetch_one(&state.pool)
+    .await
+    .expect("contar sal del plan");
+    assert_eq!(
+        plan_count, 1,
+        "la línea del plan es independiente de la manual"
+    );
+}
+
+/// Repetir el mismo rango de `from-plan` no duplica la línea del plan.
+#[tokio::test]
+async fn from_plan_is_idempotent_on_repeat() {
+    let state = common::test_state().await;
+
+    let recipe = create_recipe(&state, "Receta tomate", "Tomate", 4.0, "ud").await;
+    add_plan_entry(&state, "2026-03-02", &recipe, 2).await;
+
+    for _ in 0..2 {
+        let (status, _) = common::request(
+            state.clone(),
+            "POST",
+            "/api/shopping-list/from-plan",
+            Some(json!({"start_date": "2026-03-02", "end_date": "2026-03-02"})),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    let (_, groups) = common::request(state.clone(), "GET", "/api/shopping-list", None).await;
+    let tomates = find_all_items(&groups, "Tomate");
+    assert_eq!(tomates.len(), 1, "una sola línea del plan");
+    assert_eq!(tomates[0]["amount"], 4.0, "no debe acumularse al repetir");
+
+    let count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM shopping_list_items \
+         WHERE name = 'Tomate' AND source_plan_id IS NOT NULL",
+    )
+    .fetch_one(&state.pool)
+    .await
+    .expect("contar tomate del plan");
+    assert_eq!(count, 1, "una única línea del plan");
+}
+
+/// Volcar rangos distintos acumula las entradas sin duplicar las coincidentes.
+#[tokio::test]
+async fn from_plan_accumulates_distinct_ranges() {
+    let state = common::test_state().await;
+
+    let r_tomate = create_recipe(&state, "Receta tomate", "Tomate", 2.0, "ud").await;
+    let r_leche = create_recipe(&state, "Receta leche", "Leche", 1.0, "l").await;
+    add_plan_entry(&state, "2026-03-02", &r_tomate, 2).await; // lunes
+    add_plan_entry(&state, "2026-03-03", &r_leche, 2).await; // martes
+
+    let (status, _) = common::request(
+        state.clone(),
+        "POST",
+        "/api/shopping-list/from-plan",
+        Some(json!({"start_date": "2026-03-02", "end_date": "2026-03-02"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, groups) = common::request(
+        state.clone(),
+        "POST",
+        "/api/shopping-list/from-plan",
+        Some(json!({"start_date": "2026-03-03", "end_date": "2026-03-03"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "respuesta: {groups}");
+
+    assert_eq!(
+        find_all_items(&groups, "Tomate").len(),
+        1,
+        "tomate del lunes"
+    );
+    assert_eq!(
+        find_all_items(&groups, "Leche").len(),
+        1,
+        "leche del martes"
+    );
+
+    let plan_lines: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM shopping_list_items WHERE source_plan_id IS NOT NULL",
+    )
+    .fetch_one(&state.pool)
+    .await
+    .expect("contar líneas del plan");
+    assert_eq!(
+        plan_lines, 2,
+        "ambas entradas quedan registradas como fuentes"
+    );
+}
+
+/// Editar las raciones de una entrada y re-volcar reescala sin acumular.
+#[tokio::test]
+async fn from_plan_rescales_when_plan_servings_change() {
+    let state = common::test_state().await;
+
+    // Receta de 4 raciones con 100 g; entrada a 2 raciones => 50 g.
+    let recipe =
+        create_recipe_with_servings(&state, "Receta 4 raciones", "Arroz", 100.0, "g", 4).await;
+    add_plan_entry(&state, "2026-03-02", &recipe, 2).await;
+
+    let (status, groups) = common::request(
+        state.clone(),
+        "POST",
+        "/api/shopping-list/from-plan",
+        Some(json!({"start_date": "2026-03-02", "end_date": "2026-03-02"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "respuesta: {groups}");
+    let arroz = find_item(&groups, "Arroz").expect("arroz del plan");
+    assert_eq!(arroz["amount"], 50.0, "100 g x (2/4)");
+
+    // Recupera el id de la entrada y sube las raciones a 4.
+    let (status, entries) = common::request(
+        state.clone(),
+        "GET",
+        "/api/meal-plan?start_date=2026-03-02&end_date=2026-03-02",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let entry_id = entries[0]["id"]
+        .as_str()
+        .expect("id de entrada")
+        .to_string();
+    let (status, _) = common::request(
+        state.clone(),
+        "PATCH",
+        &format!("/api/meal-plan/{entry_id}"),
+        Some(json!({"servings": 4})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Re-volcar el MISMO rango reescala a 100 g (no 150 g acumulados).
+    let (status, groups) = common::request(
+        state.clone(),
+        "POST",
+        "/api/shopping-list/from-plan",
+        Some(json!({"start_date": "2026-03-02", "end_date": "2026-03-02"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "respuesta: {groups}");
+    let arroz = find_item(&groups, "Arroz").expect("arroz reescalado");
+    assert_eq!(arroz["amount"], 100.0, "100 g x (4/4), sin acumular");
+}
+
+/// Un rango que solapa con otro ya volcado no duplica las entradas (día ⊂ semana).
+#[tokio::test]
+async fn from_plan_deduplicates_overlapping_ranges() {
+    let state = common::test_state().await;
+
+    let recipe = create_recipe(&state, "Receta tomate", "Tomate", 2.0, "ud").await;
+    add_plan_entry(&state, "2026-03-02", &recipe, 2).await; // lunes
+    add_plan_entry(&state, "2026-03-03", &recipe, 2).await; // martes
+
+    // Volcado del lunes.
+    let (status, _) = common::request(
+        state.clone(),
+        "POST",
+        "/api/shopping-list/from-plan",
+        Some(json!({"start_date": "2026-03-02", "end_date": "2026-03-02"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Volcado de la semana completa (incluye el lunes ya volcado).
+    let (status, groups) = common::request(
+        state.clone(),
+        "POST",
+        "/api/shopping-list/from-plan",
+        Some(json!({"start_date": "2026-03-02", "end_date": "2026-03-08"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "respuesta: {groups}");
+
+    let tomates = find_all_items(&groups, "Tomate");
+    assert_eq!(tomates.len(), 1, "una sola línea del plan");
+    assert_eq!(
+        tomates[0]["amount"], 4.0,
+        "lunes 2 + martes 2, sin duplicar"
+    );
+}
+
+/// `consolidate` fija las fuentes al rango indicado: desaparece lo volcado antes.
+#[tokio::test]
+async fn consolidate_resets_plan_sources_to_range() {
+    let state = common::test_state().await;
+
+    let r_tomate = create_recipe(&state, "Receta tomate", "Tomate", 2.0, "ud").await;
+    let r_leche = create_recipe(&state, "Receta leche", "Leche", 1.0, "l").await;
+    add_plan_entry(&state, "2026-03-02", &r_tomate, 2).await; // lunes
+    add_plan_entry(&state, "2026-03-04", &r_leche, 2).await; // miércoles
+
+    // Volcado inicial del lunes: aparece el tomate.
+    let (status, groups) = common::request(
+        state.clone(),
+        "POST",
+        "/api/shopping-list/from-plan",
+        Some(json!({"start_date": "2026-03-02", "end_date": "2026-03-02"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "respuesta: {groups}");
+    assert!(
+        find_item(&groups, "Tomate").is_some(),
+        "el lunes debe aparecer tras from-plan"
+    );
+
+    // Consolidar SOLO el miércoles fija las fuentes a ese rango.
+    let (status, groups) = common::request(
+        state.clone(),
+        "POST",
+        "/api/shopping-list/consolidate",
+        Some(json!({"start_date": "2026-03-04", "end_date": "2026-03-04"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "respuesta: {groups}");
+
+    assert!(
+        find_item(&groups, "Tomate").is_none(),
+        "el volcado del lunes desaparece al consolidar otro rango"
+    );
+    assert!(
+        find_item(&groups, "Leche").is_some(),
+        "aparece la leche del rango consolidado"
+    );
+
+    let plan_lines: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM shopping_list_items WHERE source_plan_id IS NOT NULL",
+    )
+    .fetch_one(&state.pool)
+    .await
+    .expect("contar líneas del plan");
+    assert_eq!(plan_lines, 1, "solo las fuentes del rango consolidado");
+}
+
+/// Repetir `from-plan` recrea la línea del plan y resetea su `checked`.
+///
+/// Es el **mismo contrato** que `from-recipe`: las líneas derivadas se borran y
+/// recrean siempre con `checked = 0`, de modo que repetir el volcado resetea el
+/// estado "ya comprado". Los ítems manuales, en cambio, conservan su `checked`.
+#[tokio::test]
+async fn from_plan_rerun_resets_plan_line_checked() {
+    let state = common::test_state().await;
+
+    let recipe = create_recipe(&state, "Receta tomate", "Tomate", 4.0, "ud").await;
+    add_plan_entry(&state, "2026-03-02", &recipe, 2).await;
+
+    // Primer volcado: la línea del plan nace sin marcar.
+    let (status, groups) = common::request(
+        state.clone(),
+        "POST",
+        "/api/shopping-list/from-plan",
+        Some(json!({"start_date": "2026-03-02", "end_date": "2026-03-02"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "respuesta: {groups}");
+    let tomate = find_item(&groups, "Tomate").expect("tomate del plan");
+    assert_eq!(tomate["checked"], false);
+    let plan_id = tomate["id"].as_str().expect("id del plan").to_string();
+
+    // El usuario la marca como comprada.
+    let (status, _) = common::request(
+        state.clone(),
+        "PATCH",
+        &format!("/api/shopping-list/{plan_id}"),
+        Some(json!({"checked": true})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Repetir el MISMO `from-plan` recrea la línea: vuelve a `checked = false`.
+    let (status, groups) = common::request(
+        state.clone(),
+        "POST",
+        "/api/shopping-list/from-plan",
+        Some(json!({"start_date": "2026-03-02", "end_date": "2026-03-02"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "respuesta: {groups}");
+    let tomate = find_item(&groups, "Tomate").expect("tomate re-volcado");
+    assert_eq!(
+        tomate["checked"], false,
+        "las líneas del plan se recrean sin marcar (mismo contrato que from-recipe)"
+    );
+    assert_eq!(tomate["amount"], 4.0, "no se acumula al repetir");
+}
+
+/// Borrar una entrada del plan elimina su fuente (`ON DELETE CASCADE`); al
+/// re-volcar, la línea del plan desaparece.
+#[tokio::test]
+async fn from_plan_drops_source_when_entry_deleted() {
+    let state = common::test_state().await;
+
+    let recipe = create_recipe(&state, "Receta tomate", "Tomate", 4.0, "ud").await;
+    add_plan_entry(&state, "2026-03-02", &recipe, 2).await;
+
+    let (status, groups) = common::request(
+        state.clone(),
+        "POST",
+        "/api/shopping-list/from-plan",
+        Some(json!({"start_date": "2026-03-02", "end_date": "2026-03-02"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "respuesta: {groups}");
+    let tomate = find_item(&groups, "Tomate").expect("tomate del plan");
+    assert_eq!(tomate["amount"], 4.0);
+
+    // Recupera el id de la entrada y bórrala.
+    let (status, entries) = common::request(
+        state.clone(),
+        "GET",
+        "/api/meal-plan?start_date=2026-03-02&end_date=2026-03-02",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let entry_id = entries[0]["id"]
+        .as_str()
+        .expect("id de entrada")
+        .to_string();
+    let (status, _) = common::request(
+        state.clone(),
+        "DELETE",
+        &format!("/api/meal-plan/{entry_id}"),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    // La FK `ON DELETE CASCADE` elimina la fuente; al reconstruir cae la línea.
+    let (status, groups) = common::request(
+        state.clone(),
+        "POST",
+        "/api/shopping-list/from-plan",
+        Some(json!({"start_date": "2026-03-02", "end_date": "2026-03-02"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "respuesta: {groups}");
+    assert!(
+        find_item(&groups, "Tomate").is_none(),
+        "la línea del plan desaparece al borrar su entrada"
+    );
+
+    let plan_lines: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM shopping_list_items WHERE source_plan_id IS NOT NULL",
+    )
+    .fetch_one(&state.pool)
+    .await
+    .expect("contar líneas del plan");
+    assert_eq!(plan_lines, 0, "no quedan líneas del plan");
+}
+
+/// `from-recipe` no toca las líneas del plan: coexisten ambas.
+#[tokio::test]
+async fn from_recipe_after_from_plan_keeps_plan_lines() {
+    let state = common::test_state().await;
+
+    // Plan: Tomate 4 ud.
+    let plan_recipe = create_recipe(&state, "Receta tomate", "Tomate", 4.0, "ud").await;
+    add_plan_entry(&state, "2026-03-02", &plan_recipe, 2).await;
+
+    let (status, _) = common::request(
+        state.clone(),
+        "POST",
+        "/api/shopping-list/from-plan",
+        Some(json!({"start_date": "2026-03-02", "end_date": "2026-03-02"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Volcado de otra receta: Leche 1 l.
+    let recipe = create_recipe(&state, "Receta leche", "Leche", 1.0, "l").await;
+    let (status, groups) = common::request(
+        state.clone(),
+        "POST",
+        "/api/shopping-list/from-recipe",
+        Some(json!({"recipe_id": recipe})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "respuesta: {groups}");
+
+    let tomate = find_item(&groups, "Tomate").expect("la línea del plan se conserva");
+    assert_eq!(tomate["amount"], 4.0);
+    assert!(
+        find_item(&groups, "Leche").is_some(),
+        "la línea de receta se añade"
+    );
+}
+
+/// `consolidate` fija las fuentes del **plan**, pero no toca las líneas
+/// derivadas de recetas: conservan su `source_recipe_id`.
+#[tokio::test]
+async fn consolidate_preserves_recipe_lines() {
+    let state = common::test_state().await;
+
+    // Volcado de receta: Leche 1 l (canonicalizada a ml).
+    let recipe = create_recipe(&state, "Receta leche", "Leche", 1.0, "l").await;
+    let (status, _) = common::request(
+        state.clone(),
+        "POST",
+        "/api/shopping-list/from-recipe",
+        Some(json!({"recipe_id": recipe})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Consolidar un rango distinto (sin entradas de plan) no debe tocarla.
+    let (status, groups) = common::request(
+        state.clone(),
+        "POST",
+        "/api/shopping-list/consolidate",
+        Some(json!({"start_date": "2026-04-01", "end_date": "2026-04-07"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "respuesta: {groups}");
+
+    let leche = find_item(&groups, "Leche").expect("la línea de receta se conserva");
+    assert_eq!(leche["amount"], 1000.0);
+    assert_eq!(leche["unit"], "ml");
+
+    let source_recipe_id: Option<String> =
+        sqlx::query_scalar("SELECT source_recipe_id FROM shopping_list_items WHERE name = 'Leche'")
+            .fetch_one(&state.pool)
+            .await
+            .expect("fuente de la línea de receta");
+    assert_eq!(
+        source_recipe_id.as_deref(),
+        Some(recipe.as_str()),
+        "la línea de receta conserva su procedencia"
     );
 }

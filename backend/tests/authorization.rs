@@ -330,6 +330,26 @@ async fn token_with_write_shopping_permission_allows_creation() {
 }
 
 #[tokio::test]
+async fn token_with_write_shopping_can_add_plan_to_list() {
+    let idp = MockIdp::start().await;
+    let state = test_state_oidc(&idp.issuer, USER_GROUPS).await;
+
+    let token = token_for(&idp, WRITE_SHOPPING);
+    let (status, _headers, response) = call(
+        &state,
+        "POST",
+        "/api/shopping-list/from-plan",
+        Some(&token),
+        None,
+        None,
+        Some(json!({"start_date": "2024-01-01", "end_date": "2024-01-07"})),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "body: {response}");
+}
+
+#[tokio::test]
 async fn token_with_read_shopping_cannot_add_plan_to_list() {
     let idp = MockIdp::start().await;
     let state = test_state_oidc(&idp.issuer, USER_GROUPS).await;

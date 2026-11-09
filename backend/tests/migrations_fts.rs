@@ -13,6 +13,7 @@ async fn migrations_create_expected_tables() {
         "recipes",
         "meal_plan_entries",
         "shopping_list_items",
+        "shopping_plan_sources",
         "recipes_fts",
     ] {
         let name: Option<String> =
