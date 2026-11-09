@@ -4,7 +4,7 @@
 
 ### Requirement: Volcado aditivo desde el plan
 
-El sistema SHALL exponer `POST /api/shopping-list/from-plan` con permiso `write:shopping` para fusionar los ingredientes de las entradas del plan en un rango con la lista global. El cuerpo SHALL contener `start_date` y `end_date` en formato `YYYY-MM-DD`, con `start_date <= end_date`. El sistema SHALL escalar las cantidades por las raciones de la entrada y de la receta, consolidarlas con el motor de `ingredient-consolidation` y fusionarlas con los ítems existentes por nombre normalizado y unidad canónica: si ya existe un ítem con la misma clave, SHALL sumar la cantidad; si no, SHALL insertar un ítem nuevo. Los ítems existentes SHALL conservarse (incluidos los manuales, los volcados de receta y los del plan) y sus estados `checked`/`client_id` SHALL mantenerse. La respuesta SHALL ser la lista agrupada (`[ShoppingListGroup]`).
+El sistema SHALL exponer `POST /api/shopping-list/from-plan` con permiso `write:shopping` para fusionar los ingredientes del plan de un rango con la lista global. El cuerpo SHALL llevar `start_date` y `end_date` (`YYYY-MM-DD`, `start_date <= end_date`). Las cantidades SHALL escalarse por raciones, consolidarse y fusionarse con los ítems existentes por nombre normalizado y unidad canónica, sumando si la clave coincide. Los ítems existentes SHALL conservarse con sus estados.
 
 #### Scenario: Volcado de un día
 - **GIVEN** un plan con entradas para un día y una lista vacía

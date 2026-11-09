@@ -18,7 +18,7 @@ La vista diaria y la vista semanal SHALL mostrar el nombre de cada receta planif
 
 ### Requirement: Añadir a la lista desde el menú
 
-La vista diaria y la vista semanal SHALL ofrecer un botón «Añadir a la lista» junto a la fecha. En la vista diaria, el botón SHALL añadir los ingredientes del día visible. En la vista semanal, el botón de la cabecera SHALL añadir los ingredientes de la semana completa y cada tarjeta de día SHALL tener un botón que añada solo los ingredientes de ese día. La acción SHALL usar `POST /api/shopping-list/from-plan` con `{start_date, end_date}`. La acción SHALL estar deshabilitada sin conexión y SHALL mostrar el estado de carga y un error si falla.
+La vista diaria y la vista semanal SHALL ofrecer un botón «Añadir a la lista» junto a la fecha. En la diaria SHALL añadir los ingredientes del día visible; en la semanal, el de la cabecera SHALL añadir la semana completa y cada tarjeta de día SHALL tener otro que añada solo ese día. La acción SHALL usar `POST /api/shopping-list/from-plan` con `{start_date, end_date}`, SHALL estar deshabilitada sin conexión y SHALL mostrar carga y error si falla.
 
 #### Scenario: Añadir el día desde la vista diaria
 - **GIVEN** la vista diaria de un día con recetas
