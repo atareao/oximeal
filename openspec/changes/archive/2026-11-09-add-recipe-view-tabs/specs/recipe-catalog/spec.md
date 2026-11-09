@@ -7,11 +7,9 @@
 La aplicación SHALL mostrar el detalle de una receta —ingredientes,
 instrucciones, tiempo de preparación, raciones, origen y **etiquetas**— al
 seleccionarla, reutilizando `useRecipe`/`fetchRecipe`. Las secciones de
-instrucciones y de ingredientes SHALL organizarse en dos pestañas:
-**Instrucciones** (activa por defecto) e **Ingredientes**. El resto del detalle
-(cabecera, meta, selector de raciones, alertas, acciones, etiquetas y fuente)
-SHALL permanecer visible por encima de las pestañas. Las pestaetas SHALL ser
-accesibles, con roles `tablist`/`tab`/`tabpanel` y navegación por teclado.
+instrucciones e ingredientes SHALL organizarse en dos pestañas accesibles:
+**Instrucciones** (activa por defecto) e **Ingredientes**, y el resto del
+detalle SHALL permanecer visible por encima de ellas.
 
 #### Scenario: Ver detalle
 
