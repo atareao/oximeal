@@ -10,7 +10,7 @@ use crate::domain::consolidate::ShoppingListItemDraft;
 use crate::domain::date::parse_iso_date;
 use crate::domain::ingredient::IngredientInput;
 use crate::domain::normalize::normalize_name;
-use crate::domain::units::{UnitFamily, canonicalize, normalize_unit};
+use crate::domain::units::{UnitFamily, canonicalize};
 use crate::error::{AppError, AppResult};
 use crate::models::shopping_list::{
     ShoppingItem, ShoppingItemInput, ShoppingItemPatch, ShoppingListGroup,
@@ -25,6 +25,13 @@ const SELECT_ITEM: &str = "SELECT id, name, amount, unit, category, checked, \
 /// Una línea consolidada a partir de un mismo ingrediente aportado por más de
 /// una receta ya no tiene una atribución unívoca; se marca con este centinela.
 const SOURCE_CONSOLIDATED: &str = "consolidated";
+
+/// Valor de `source_plan_id` de las líneas derivadas del plan.
+///
+/// Se mantiene el literal `"consolidated"` (igual que [`SOURCE_CONSOLIDATED`])
+/// por compatibilidad con datos heredados: las líneas del plan ya se marcaban
+/// con ese centinela antes de introducir esta constante.
+const SOURCE_PLAN: &str = "consolidated";
 
 /// Borrador derivado de recetas junto con su receta fuente.
 ///
@@ -502,7 +509,7 @@ pub(crate) async fn collect_plan_drafts(
          FROM shopping_plan_sources s \
          JOIN meal_plan_entries e ON e.id = s.entry_id \
          JOIN recipes r ON r.id = e.recipe_id \
-         ORDER BY s.entry_id",
+         ORDER BY e.date ASC, e.meal_type ASC, e.role ASC, s.entry_id ASC",
     )
     .fetch_all(&mut *conn)
     .await?;
@@ -514,11 +521,6 @@ pub(crate) async fn collect_plan_drafts(
             .map_err(|error| AppError::Internal(anyhow!("ingredientes JSON inválidos: {error}")))?;
         inputs.extend(parsed.into_iter().map(|mut ingredient| {
             ingredient.amount *= factor;
-            // Normaliza la unidad textual para que las variantes de la familia
-            // `Unknown` (`"Cajas"` y `"cajas"`) se consoliden en una sola línea.
-            // En las familias conocidas `canonicalize` ya ignora la forma textual
-            // (mapea la unidad a su canónica), así que esto no las altera.
-            ingredient.unit = normalize_unit(&ingredient.unit);
             ingredient
         }));
     }
@@ -557,13 +559,14 @@ pub(crate) async fn rebuild_plan_lines(
         sqlx::query(
             "INSERT INTO shopping_list_items \
              (id, name, amount, unit, category, checked, source_plan_id, updated_at) \
-             VALUES (?, ?, ?, ?, ?, 0, 'consolidated', CURRENT_TIMESTAMP)",
+             VALUES (?, ?, ?, ?, ?, 0, ?, CURRENT_TIMESTAMP)",
         )
         .bind(&id)
         .bind(&draft.name)
         .bind(draft.amount)
         .bind(&draft.unit)
         .bind(&draft.category)
+        .bind(SOURCE_PLAN)
         .execute(&mut *conn)
         .await?;
     }
