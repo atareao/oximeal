@@ -851,12 +851,14 @@ describe('MenuPage', () => {
     renderMenu();
 
     await screen.findByTestId('weekly-calendar');
-    expect(
-      within(cardForDay(0)).getByRole('link', { name: 'Lentejas' }),
-    ).toHaveAttribute('href', '/recipes/r-lentejas');
-    expect(
-      within(cardForDay(1)).getByRole('link', { name: 'Tortilla' }),
-    ).toHaveAttribute('href', '/recipes/r-tortilla');
+    expect(within(cardForDay(0)).getByRole('link', { name: 'Lentejas' })).toHaveAttribute(
+      'href',
+      '/recipes/r-lentejas',
+    );
+    expect(within(cardForDay(1)).getByRole('link', { name: 'Tortilla' })).toHaveAttribute(
+      'href',
+      '/recipes/r-tortilla',
+    );
   });
 
   it('enlaza la receta de la vista diaria a su detalle', async () => {

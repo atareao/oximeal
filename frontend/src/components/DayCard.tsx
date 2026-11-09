@@ -60,7 +60,10 @@ function MealSlot({
             const isSalad = entry.role === 'salad' || entry.recipe.category === 'salad';
             return (
               <li key={entry.id} className="day-card__meal">
-                <Link to={`/recipes/${encodeURIComponent(entry.recipe.id)}`} className="day-card__meal-name">
+                <Link
+                  to={`/recipes/${encodeURIComponent(entry.recipe.id)}`}
+                  className="day-card__meal-name"
+                >
                   {entry.recipe.name}
                 </Link>
                 {isSalad && <span className="day-card__salad">🥗 Ensalada</span>}

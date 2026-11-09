@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Alert, App as AntdApp, Button, Empty, Result, Segmented, Skeleton, Typography } from 'antd';
+import {
+  Alert,
+  App as AntdApp,
+  Button,
+  Empty,
+  Result,
+  Segmented,
+  Skeleton,
+  Typography,
+} from 'antd';
 import {
   useAddMealPlanEntry,
   useAddPlanToShoppingList,
@@ -247,11 +256,7 @@ export function MenuPage() {
     );
   };
 
-  const addRangeToShoppingList = (
-    startDate: string,
-    endDate: string,
-    source: 'header' | 'day',
-  ) => {
+  const addRangeToShoppingList = (startDate: string, endDate: string, source: 'header' | 'day') => {
     setShoppingListSource(source);
     addToShoppingList.mutate(
       { start_date: startDate, end_date: endDate },
@@ -263,10 +268,7 @@ export function MenuPage() {
         onError: (mutationError: unknown) => {
           setShoppingListSource(null);
           message.error(
-            describeActionError(
-              mutationError,
-              'No se pudieron añadir los ingredientes a la lista',
-            ),
+            describeActionError(mutationError, 'No se pudieron añadir los ingredientes a la lista'),
           );
         },
       },
@@ -295,8 +297,7 @@ export function MenuPage() {
   const headerAddPending =
     shoppingListPending &&
     shoppingListSource === 'header' &&
-    addToShoppingList.variables?.start_date ===
-      (view === 'week' ? weekStart : referenceDate) &&
+    addToShoppingList.variables?.start_date === (view === 'week' ? weekStart : referenceDate) &&
     addToShoppingList.variables?.end_date === (view === 'week' ? weekEnd : referenceDate);
 
   const rangeLabel =
@@ -324,7 +325,9 @@ export function MenuPage() {
         {(view === 'week' || view === 'day') && hasEntries && (
           <Button
             className="menu-page__add-to-list"
-            aria-label={view === 'week' ? 'Añadir la semana a la lista' : 'Añadir el día a la lista'}
+            aria-label={
+              view === 'week' ? 'Añadir la semana a la lista' : 'Añadir el día a la lista'
+            }
             disabled={!online}
             loading={headerAddPending}
             onClick={handleAddToShoppingList}
