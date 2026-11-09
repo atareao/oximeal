@@ -63,7 +63,7 @@ Eliminar los duplicados heredados de la lista de la compra —líneas **manuales
 - [x] T15. Auditoría con `@rust-reviewer`.
 - [x] T16. `docs/shopping-list-dedupe.md`.
 - [x] T17. Archivar el change y consolidar `openspec/specs/shopping-list/spec.md`.
-- [ ] T18. PR a `development` (gitmoji), CI en verde y merge; marcar issue #131.
+- [x] T18. PR a `development` (gitmoji), CI en verde y merge; marcar issue #131. (PR #132, merge 82f283b)
 
 ## Criterios de aceptación (DoD)
 
