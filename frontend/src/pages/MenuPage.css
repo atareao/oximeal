@@ -25,6 +25,10 @@
   text-transform: capitalize;
 }
 
+.menu-page__add-to-list {
+  min-height: 48px;
+}
+
 .menu-page__nav {
   display: flex;
   flex-wrap: wrap;

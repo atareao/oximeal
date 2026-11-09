@@ -6,10 +6,11 @@ use std::collections::{BTreeSet, HashMap};
 use uuid::Uuid;
 
 use crate::domain::category::{CATEGORY_ORDER, categorize};
-use crate::domain::consolidate::ShoppingListItemDraft;
+use crate::domain::consolidate::{ShoppingListItemDraft, round2};
+use crate::domain::date::parse_iso_date;
 use crate::domain::ingredient::IngredientInput;
 use crate::domain::normalize::normalize_name;
-use crate::domain::units::{UnitFamily, canonicalize};
+use crate::domain::units::{UnitFamily, canonicalize, normalize_unit};
 use crate::error::{AppError, AppResult};
 use crate::models::shopping_list::{
     ShoppingItem, ShoppingItemInput, ShoppingItemPatch, ShoppingListGroup,
@@ -281,6 +282,150 @@ pub async fn from_recipe(
     tx.commit().await?;
 
     list_grouped(pool).await
+}
+
+/// Objetivo de fusión de una línea existente: id, cantidad canónica y unidad.
+#[derive(Debug, Clone)]
+struct MergeTarget {
+    id: String,
+    amount: f64,
+    unit: String,
+}
+
+/// Valida que el rango sea parseable y que `start_date <= end_date`.
+///
+/// Defensa en profundidad: los handlers ya validan el rango, pero el repositorio
+/// no debe aceptar un rango invertido ni fechas inválidas si se invoca desde
+/// otro punto de la aplicación.
+fn validate_range(start_date: &str, end_date: &str) -> AppResult<()> {
+    let start = parse_iso_date(start_date)
+        .ok_or_else(|| AppError::Validation(format!("fecha inválida: {start_date}")))?;
+    let end = parse_iso_date(end_date)
+        .ok_or_else(|| AppError::Validation(format!("fecha inválida: {end_date}")))?;
+    if start > end {
+        return Err(AppError::Validation(
+            "start_date no puede ser posterior a end_date".into(),
+        ));
+    }
+    Ok(())
+}
+
+/// Añade los ingredientes del plan en un rango a la lista global, fusionando.
+///
+/// A diferencia de [`consolidate`], que **reemplaza** las líneas del plan, este
+/// volcado es **aditivo**: los ingredientes del plan se fusionan con los ítems
+/// existentes por nombre normalizado y unidad canónica. Si coincide con un ítem
+/// existente, se suma su cantidad; si no, se inserta un ítem nuevo. Los ítems
+/// manuales, los volcados de receta y los del plan se conservan junto con sus
+/// `checked`/`client_id`. Toda la operación ocurre en una transacción
+/// `BEGIN IMMEDIATE`.
+pub async fn from_plan(
+    pool: &SqlitePool,
+    start_date: &str,
+    end_date: &str,
+) -> AppResult<Vec<ShoppingListGroup>> {
+    validate_range(start_date, end_date)?;
+
+    // Escritura read-then-write: BEGIN IMMEDIATE evita SQLITE_BUSY_SNAPSHOT en WAL.
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+
+    let drafts = collect_drafts(&mut tx, start_date, end_date).await?;
+    merge_drafts(&mut tx, &drafts).await?;
+
+    tx.commit().await?;
+
+    list_grouped(pool).await
+}
+
+/// Fusiona los borradores del plan con los ítems existentes, sumando cantidades.
+///
+/// La clave de conciliación es `(nombre normalizado, familia, unidad canónica
+/// normalizada)`, el mismo subgrupo que usa el motor de dominio. La unidad se
+/// normaliza con [`normalize_unit`] para que las variantes de `Unknown` (p. ej.
+/// `"Cajas"` y `"cajas"`) coincidan. Si ya existe una línea con esa clave, se
+/// suma su cantidad canónica y se conserva la línea (y su `checked`, `client_id`,
+/// `source_plan_id` y `source_recipe_id`); si no, se inserta una línea nueva con
+/// `source_plan_id` y `source_recipe_id` nulos.
+///
+/// Usa `conn` sin abrir transacción propia.
+pub(crate) async fn merge_drafts(
+    conn: &mut SqliteConnection,
+    drafts: &[ShoppingListItemDraft],
+) -> AppResult<()> {
+    let sql = SELECT_ITEM.to_string();
+    let items: Vec<ShoppingItem> = sqlx::query_as(sqlx::AssertSqlSafe(sql))
+        .fetch_all(&mut *conn)
+        .await?;
+
+    let mut targets: HashMap<(String, UnitFamily, String), MergeTarget> = HashMap::new();
+    for item in &items {
+        let canonical = canonicalize(0.0, &item.unit);
+        // La clave normaliza la unidad para que, en la familia `Unknown`, las
+        // variantes de mayúsculas/espacios (`"Cajas"` y `"cajas"`) se fusionen.
+        let key = (
+            normalize_name(&item.name),
+            canonical.family,
+            normalize_unit(&canonical.display_unit),
+        );
+        targets.entry(key).or_insert_with(|| MergeTarget {
+            id: item.id.clone(),
+            amount: canonicalize(item.amount, &item.unit).amount,
+            unit: canonical.display_unit,
+        });
+    }
+
+    for draft in drafts {
+        let canonical = canonicalize(draft.amount, &draft.unit);
+        let key = (
+            normalize_name(&draft.name),
+            canonical.family,
+            normalize_unit(&canonical.display_unit),
+        );
+
+        if let Some(target) = targets.get_mut(&key) {
+            // Un aporte de 0.0 (p. ej. `al gusto`) no cambia la fila: no se
+            // refresca `updated_at` ni se reescribe la unidad.
+            if canonical.amount == 0.0 {
+                continue;
+            }
+            let total = round2(target.amount + canonical.amount);
+            target.amount = total;
+            sqlx::query(
+                "UPDATE shopping_list_items SET amount = ?, unit = ?, \
+                 updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            )
+            .bind(total)
+            .bind(&target.unit)
+            .bind(&target.id)
+            .execute(&mut *conn)
+            .await?;
+        } else {
+            let id = Uuid::new_v4().to_string();
+            let amount = round2(canonical.amount);
+            sqlx::query(
+                "INSERT INTO shopping_list_items \
+                 (id, name, amount, unit, category, checked, source_plan_id, source_recipe_id, updated_at) \
+                 VALUES (?, ?, ?, ?, ?, 0, NULL, NULL, CURRENT_TIMESTAMP)",
+            )
+            .bind(&id)
+            .bind(&draft.name)
+            .bind(amount)
+            .bind(&canonical.display_unit)
+            .bind(&draft.category)
+            .execute(&mut *conn)
+            .await?;
+            targets.insert(
+                key,
+                MergeTarget {
+                    id,
+                    amount,
+                    unit: canonical.display_unit,
+                },
+            );
+        }
+    }
+
+    Ok(())
 }
 
 /// Recolecta los borradores consolidados de todas las recetas volcadas.

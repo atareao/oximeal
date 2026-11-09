@@ -12,8 +12,8 @@ use chrono::{Datelike, Duration, Local, NaiveDate};
 use crate::domain::category::CATEGORY_ORDER;
 use crate::error::{AppError, AppResult};
 use crate::models::shopping_list::{
-    ConsolidateInput, RecipeToShoppingListInput, ShoppingItem, ShoppingItemInput,
-    ShoppingItemPatch, ShoppingListGroup,
+    ConsolidateInput, PlanToShoppingListInput, RecipeToShoppingListInput, ShoppingItem,
+    ShoppingItemInput, ShoppingItemPatch, ShoppingListGroup,
 };
 use crate::repo;
 use crate::routes::validation;
@@ -34,6 +34,7 @@ pub fn write_router() -> Router<AppState> {
         )
         .route("/api/shopping-list/consolidate", post(consolidate))
         .route("/api/shopping-list/from-recipe", post(from_recipe))
+        .route("/api/shopping-list/from-plan", post(from_plan))
         .route("/api/shopping-list/{id}", patch(patch_item))
 }
 
@@ -197,6 +198,44 @@ pub async fn from_recipe(
     let groups =
         repo::shopping_list::from_recipe(&state.pool, input.recipe_id.trim(), input.servings)
             .await?;
+    Ok(Json(groups))
+}
+
+/// `POST /api/shopping-list/from-plan` — vuelca aditivamente los ingredientes del plan.
+///
+/// **Semántica**: a diferencia de `consolidate`, este volcado es **aditivo**:
+/// fusiona los ingredientes de las entradas del plan en el rango con los ítems
+/// existentes por nombre normalizado y unidad canónica. Si coincide, suma la
+/// cantidad; si no, inserta un ítem nuevo. Los ítems manuales, los volcados de
+/// receta y los del plan se conservan con sus `checked`/`client_id`.
+#[utoipa::path(
+    post,
+    path = "/api/shopping-list/from-plan",
+    tag = "shopping-list",
+    request_body = PlanToShoppingListInput,
+    responses(
+        (status = 200, description = "Lista resultante del volcado", body = [ShoppingListGroup]),
+        (status = 400, description = "Rango de fechas inválido o cuerpo inválido"),
+    )
+)]
+pub async fn from_plan(
+    State(state): State<AppState>,
+    payload: Result<Json<PlanToShoppingListInput>, JsonRejection>,
+) -> AppResult<Json<Vec<ShoppingListGroup>>> {
+    let Json(input) = payload.map_err(|rejection| {
+        AppError::Validation(format!("cuerpo JSON inválido: {}", rejection.body_text()))
+    })?;
+
+    let start = validation::parse_date(&input.start_date)?;
+    let end = validation::parse_date(&input.end_date)?;
+    if start > end {
+        return Err(AppError::Validation(
+            "start_date no puede ser posterior a end_date".into(),
+        ));
+    }
+
+    let groups =
+        repo::shopping_list::from_plan(&state.pool, &start.to_string(), &end.to_string()).await?;
     Ok(Json(groups))
 }
 

@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query';
 import {
+  addPlanToShoppingList,
   addRecipeToShoppingList,
   createMealPlanEntry,
   createRecipe,
@@ -20,6 +21,7 @@ import {
 import {
   queryKeys,
   useAddMealPlanEntry,
+  useAddPlanToShoppingList,
   useAddRecipeToShoppingList,
   useAddShoppingItem,
   useCreateRecipe,
@@ -68,6 +70,7 @@ vi.mock('./client', async (importOriginal) => {
     createTag: vi.fn(),
     deleteTag: vi.fn(),
     addRecipeToShoppingList: vi.fn(),
+    addPlanToShoppingList: vi.fn(),
   };
 });
 
@@ -589,6 +592,75 @@ describe('volcado de receta a la lista', () => {
 
     await waitFor(() => expect(result.current.isPaused).toBe(true));
     expect(mockedAddFromRecipe).not.toHaveBeenCalled();
+    expect(getQueuedMutations()).toHaveLength(0);
+  });
+});
+
+describe('volcado del plan a la lista', () => {
+  const mockedAddFromPlan = vi.mocked(addPlanToShoppingList);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    onlineManager.setOnline(true);
+    configureMutationQueue(createMutationStore());
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+  });
+
+  afterEach(() => {
+    onlineManager.setOnline(true);
+  });
+
+  it('useAddPlanToShoppingList invalida la lista al completar', async () => {
+    const groups: ShoppingListGroup[] = [
+      {
+        category: 'Verduras',
+        items: [
+          {
+            id: 'i1',
+            name: 'Patata',
+            amount: 2,
+            unit: 'ud',
+            category: 'Verduras',
+            checked: false,
+            updated_at: '2026-11-01T10:00:00Z',
+          },
+        ],
+      },
+    ];
+    mockedAddFromPlan.mockResolvedValue(groups);
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useAddPlanToShoppingList(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        start_date: '2026-11-02',
+        end_date: '2026-11-08',
+      });
+    });
+
+    expect(mockedAddFromPlan).toHaveBeenCalledWith({
+      start_date: '2026-11-02',
+      end_date: '2026-11-08',
+    });
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.shoppingList.all }),
+    );
+  });
+
+  it('sin conexión la operación compuesta queda pausada y no se encola', async () => {
+    // El volcado es una operación compuesta: sin conexión se pausa (networkMode
+    // 'online') y NUNCA se encola en IndexedDB. La UI la deshabilita.
+    onlineManager.setOnline(false);
+    const { result } = renderHook(() => useAddPlanToShoppingList(), { wrapper });
+
+    act(() => {
+      result.current.mutate({ start_date: '2026-11-02', end_date: '2026-11-08' });
+    });
+
+    await waitFor(() => expect(result.current.isPaused).toBe(true));
+    expect(mockedAddFromPlan).not.toHaveBeenCalled();
     expect(getQueuedMutations()).toHaveLength(0);
   });
 });

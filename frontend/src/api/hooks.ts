@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   clearCompletedShoppingItems,
   consolidateShoppingList,
+  addPlanToShoppingList,
   addRecipeToShoppingList,
   createMealPlanEntry,
   createRecipe,
@@ -26,6 +27,7 @@ import {
 import type {
   MealPlanInput,
   MealPlanPatchInput,
+  PlanToShoppingListInput,
   RecipeImportInput,
   RecipeImportResult,
   RecipeInput,
@@ -512,6 +514,25 @@ export function useAddRecipeToShoppingList() {
   const queryClient = useQueryClient();
   return useMutation<ShoppingListGroup[], Error, RecipeToShoppingListInput>({
     mutationFn: (input: RecipeToShoppingListInput) => addRecipeToShoppingList(input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.shoppingList.all });
+    },
+  });
+}
+
+/**
+ * Añade los ingredientes del plan (rango de fechas) a la lista de la compra.
+ *
+ * Es una operación **compuesta** (fusiona en el servidor), así que no se encola
+ * en IndexedDB: usa `networkMode: 'online'` y, sin conexión, la mutación queda
+ * pausada mientras la UI la deshabilita. Al terminar invalida la lista para que
+ * `/shopping` refleje el volcado.
+ */
+export function useAddPlanToShoppingList() {
+  const queryClient = useQueryClient();
+  return useMutation<ShoppingListGroup[], Error, PlanToShoppingListInput>({
+    networkMode: 'online',
+    mutationFn: (input: PlanToShoppingListInput) => addPlanToShoppingList(input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.shoppingList.all });
     },
