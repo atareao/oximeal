@@ -12,6 +12,18 @@ adhiere al [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [No publicado]
 
+## [0.9.0] - 2026-11-09
+
+### Añadido
+
+- **Menú (navegación):** las vistas diaria y semanal muestran el nombre de cada receta planificada como enlace a su detalle (`/recipes/:id`).
+- **Menú (lista de la compra):** botón «Añadir a la lista» en la vista diaria (día visible) y en la semanal (semana completa), además de uno por tarjeta de día. Usa el nuevo endpoint `POST /api/shopping-list/from-plan`, que fusiona de forma aditiva los ingredientes del plan con la lista existente —escalando por raciones y consolidando por nombre y unidad—, conservando los ítems manuales y sus estados `checked`.
+- **Recetas (detalle):** las instrucciones y los ingredientes se organizan en dos pestañas accesibles —**Instrucciones** (activa por defecto) e **Ingredientes**—, dejando cabecera, meta, selector de raciones y acciones visibles por encima.
+
+### Corregido
+
+- **Menú:** el botón «Añadir a la lista» de una tarjeta de día ya no aparece cuando ese día no tiene recetas planificadas, evitando una petición innecesaria y un mensaje de éxito engañoso.
+
 ## [0.8.1] - 2026-11-07
 
 ### Añadido
