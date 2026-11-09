@@ -31,4 +31,4 @@
 
 - [x] 5.1 `docs/shopping-list-dedupe.md`.
 - [x] 5.2 Archivar el change y consolidar la spec.
-- [ ] 5.3 PR a `development`, CI en verde y merge.
+- [x] 5.3 PR a `development`, CI en verde y merge. (PR #132, merge 82f283b)
